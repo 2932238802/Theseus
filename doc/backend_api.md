@@ -16,4 +16,4 @@ cp .env.example .env
 cargo run
 ```
 
-数据库迁移在服务启动时自动执行。题目提交会先返回 `pending`，随后由 `JudgeService` 更新为评测结果。
+数据库迁移在服务启动时自动执行。题目提交会先返回 `pending`，随后由 `JudgeService` 进入 `judging` 并在评测器未配置时记录 `runtime_error`；该服务边界不会执行不受信任的用户代码。自定义题目通过 `POST /api/problems/custom` 提交，管理员通过待审核接口审批后才会公开。

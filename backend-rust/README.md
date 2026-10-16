@@ -34,7 +34,9 @@ cargo run
 {"success":true,"data":{},"error":null}
 ```
 
-首版 `JudgeService` 实现了 `pending -> judging -> accepted` 的异步生命周期和统计更新。它是可替换的服务边界，不执行不受信任的用户代码；生产部署应接入隔离的 Judge worker/container。
+首版 `JudgeService` 实现了 `pending -> judging -> runtime_error` 的异步生命周期和提交统计更新。由于服务尚未接入隔离执行器，它不会伪造 `accepted` 结果，也不会直接执行不受信任的用户代码；生产部署应接入隔离的 Judge worker/container，并在该服务边界内完成真实评测。
+
+自定义题目使用 `POST /api/problems/custom` 提交，初始状态为 `pending`。管理员可通过 `GET /api/admin/problems/pending` 查看待审题目，并用 `PUT /api/admin/problems/:id/review` 携带 `{ "status": "approved" }` 或 `{ "status": "rejected" }` 完成审核。
 
 ## 检查
 
