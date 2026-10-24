@@ -16,7 +16,7 @@ const router = createRouter({
     { path: '/login', name: 'login', component: LoginAndRegisterPage, meta: { guestOnly: true } },
     { path: '/problems', name: 'problems', component: ProblemsPage },
     { path: '/problem/:id', name: 'problem', component: OjPage, props: true },
-    { path: '/profile', name: 'profile', component: ProfilePage },
+    { path: '/profile', name: 'profile', component: ProfilePage, meta: { requiresAuth: true } },
     { path: '/rankings', name: 'rankings', component: RankingsPage },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },
   ],
@@ -24,6 +24,9 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const authStore = useAuthStore()
+  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
   if (to.meta.guestOnly && authStore.isAuthenticated) return { name: 'home' }
   return true
 })

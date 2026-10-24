@@ -1,12 +1,41 @@
+import type { RunConfig } from './run'
+
 export type Difficulty = 'easy' | 'medium' | 'hard'
-export type SubmissionStatus = 'Accepted' | 'Wrong Answer' | 'Runtime Error' | 'Running'
 export type Language = 'cpp' | 'java' | 'python' | 'javascript'
+
+export type ProblemStatus = 'not_started' | 'attempted' | 'accepted'
+
+export type BackendSubmissionStatus =
+  | 'pending'
+  | 'judging'
+  | 'accepted'
+  | 'wrong_answer'
+  | 'time_limit_exceeded'
+  | 'memory_limit_exceeded'
+  | 'runtime_error'
+  | 'compile_error'
+
+export type SubmissionStatus =
+  | 'Accepted'
+  | 'Wrong Answer'
+  | 'Runtime Error'
+  | 'Running'
+  | 'Time Limit Exceeded'
+  | 'Memory Limit Exceeded'
+  | 'Compile Error'
 
 export interface User {
   id: number
   username: string
   email: string
+  role?: string
   avatar?: string
+}
+
+export interface ProblemExample {
+  input: string
+  output: string
+  explanation?: string
 }
 
 export interface Problem {
@@ -15,22 +44,27 @@ export interface Problem {
   difficulty: Difficulty
   acceptance: number
   tags: string[]
-  solved?: boolean
+  status: ProblemStatus
   description: string
-  inputDescription: string
-  outputDescription: string
-  examples: Array<{ input: string; output: string; explanation?: string }>
-  constraints: string[]
-  hints?: string[]
+  examples: ProblemExample[]
+  codeTemplate: Partial<Record<Language, string>>
+  runConfig?: RunConfig
+  timeLimit: number
+  memoryLimit: number
+  submitCount: number
+  acceptCount: number
 }
 
 export interface Submission {
-  id: string
+  id: number
   problemId: number
   problemTitle: string
   language: Language
   code: string
   status: SubmissionStatus
+  rawStatus: BackendSubmissionStatus
+  testCasesPassed: number
+  totalTestCases: number
   runtime?: string
   memory?: string
   createdAt: string
@@ -41,8 +75,15 @@ export interface ProblemQuery {
   keyword: string
   difficulty: Difficulty | 'all'
   tag: string
+  status: ProblemStatus | 'all'
   sortBy: 'id' | 'difficulty' | 'acceptance'
   order: 'asc' | 'desc'
   page: number
   pageSize: number
+}
+
+export interface Stats {
+  totalProblems: number
+  totalSubmissions: number
+  acceptedSubmissions: number
 }

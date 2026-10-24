@@ -19,8 +19,10 @@ cargo run
 
 - `POST /api/auth/register` 注册
 - `POST /api/auth/login` 登录并获取 JWT
-- `GET /api/problems` 分页获取题目，可按 `difficulty`、`tag`、`status`、`search` 筛选
+- `GET /api/problems` 分页获取题目，可按 `difficulty`、`tag`、`status`、`search` 筛选，并通过白名单 `sort=id|difficulty|acceptance_rate`、`order=asc|desc` 排序
+- `GET /api/problems/tags` 获取已审核题目的去重标签
 - `GET /api/problems/:id` 获取题目详情
+- `GET /api/stats` 获取题目总数、提交总数与通过提交数
 - `POST /api/submissions` 提交代码，需要 JWT
 - `GET /api/submissions/:id` 获取自己的提交详情
 - `GET /api/submissions` 获取自己的提交记录（管理员可按 `user_id` 查询）
@@ -35,6 +37,15 @@ cargo run
 ```
 
 首版 `JudgeService` 实现了 `pending -> judging -> runtime_error` 的异步生命周期和提交统计更新。由于服务尚未接入隔离执行器，它不会伪造 `accepted` 结果，也不会直接执行不受信任的用户代码；生产部署应接入隔离的 Judge worker/container，并在该服务边界内完成真实评测。
+
+## 开发种子数据
+
+仅用于本地/测试环境，写入固定 ID 1001-1003 的三道题：
+
+```bash
+psql "$DATABASE_URL" -f scripts/seed_dev.sql
+psql "$DATABASE_URL" -f scripts/clean_dev.sql  # 清理
+```
 
 自定义题目使用 `POST /api/problems/custom` 提交，初始状态为 `pending`。管理员可通过 `GET /api/admin/problems/pending` 查看待审题目，并用 `PUT /api/admin/problems/:id/review` 携带 `{ "status": "approved" }` 或 `{ "status": "rejected" }` 完成审核。
 

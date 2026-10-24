@@ -66,3 +66,15 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Rust backend
+backend-rust/target/
+backend-rust/.env
+target
+backend-rust/target/debug
+
+# Frontend
+frontend-vue/node_modules/
+frontend-vue/dist/
+frontend-vue/.env
+frontend-vue/.env.local

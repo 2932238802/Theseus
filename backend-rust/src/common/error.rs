@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    http::StatusCode,
+    http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde_json::json;
@@ -14,12 +14,18 @@ pub enum AppError {
     BadRequest(String),
     #[error("请先登录")]
     Unauthorized,
+    #[error("用户名或密码错误")]
+    InvalidCredentials,
     #[error("没有执行该操作的权限")]
     Forbidden,
     #[error("资源不存在: {0}")]
     NotFound(String),
     #[error("资源已存在: {0}")]
     Conflict(String),
+    #[error("{0}")]
+    RateLimited(String, u64),
+    #[error("{0}")]
+    ServiceUnavailable(String),
     #[error("数据库操作失败")]
     Database(#[from] sqlx::Error),
     #[error("内部服务错误")]
@@ -30,10 +36,12 @@ impl AppError {
     fn status_code(&self) -> StatusCode {
         match self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Unauthorized | Self::InvalidCredentials => StatusCode::UNAUTHORIZED,
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
+            Self::RateLimited(_, _) => StatusCode::TOO_MANY_REQUESTS,
+            Self::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Database(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -42,6 +50,10 @@ impl AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = self.status_code();
+        let retry_after = match &self {
+            Self::RateLimited(_, seconds) => Some(*seconds),
+            _ => None,
+        };
         let message = match &self {
             Self::Database(error) => {
                 tracing::error!(error = ?error, "database request failed");
@@ -49,7 +61,13 @@ impl IntoResponse for AppError {
             }
             _ => self.to_string(),
         };
-        (status, Json(ApiResponse::<()>::error(message))).into_response()
+        let mut response = (status, Json(ApiResponse::<()>::error(message))).into_response();
+        if let Some(seconds) = retry_after
+            && let Ok(value) = HeaderValue::from_str(&seconds.to_string())
+        {
+            response.headers_mut().insert(header::RETRY_AFTER, value);
+        }
+        response
     }
 }
 

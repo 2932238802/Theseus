@@ -35,22 +35,27 @@ pub async fn login(
     secret: &str,
     expiration_hours: i64,
 ) -> Result<(User, String), AppError> {
-    if request.username.trim().is_empty() || request.password.is_empty() {
-        return Err(AppError::BadRequest("用户名和密码不能为空".to_owned()));
-    }
+    validate_login(request)?;
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, role, created_at, updated_at FROM users WHERE username = $1",
+        "SELECT id, username, email, password_hash, role, created_at, updated_at FROM users WHERE username = $1 OR LOWER(email) = LOWER($1)",
     )
     .bind(request.username.trim())
     .fetch_optional(pool)
     .await
     .map_err(AppError::Database)?
-    .ok_or(AppError::Unauthorized)?;
+    .ok_or(AppError::InvalidCredentials)?;
     if !verify_password(&request.password, &user.password_hash) {
-        return Err(AppError::Unauthorized);
+        return Err(AppError::InvalidCredentials);
     }
     let token = create_token(user.id, &user.role, secret, expiration_hours)?;
     Ok((user, token))
+}
+
+fn validate_login(request: &LoginRequest) -> Result<(), AppError> {
+    if request.username.trim().is_empty() || request.password.is_empty() {
+        return Err(AppError::BadRequest("用户名和密码不能为空".to_owned()));
+    }
+    Ok(())
 }
 
 fn validate_registration(request: &RegisterRequest) -> Result<(), AppError> {
@@ -74,8 +79,8 @@ fn validate_registration(request: &RegisterRequest) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_registration;
-    use crate::models::user::RegisterRequest;
+    use super::{validate_login, validate_registration};
+    use crate::models::user::{LoginRequest, RegisterRequest};
 
     #[test]
     fn validates_registration_input() {
@@ -85,5 +90,23 @@ mod tests {
             password: "short".to_owned(),
         };
         assert!(validate_registration(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_empty_login_credentials() {
+        let request = LoginRequest {
+            username: "  ".to_owned(),
+            password: String::new(),
+        };
+        assert!(validate_login(&request).is_err());
+    }
+
+    #[test]
+    fn accepts_login_with_username_or_email() {
+        let request = LoginRequest {
+            username: "user@example.com".to_owned(),
+            password: "Passw0rd123".to_owned(),
+        };
+        assert!(validate_login(&request).is_ok());
     }
 }

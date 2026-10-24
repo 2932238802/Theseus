@@ -14,6 +14,7 @@ pub struct ProblemRow {
     pub examples: Option<Value>,
     pub test_cases: Option<Value>,
     pub code_template: Option<Value>,
+    pub run_config: Option<Value>,
     pub acceptance_rate: f64,
     pub submit_count: i32,
     pub accept_count: i32,
@@ -30,6 +31,7 @@ pub struct ProblemResponse {
     pub tags: Vec<String>,
     pub examples: Value,
     pub code_template: Value,
+    pub run_config: Option<Value>,
     pub acceptance_rate: f64,
     pub submit_count: i32,
     pub accept_count: i32,
@@ -50,6 +52,7 @@ impl ProblemRow {
             code_template: self
                 .code_template
                 .unwrap_or_else(|| Value::Object(Default::default())),
+            run_config: self.run_config,
             acceptance_rate: self.acceptance_rate,
             submit_count: self.submit_count,
             accept_count: self.accept_count,
@@ -69,6 +72,7 @@ pub struct ProblemRequest {
     pub examples: Option<Value>,
     pub test_cases: Option<Value>,
     pub code_template: Option<Value>,
+    pub run_config: Option<Value>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -79,6 +83,15 @@ pub struct ProblemListQuery {
     pub tag: Option<String>,
     pub status: Option<String>,
     pub search: Option<String>,
+    pub sort: Option<String>,
+    pub order: Option<String>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct StatsResponse {
+    pub total_problems: i64,
+    pub total_submissions: i64,
+    pub accepted_submissions: i64,
 }
 
 #[derive(Debug, Serialize)]

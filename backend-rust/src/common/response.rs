@@ -33,3 +33,7 @@ pub fn ok<T: Serialize>(data: T) -> impl IntoResponse {
 pub fn created<T: Serialize>(data: T) -> impl IntoResponse {
     (StatusCode::CREATED, Json(ApiResponse::success(data)))
 }
+
+pub fn accepted<T: Serialize>(data: T) -> impl IntoResponse {
+    (StatusCode::ACCEPTED, Json(ApiResponse::success(data)))
+}

@@ -1,46 +1,31 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { mockApi } from '../api/mock'
+import { login as loginRequest, register as registerRequest } from '../api/auth'
+import { toErrorMessage } from '../api/client'
 import type { User } from '../types/oj'
-
-const TOKEN_KEY = 'theseus-token'
-const USER_KEY = 'theseus-user'
-
-const getStoredUser = (): User | null => {
-  const rawUser = localStorage.getItem(USER_KEY)
-  if (!rawUser) return null
-  try {
-    return JSON.parse(rawUser) as User
-  } catch {
-    localStorage.removeItem(USER_KEY)
-    return null
-  }
-}
+import { clearSession, getStoredUser, getToken, persistSession } from '../utils/session'
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(localStorage.getItem(TOKEN_KEY) ?? '')
+  const token = ref(getToken())
   const user = ref<User | null>(getStoredUser())
   const isLoading = ref(false)
   const error = ref('')
   const isAuthenticated = computed(() => Boolean(token.value && user.value))
 
-  const persistSession = (nextToken: string, nextUser: User, remember = true): void => {
+  const applySession = (nextToken: string, nextUser: User, remember: boolean): void => {
     token.value = nextToken
     user.value = nextUser
-    if (remember) {
-      localStorage.setItem(TOKEN_KEY, nextToken)
-      localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
-    }
+    persistSession(nextToken, nextUser, remember)
   }
 
-  const login = async (username: string, password: string, remember: boolean): Promise<void> => {
+  const login = async (identifier: string, password: string, remember: boolean): Promise<void> => {
     isLoading.value = true
     error.value = ''
     try {
-      const session = await mockApi.login(username, password)
-      persistSession(session.token, session.user, remember)
+      const session = await loginRequest(identifier, password)
+      applySession(session.token, session.user, remember)
     } catch (exception: unknown) {
-      error.value = exception instanceof Error ? exception.message : '登录失败，请稍后再试。'
+      error.value = toErrorMessage(exception)
       throw exception
     } finally {
       isLoading.value = false
@@ -51,10 +36,11 @@ export const useAuthStore = defineStore('auth', () => {
     isLoading.value = true
     error.value = ''
     try {
-      const session = await mockApi.register(username, email, password)
-      persistSession(session.token, session.user)
+      await registerRequest(username, email, password)
+      const session = await loginRequest(username, password)
+      applySession(session.token, session.user, true)
     } catch (exception: unknown) {
-      error.value = exception instanceof Error ? exception.message : '注册失败，请稍后再试。'
+      error.value = toErrorMessage(exception)
       throw exception
     } finally {
       isLoading.value = false
@@ -65,8 +51,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = ''
     user.value = null
     error.value = ''
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
+    clearSession()
   }
 
   return { token, user, isLoading, error, isAuthenticated, login, register, logout }

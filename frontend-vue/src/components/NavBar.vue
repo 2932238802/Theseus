@@ -6,9 +6,9 @@ import { useAuthStore } from '../store/auth'
 const authStore = useAuthStore()
 const router = useRouter()
 const isMenuOpen = ref(false)
-const isDark = ref(localStorage.getItem('theseus-theme') === 'dark')
+const isDark = ref(document.documentElement.dataset.theme === 'dark')
 
-const userInitial = computed(() => authStore.user?.avatar ?? 'T')
+const userInitial = computed(() => authStore.user?.avatar ?? authStore.user?.username.slice(0, 1).toUpperCase() ?? 'T')
 
 const toggleTheme = (): void => {
   isDark.value = !isDark.value
@@ -25,8 +25,8 @@ const logout = (): void => {
 <template>
   <header class="site-header">
     <RouterLink class="brand" to="/" aria-label="Theseus 首页">
-      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-      <span>theseus<span class="brand-dot">.</span></span>
+      <span class="brand-mark" aria-hidden="true">T</span>
+      <span class="brand-name">Theseus</span>
     </RouterLink>
 
     <nav class="main-nav" aria-label="主导航">
@@ -41,7 +41,7 @@ const logout = (): void => {
         <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M20.1 15.1A8.5 8.5 0 0 1 8.9 3.9 8.5 8.5 0 1 0 20.1 15.1Z" /></svg>
       </button>
       <template v-if="authStore.isAuthenticated">
-        <button class="avatar-button" type="button" :aria-expanded="isMenuOpen" @click="isMenuOpen = !isMenuOpen">{{ userInitial }}</button>
+        <button class="avatar-button" type="button" :aria-label="`用户菜单：${authStore.user?.username ?? ''}`" aria-haspopup="menu" :aria-expanded="isMenuOpen" @click="isMenuOpen = !isMenuOpen">{{ userInitial }}</button>
         <div v-if="isMenuOpen" class="user-menu">
           <strong>{{ authStore.user?.username }}</strong>
           <span>{{ authStore.user?.email }}</span>

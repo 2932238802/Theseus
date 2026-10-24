@@ -13,10 +13,11 @@ use crate::{
         error::AppError,
         response::{created, ok},
     },
+    judge::run_config::{python_template, validate_run_config},
     middleware::auth::{optional_authenticate, require_admin},
     models::problem::{
         PendingProblemResponse, ProblemListQuery, ProblemListResponse, ProblemMutationResponse,
-        ProblemRequest, ProblemResponse, ProblemReviewRequest, ProblemRow,
+        ProblemRequest, ProblemResponse, ProblemReviewRequest, ProblemRow, StatsResponse,
     },
 };
 
@@ -36,6 +37,7 @@ struct ProblemWithStatusRow {
     examples: Option<Value>,
     test_cases: Option<Value>,
     code_template: Option<Value>,
+    run_config: Option<Value>,
     acceptance_rate: f64,
     submit_count: i32,
     accept_count: i32,
@@ -55,6 +57,7 @@ impl ProblemWithStatusRow {
             examples: self.examples,
             test_cases: self.test_cases,
             code_template: self.code_template,
+            run_config: self.run_config,
             acceptance_rate: self.acceptance_rate,
             submit_count: self.submit_count,
             accept_count: self.accept_count,
@@ -72,7 +75,18 @@ pub async fn list(
     let size = query.size.unwrap_or(DEFAULT_SIZE).clamp(1, MAX_PAGE_SIZE);
     let user_id = optional_authenticate(&headers, &state.config).map(|user| user.id);
     validate_status_filter(query.status.as_deref(), user_id)?;
-    let (total, problems) = fetch_problem_page(&state.pool, &query, page, size, user_id).await?;
+    let (sort_expression, sort_direction) =
+        parse_sort(query.sort.as_deref(), query.order.as_deref())?;
+    let (total, problems) = fetch_problem_page(
+        &state.pool,
+        &query,
+        page,
+        size,
+        user_id,
+        sort_expression,
+        sort_direction,
+    )
+    .await?;
     Ok(ok(ProblemListResponse {
         total,
         page,
@@ -82,6 +96,26 @@ pub async fn list(
             .map(ProblemWithStatusRow::response)
             .collect(),
     }))
+}
+
+pub async fn tags(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
+    let tags = sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT unnest(tags) AS tag FROM problems WHERE review_status = 'approved' ORDER BY tag ASC",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(ok(tags))
+}
+
+pub async fn stats(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
+    let stats = sqlx::query_as::<_, StatsResponse>(
+        "SELECT (SELECT COUNT(*) FROM problems WHERE review_status = 'approved') AS total_problems, (SELECT COUNT(*) FROM submissions) AS total_submissions, (SELECT COUNT(*) FROM submissions WHERE status = 'accepted') AS accepted_submissions",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(ok(stats))
 }
 
 pub async fn get(
@@ -94,7 +128,7 @@ pub async fn get(
     }
     let user_id = optional_authenticate(&headers, &state.config).map(|user| user.id);
     let row = sqlx::query_as::<_, ProblemWithStatusRow>(
-        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.acceptance_rate, p.submit_count, p.accept_count, ups.status FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = $2 WHERE p.id = $1 AND p.review_status = 'approved'",
+        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = $2 WHERE p.id = $1 AND p.review_status = 'approved'",
     )
     .bind(id)
     .bind(user_id)
@@ -112,7 +146,16 @@ pub async fn create(
 ) -> Result<impl IntoResponse, AppError> {
     let admin = require_admin(&headers, &state.config)?;
     validate_problem(&request)?;
-    let id = insert_problem(&state.pool, &request, Some(admin.id), "approved").await?;
+    let (run_config, code_template) = prepare_run_config(&request)?;
+    let id = insert_problem(
+        &state.pool,
+        &request,
+        run_config,
+        code_template,
+        Some(admin.id),
+        "approved",
+    )
+    .await?;
     Ok(created(ProblemMutationResponse {
         id,
         message: "题目创建成功".to_owned(),
@@ -126,7 +169,16 @@ pub async fn submit_custom(
 ) -> Result<impl IntoResponse, AppError> {
     let user = crate::middleware::auth::authenticate(&headers, &state.config)?;
     validate_problem(&request)?;
-    let id = insert_problem(&state.pool, &request, Some(user.id), "pending").await?;
+    let (run_config, code_template) = prepare_run_config(&request)?;
+    let id = insert_problem(
+        &state.pool,
+        &request,
+        run_config,
+        code_template,
+        Some(user.id),
+        "pending",
+    )
+    .await?;
     Ok(created(ProblemMutationResponse {
         id,
         message: "题目已提交，等待管理员审核".to_owned(),
@@ -189,8 +241,9 @@ pub async fn update(
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
     validate_problem(&request)?;
+    let (run_config, code_template) = prepare_run_config(&request)?;
     let result = sqlx::query(
-        "UPDATE problems SET title = $1, description = $2, difficulty = $3, time_limit = $4, memory_limit = $5, tags = $6, examples = $7, test_cases = $8, code_template = $9, updated_at = CURRENT_TIMESTAMP WHERE id = $10",
+        "UPDATE problems SET title = $1, description = $2, difficulty = $3, time_limit = $4, memory_limit = $5, tags = $6, examples = $7, test_cases = $8, code_template = $9, run_config = $10, updated_at = CURRENT_TIMESTAMP WHERE id = $11",
     )
     .bind(request.title.trim())
     .bind(request.description.trim())
@@ -200,7 +253,8 @@ pub async fn update(
     .bind(request.tags.unwrap_or_default())
     .bind(request.examples.unwrap_or_else(|| Value::Array(Vec::new())))
     .bind(request.test_cases.unwrap_or_else(|| Value::Array(Vec::new())))
-    .bind(request.code_template.unwrap_or_else(|| Value::Object(Default::default())))
+    .bind(code_template.unwrap_or_else(|| Value::Object(Default::default())))
+    .bind(run_config)
     .bind(id)
     .execute(&state.pool)
     .await
@@ -243,6 +297,8 @@ async fn fetch_problem_page(
     page: u32,
     size: u32,
     user_id: Option<i32>,
+    sort_expression: &str,
+    sort_direction: &str,
 ) -> Result<(i64, Vec<ProblemWithStatusRow>), AppError> {
     let mut count_builder = QueryBuilder::<Postgres>::new(
         "SELECT COUNT(*) FROM problems p WHERE p.review_status = 'approved'",
@@ -256,12 +312,16 @@ async fn fetch_problem_page(
 
     let offset = (page.saturating_sub(1) as i64) * i64::from(size);
     let mut builder = QueryBuilder::<Postgres>::new(
-        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.acceptance_rate, p.submit_count, p.accept_count, ups.status FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = ",
+        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = ",
     );
     builder.push_bind(user_id);
     builder.push(" WHERE p.review_status = 'approved'");
     append_filters(&mut builder, query, user_id);
-    builder.push(" ORDER BY p.id ASC LIMIT ");
+    builder.push(" ORDER BY ");
+    builder.push(sort_expression);
+    builder.push(" ");
+    builder.push(sort_direction);
+    builder.push(", p.id ASC LIMIT ");
     builder.push_bind(i64::from(size));
     builder.push(" OFFSET ");
     builder.push_bind(offset);
@@ -330,11 +390,13 @@ fn append_filters<'a>(
 async fn insert_problem(
     pool: &PgPool,
     request: &ProblemRequest,
+    run_config: Option<Value>,
+    code_template: Option<Value>,
     created_by: Option<i32>,
     review_status: &str,
 ) -> Result<i32, AppError> {
     sqlx::query_scalar(
-        "INSERT INTO problems (title, description, difficulty, time_limit, memory_limit, tags, examples, test_cases, code_template, created_by, review_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id",
+        "INSERT INTO problems (title, description, difficulty, time_limit, memory_limit, tags, examples, test_cases, code_template, run_config, created_by, review_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id",
     )
     .bind(request.title.trim())
     .bind(request.description.trim())
@@ -344,12 +406,48 @@ async fn insert_problem(
     .bind(request.tags.clone().unwrap_or_default())
     .bind(request.examples.clone().unwrap_or_else(|| Value::Array(Vec::new())))
     .bind(request.test_cases.clone().unwrap_or_else(|| Value::Array(Vec::new())))
-    .bind(request.code_template.clone().unwrap_or_else(|| Value::Object(Default::default())))
+    .bind(code_template.unwrap_or_else(|| Value::Object(Default::default())))
+    .bind(run_config)
     .bind(created_by)
     .bind(review_status)
     .fetch_one(pool)
     .await
     .map_err(AppError::Database)
+}
+
+fn prepare_run_config(
+    request: &ProblemRequest,
+) -> Result<(Option<Value>, Option<Value>), AppError> {
+    let Some(run_config) = request.run_config.as_ref().filter(|value| !value.is_null()) else {
+        return Ok((None, request.code_template.clone()));
+    };
+    let config = validate_run_config(run_config)?;
+    let mut template = match &request.code_template {
+        Some(Value::Object(object)) => object.clone(),
+        _ => serde_json::Map::new(),
+    };
+    template.insert("python".to_owned(), Value::String(python_template(&config)));
+    Ok((Some(run_config.clone()), Some(Value::Object(template))))
+}
+
+fn parse_sort(
+    sort: Option<&str>,
+    order: Option<&str>,
+) -> Result<(&'static str, &'static str), AppError> {
+    let sort_expression = match sort.filter(|value| !value.is_empty()).unwrap_or("id") {
+        "id" => "p.id",
+        "difficulty" => {
+            "CASE p.difficulty WHEN 'easy' THEN 1 WHEN 'medium' THEN 2 WHEN 'hard' THEN 3 ELSE 4 END"
+        }
+        "acceptance_rate" => "p.acceptance_rate",
+        _ => return Err(AppError::BadRequest("排序字段无效".to_owned())),
+    };
+    let sort_direction = match order.filter(|value| !value.is_empty()).unwrap_or("asc") {
+        "asc" => "ASC",
+        "desc" => "DESC",
+        _ => return Err(AppError::BadRequest("排序方向无效".to_owned())),
+    };
+    Ok((sort_expression, sort_direction))
 }
 
 fn validate_status_filter(status: Option<&str>, user_id: Option<i32>) -> Result<(), AppError> {
@@ -400,7 +498,7 @@ fn validate_problem(request: &ProblemRequest) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_filters, validate_problem};
+    use super::{append_filters, parse_sort, validate_problem};
     use crate::models::problem::ProblemRequest;
     use sqlx::{Postgres, QueryBuilder};
 
@@ -416,6 +514,7 @@ mod tests {
             examples: None,
             test_cases: None,
             code_template: None,
+            run_config: None,
         };
         assert!(validate_problem(&request).is_err());
     }
@@ -426,5 +525,23 @@ mod tests {
         let mut builder = QueryBuilder::<Postgres>::new("SELECT * FROM problems p WHERE 1 = 1");
         append_filters(&mut builder, &query, Some(42));
         assert!(builder.sql().contains("WHERE 1 = 1"));
+    }
+
+    #[test]
+    fn accepts_whitelisted_sort_options() {
+        assert_eq!(parse_sort(None, None).expect("default sort").0, "p.id");
+        assert_eq!(
+            parse_sort(Some("acceptance_rate"), Some("desc"))
+                .expect("acceptance sort")
+                .1,
+            "DESC"
+        );
+        assert!(parse_sort(Some("difficulty"), Some("asc")).is_ok());
+    }
+
+    #[test]
+    fn rejects_unknown_sort_options() {
+        assert!(parse_sort(Some("title; DROP TABLE problems"), None).is_err());
+        assert!(parse_sort(Some("id"), Some("sideways")).is_err());
     }
 }
