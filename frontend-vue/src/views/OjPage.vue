@@ -42,13 +42,13 @@ const canRun = computed(
   () =>
     runFeatureEnabled &&
     Boolean(runConfig.value) &&
-    language.value === 'python' &&
+    (language.value === 'python' || language.value === 'javascript') &&
     Boolean(problemStore.currentProblem),
 )
 const runDisabledReason = computed(() => {
   if (!runFeatureEnabled) return '运行功能暂未开放'
   if (!runConfig.value) return '该题暂未配置运行'
-  if (language.value !== 'python') return '暂不支持运行该语言，P1 仅支持 Python'
+  if (language.value !== 'python' && language.value !== 'javascript') return '暂不支持运行该语言，当前支持 Python 与 JavaScript'
   return ''
 })
 const hasPublicCases = computed(() => (runConfig.value?.publicCases.length ?? 0) > 0)

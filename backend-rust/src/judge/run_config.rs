@@ -112,6 +112,19 @@ pub fn python_template(config: &RunConfig) -> String {
     )
 }
 
+pub fn javascript_template(config: &RunConfig) -> String {
+    let parameters = config
+        .params
+        .iter()
+        .map(|param| param.name.clone())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "var {} = function({}) {{\n}};\n",
+        config.function_name, parameters
+    )
+}
+
 pub fn signature_hint(config: &RunConfig) -> String {
     let parameters = config
         .params
@@ -218,7 +231,7 @@ fn is_identifier(value: &str) -> bool {
 mod tests {
     use serde_json::json;
 
-    use super::{python_template, validate_input, validate_run_config};
+    use super::{javascript_template, python_template, validate_input, validate_run_config};
 
     fn config() -> serde_json::Value {
         json!({
@@ -242,6 +255,13 @@ mod tests {
         let template = python_template(&parsed);
         assert!(template.contains("def twoSum(self, nums: list[int], target: int) -> list[int]:"));
         assert!(template.contains("pass"));
+    }
+
+    #[test]
+    fn builds_javascript_template() {
+        let parsed = validate_run_config(&config()).expect("config should be valid");
+        let template = javascript_template(&parsed);
+        assert_eq!(template, "var twoSum = function(nums, target) {\n};\n");
     }
 
     #[test]

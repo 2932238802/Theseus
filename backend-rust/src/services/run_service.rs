@@ -424,10 +424,10 @@ fn random_token() -> String {
 
 fn validate_language(language: &str) -> Result<(), AppError> {
     match language {
-        "python" => Ok(()),
-        "cpp" | "java" | "javascript" => {
-            Err(AppError::BadRequest("P1 暂仅支持 Python 运行".to_owned()))
-        }
+        "python" | "javascript" => Ok(()),
+        "cpp" | "java" => Err(AppError::BadRequest(
+            "当前仅支持 Python 和 JavaScript 运行".to_owned(),
+        )),
         _ => Err(AppError::BadRequest("不支持的编程语言".to_owned())),
     }
 }
@@ -444,9 +444,11 @@ mod tests {
     use super::{concurrency_key, rate_key, validate_language, validate_mode};
 
     #[test]
-    fn only_python_is_supported_in_p1() {
+    fn python_and_javascript_are_supported() {
         assert!(validate_language("python").is_ok());
+        assert!(validate_language("javascript").is_ok());
         assert!(validate_language("cpp").is_err());
+        assert!(validate_language("java").is_err());
         assert!(validate_language("ruby").is_err());
     }
 

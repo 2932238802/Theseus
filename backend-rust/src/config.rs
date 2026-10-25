@@ -15,6 +15,7 @@ pub struct Config {
     pub run_worker_name: String,
     pub run_worker_concurrency: usize,
     pub run_image_python: String,
+    pub run_image_node: String,
     pub run_sandbox_runtime: String,
     pub run_sandbox_allow_runc: bool,
 }
@@ -53,6 +54,8 @@ impl Config {
             .max(1);
         let run_image_python =
             env::var("RUN_IMAGE_PYTHON").unwrap_or_else(|_| "python:3.12-slim".to_owned());
+        let run_image_node =
+            env::var("RUN_IMAGE_NODE").unwrap_or_else(|_| "node:22-slim".to_owned());
         let run_sandbox_runtime =
             env::var("RUN_SANDBOX_RUNTIME").unwrap_or_else(|_| "runsc".to_owned());
         let run_sandbox_allow_runc = env_bool("RUN_SANDBOX_ALLOW_RUNC", false)?;
@@ -74,6 +77,7 @@ impl Config {
             run_worker_name,
             run_worker_concurrency,
             run_image_python,
+            run_image_node,
             run_sandbox_runtime,
             run_sandbox_allow_runc,
         })

@@ -7,7 +7,7 @@ use backend_rust::{
         compare::values_match,
         queue,
         run_config::validate_input,
-        runner::{SandboxConfig, SandboxOutcome, execute_python},
+        runner::{SandboxConfig, SandboxOutcome, execute_javascript, execute_python},
     },
     models::run::{
         CodeRunRow, RUN_STATUS_COMPILING, RUN_STATUS_COMPLETED, RUN_STATUS_INTERNAL_ERROR,
@@ -27,6 +27,21 @@ const CASE_TIMEOUT: Duration = Duration::from_secs(2);
 const RUN_TIMEOUT: Duration = Duration::from_secs(10);
 
 type CasePlan = (Vec<Value>, Option<Value>);
+
+struct Sandboxes {
+    python: SandboxConfig,
+    node: SandboxConfig,
+}
+
+impl Sandboxes {
+    fn for_language(&self, language: &str) -> Option<&SandboxConfig> {
+        match language {
+            "python" => Some(&self.python),
+            "javascript" => Some(&self.node),
+            _ => None,
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -52,10 +67,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "judge worker started"
     );
 
-    let sandbox = SandboxConfig {
-        image: config.run_image_python.clone(),
-        runtime: config.run_sandbox_runtime.clone(),
-        allow_runc: config.run_sandbox_allow_runc,
+    let sandboxes = Sandboxes {
+        python: SandboxConfig {
+            image: config.run_image_python.clone(),
+            runtime: config.run_sandbox_runtime.clone(),
+            allow_runc: config.run_sandbox_allow_runc,
+        },
+        node: SandboxConfig {
+            image: config.run_image_node.clone(),
+            runtime: config.run_sandbox_runtime.clone(),
+            allow_runc: config.run_sandbox_allow_runc,
+        },
     };
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
 
@@ -78,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ) => {
                 match message {
                     Ok(Some((message_id, run_id))) => {
-                        process_run(&pool, &sandbox, &mut redis, run_id).await;
+                        process_run(&pool, &sandboxes, &mut redis, run_id).await;
                         if let Err(error) = queue::ack(
                             &mut redis,
                             &config.run_stream,
@@ -102,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn process_run(
     pool: &PgPool,
-    sandbox: &SandboxConfig,
+    sandboxes: &Sandboxes,
     redis: &mut ConnectionManager,
     run_id: i64,
 ) {
@@ -117,10 +139,10 @@ async fn process_run(
         tracing::info!(run_id, status = %row.status, "run already terminal, skipping");
         return;
     }
-    if row.language != "python" {
-        fail_run(pool, redis, &row, "P1 暂仅支持 Python 运行").await;
+    let Some(sandbox) = sandboxes.for_language(&row.language) else {
+        fail_run(pool, redis, &row, "当前仅支持 Python 和 JavaScript 运行").await;
         return;
-    }
+    };
     if !matches!(row.mode.as_str(), "examples" | "custom") {
         fail_run(pool, redis, &row, "运行模式无效").await;
         return;
@@ -162,15 +184,30 @@ async fn process_run(
             results.push(unrun_case(index as i32, args, expected));
             continue;
         }
-        let outcome = execute_python(
-            sandbox,
-            run_id,
-            &row.code,
-            args,
-            &run_config.function_name,
-            CASE_TIMEOUT.min(remaining),
-        )
-        .await;
+        let outcome = match row.language.as_str() {
+            "javascript" => {
+                execute_javascript(
+                    sandbox,
+                    run_id,
+                    &row.code,
+                    args,
+                    &run_config.function_name,
+                    CASE_TIMEOUT.min(remaining),
+                )
+                .await
+            }
+            _ => {
+                execute_python(
+                    sandbox,
+                    run_id,
+                    &row.code,
+                    args,
+                    &run_config.function_name,
+                    CASE_TIMEOUT.min(remaining),
+                )
+                .await
+            }
+        };
         let outcome = match outcome {
             Ok(outcome) => outcome,
             Err(error) => {

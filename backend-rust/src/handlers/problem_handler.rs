@@ -13,7 +13,7 @@ use crate::{
         error::AppError,
         response::{created, ok},
     },
-    judge::run_config::{python_template, validate_run_config},
+    judge::run_config::{javascript_template, python_template, validate_run_config},
     middleware::auth::{optional_authenticate, require_admin},
     models::problem::{
         PendingProblemResponse, ProblemListQuery, ProblemListResponse, ProblemMutationResponse,
@@ -427,6 +427,10 @@ fn prepare_run_config(
         _ => serde_json::Map::new(),
     };
     template.insert("python".to_owned(), Value::String(python_template(&config)));
+    template.insert(
+        "javascript".to_owned(),
+        Value::String(javascript_template(&config)),
+    );
     Ok((Some(run_config.clone()), Some(Value::Object(template))))
 }
 

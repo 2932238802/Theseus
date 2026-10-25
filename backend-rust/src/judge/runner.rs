@@ -9,8 +9,11 @@ use serde_json::Value;
 use tokio::process::Command;
 
 use crate::{
-    common::error::AppError, judge::harness::python::generate_runner,
-    judge::run_config::MAX_INPUT_BYTES,
+    common::error::AppError,
+    judge::{
+        harness::{javascript::generate_runner as generate_node_runner, python::generate_runner},
+        run_config::MAX_INPUT_BYTES,
+    },
 };
 
 pub const OUTPUT_LIMIT: usize = 64 * 1024;
@@ -51,6 +54,14 @@ pub struct SandboxOutcome {
     pub truncated: bool,
 }
 
+struct ScriptSpec {
+    harness_file: &'static str,
+    source_file: &'static str,
+    harness_source: String,
+    command: &'static [&'static str],
+    image_label: &'static str,
+}
+
 pub async fn execute_python(
     sandbox: &SandboxConfig,
     run_id: i64,
@@ -59,27 +70,72 @@ pub async fn execute_python(
     function_name: &str,
     timeout: Duration,
 ) -> Result<SandboxOutcome, AppError> {
+    execute_script(
+        sandbox,
+        run_id,
+        code,
+        args,
+        timeout,
+        ScriptSpec {
+            harness_file: "runner.py",
+            source_file: "solution.py",
+            harness_source: generate_runner(function_name),
+            command: &["python3", "/workspace/runner.py"],
+            image_label: "Python",
+        },
+    )
+    .await
+}
+
+pub async fn execute_javascript(
+    sandbox: &SandboxConfig,
+    run_id: i64,
+    code: &str,
+    args: &[Value],
+    function_name: &str,
+    timeout: Duration,
+) -> Result<SandboxOutcome, AppError> {
+    execute_script(
+        sandbox,
+        run_id,
+        code,
+        args,
+        timeout,
+        ScriptSpec {
+            harness_file: "runner.js",
+            source_file: "solution.js",
+            harness_source: generate_node_runner(function_name),
+            command: &["node", "/workspace/runner.js"],
+            image_label: "Node",
+        },
+    )
+    .await
+}
+
+async fn execute_script(
+    sandbox: &SandboxConfig,
+    run_id: i64,
+    code: &str,
+    args: &[Value],
+    timeout: Duration,
+    spec: ScriptSpec,
+) -> Result<SandboxOutcome, AppError> {
     if sandbox.runtime != "runsc" && !sandbox.allow_runc {
         return Err(AppError::Internal(
             "沙箱运行时必须为 runsc，拒绝回退 runc".to_owned(),
         ));
     }
     if sandbox.image.trim().is_empty() {
-        return Err(AppError::Internal("未配置 Python 运行镜像".to_owned()));
+        return Err(AppError::Internal(format!(
+            "未配置 {} 运行镜像",
+            spec.image_label
+        )));
     }
 
     let workspace = create_workspace(run_id)?;
     let container = format!("theseus-run-{run_id}-{}", random_suffix());
-    let result = run_in_container(
-        sandbox,
-        &container,
-        &workspace,
-        code,
-        args,
-        function_name,
-        timeout,
-    )
-    .await;
+    let result =
+        run_in_container(sandbox, &container, &workspace, code, args, timeout, &spec).await;
     remove_container(&container).await;
     if let Err(error) = std::fs::remove_dir_all(&workspace) {
         tracing::warn!(path = %workspace.display(), error = %error, "failed to remove run workspace");
@@ -93,12 +149,12 @@ async fn run_in_container(
     workspace: &Path,
     code: &str,
     args: &[Value],
-    function_name: &str,
     timeout: Duration,
+    spec: &ScriptSpec,
 ) -> Result<SandboxOutcome, AppError> {
-    std::fs::write(workspace.join("runner.py"), generate_runner(function_name))
+    std::fs::write(workspace.join(spec.harness_file), &spec.harness_source)
         .map_err(|error| AppError::Internal(format!("写入 harness 失败: {error}")))?;
-    std::fs::write(workspace.join("solution.py"), code)
+    std::fs::write(workspace.join(spec.source_file), code)
         .map_err(|error| AppError::Internal(format!("写入用户代码失败: {error}")))?;
     let case = serde_json::to_vec(args)
         .map_err(|error| AppError::Internal(format!("序列化运行参数失败: {error}")))?;
@@ -110,21 +166,15 @@ async fn run_in_container(
 
     start_container(sandbox, container).await?;
     verify_runtime(sandbox, container).await?;
-    for file in ["runner.py", "solution.py", "case.json"] {
+    for file in [spec.harness_file, spec.source_file, "case.json"] {
         copy_to_container(workspace, container, file).await?;
     }
 
     let started = Instant::now();
     let mut command = Command::new("docker");
     command
-        .args([
-            "exec",
-            "--user",
-            "65534:65534",
-            container,
-            "python3",
-            "/workspace/runner.py",
-        ])
+        .args(["exec", "--user", "65534:65534", container])
+        .args(spec.command)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

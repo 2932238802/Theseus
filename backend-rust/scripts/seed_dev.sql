@@ -23,7 +23,7 @@ INSERT INTO problems (
         {"input": "nums = [3, 2, 4], target = 6", "output": "[1, 2]"}
     ]$json$::jsonb,
     $json${
-        "javascript": "function twoSum(nums, target) {\n  \n}\n",
+        "javascript": "var twoSum = function(nums, target) {\n};\n",
         "python": "class Solution:\n    def twoSum(self, nums: list[int], target: int) -> list[int]:\n        pass\n",
         "cpp": "#include <vector>\n#include <unordered_map>\nusing namespace std;\n\nclass Solution {\npublic:\n    vector<int> twoSum(vector<int>& nums, int target) {\n        \n    }\n};\n",
         "java": "import java.util.*;\n\nclass Solution {\n    public int[] twoSum(int[] nums, int target) {\n        \n    }\n}\n"
