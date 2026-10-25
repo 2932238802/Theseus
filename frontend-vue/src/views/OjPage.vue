@@ -7,6 +7,8 @@ import { useAuthStore } from '../store/auth'
 import { useProblemStore } from '../store/problems'
 import { useRunStore } from '../store/runs'
 import { useSubmissionStore } from '../store/submissions'
+import { fetchAssignment } from '../api/assignments'
+import type { AssignmentDetail } from '../types/teaching'
 import {
   DIFFICULTY_LABELS,
   LANGUAGE_OPTIONS,
@@ -39,6 +41,29 @@ const runInput = ref('')
 const runInputError = ref('')
 const runFeatureEnabled = import.meta.env.VITE_RUN_CODE_ENABLED !== 'false'
 const submitFeatureEnabled = import.meta.env.VITE_SUBMIT_JUDGE_ENABLED === 'true'
+const assignmentId = computed(() => {
+  const value = Number(route.query.assignment_id)
+  return Number.isInteger(value) && value > 0 ? value : null
+})
+const assignment = ref<AssignmentDetail | null>(null)
+const assignmentError = ref('')
+const assignmentLoading = ref(false)
+const assignmentStateLabel = computed(() => {
+  if (!assignmentId.value) return ''
+  if (!authStore.isAuthenticated) return '登录后可提交作业'
+  if (authStore.isTeacher) return '教师预览不可提交'
+  if (authStore.isAdmin) return '管理员不可提交'
+  const detail = assignment.value
+  if (!detail) return assignmentLoading.value ? '正在加载作业…' : assignmentError.value
+  if (detail.status === 'archived') return '作业已归档'
+  if (detail.status === 'draft') return '作业尚未发布'
+  if (detail.dueAt && new Date(detail.dueAt).getTime() < Date.now()) return '作业已截止'
+  if (detail.startAt && new Date(detail.startAt).getTime() > Date.now()) return '作业尚未开始'
+  return detail.canSubmit ? '' : '当前不能提交'
+})
+const canSubmitCode = computed(
+  () => !assignmentId.value || (authStore.isStudent && assignment.value?.canSubmit === true),
+)
 
 const runConfig = computed(() => problemStore.currentProblem?.runConfig)
 const canRun = computed(
@@ -90,13 +115,26 @@ const resetCode = (): void => {
   code.value = templateFor(language.value)
   saveDraft()
 }
+const loadAssignmentContext = async (): Promise<void> => {
+  assignment.value = null
+  assignmentError.value = ''
+  if (!assignmentId.value || !authStore.isAuthenticated || authStore.isAdmin) return
+  assignmentLoading.value = true
+  try {
+    assignment.value = await fetchAssignment(assignmentId.value)
+  } catch (exception: unknown) {
+    assignmentError.value = exception instanceof Error ? exception.message : '作业不存在'
+  } finally {
+    assignmentLoading.value = false
+  }
+}
 const loadPage = async (): Promise<void> => {
   submissionStore.stopPolling()
   submissionStore.latest = null
   runStore.reset()
   activeOutputTab.value = 'submit'
   isRunDialogOpen.value = false
-  await problemStore.loadProblem(problemId.value)
+  await Promise.all([problemStore.loadProblem(problemId.value), loadAssignmentContext()])
   restoreDraft()
 }
 const submitCode = async (): Promise<void> => {
@@ -105,11 +143,17 @@ const submitCode = async (): Promise<void> => {
     await router.push({ name: 'login', query: { redirect: route.fullPath } })
     return
   }
+  if (assignmentId.value && !canSubmitCode.value) return
   saveDraft()
   isOutputOpen.value = true
   activeOutputTab.value = 'submit'
   try {
-    await submissionStore.submit(problemStore.currentProblem.id, language.value, code.value)
+    await submissionStore.submit(
+      problemStore.currentProblem.id,
+      language.value,
+      code.value,
+      assignmentId.value ?? undefined,
+    )
   } catch {
     isOutputOpen.value = true
   }
@@ -415,6 +459,7 @@ watch(language, () => {
 })
 watch(code, saveDraft)
 watch(() => route.params.id, () => { void loadPage() })
+watch(assignmentId, () => { void loadAssignmentContext() })
 onBeforeUnmount(() => {
   submissionStore.stopPolling()
   runStore.stopPolling()
@@ -435,12 +480,19 @@ onBeforeUnmount(() => {
 <template>
   <NavBar />
   <main ref="pageRef" class="oj-page">
-    <div v-if="problemStore.isLoading" class="oj-loading">正在准备题目…</div>
+    <div v-if="problemStore.isLoading || assignmentLoading" class="oj-loading">正在准备题目…</div>
+    <div v-else-if="assignmentError" class="oj-error"><h1>无法打开作业</h1><p>{{ assignmentError }}</p><RouterLink class="primary-button" to="/classes">返回班级</RouterLink></div>
     <div v-else-if="problemStore.error" class="oj-error"><h1>无法打开题目</h1><p>{{ problemStore.error }}</p><RouterLink class="primary-button" to="/problems">返回题库</RouterLink></div>
     <template v-else-if="problemStore.currentProblem">
       <section class="problem-pane">
         <div class="problem-pane-inner">
           <div class="breadcrumb"><RouterLink to="/problems">题库</RouterLink><span>/</span><span>{{ problemStore.currentProblem.id }}. {{ problemStore.currentProblem.title }}</span></div>
+          <aside v-if="assignmentId" class="assignment-context">
+            <div><span>作业</span><strong>{{ assignment?.title ?? `作业 #${assignmentId}` }}</strong></div>
+            <span v-if="assignment?.dueAt">截止 {{ new Date(assignment.dueAt).toLocaleString('zh-CN') }}</span>
+            <span v-if="assignmentStateLabel" class="assignment-context-state">{{ assignmentStateLabel }}</span>
+            <RouterLink :to="`/assignments/${assignmentId}`">返回作业</RouterLink>
+          </aside>
           <header class="problem-heading"><h1>{{ problemStore.currentProblem.title }}</h1><span :class="['difficulty', problemStore.currentProblem.difficulty]">{{ DIFFICULTY_LABELS[problemStore.currentProblem.difficulty] }}</span></header>
           <div class="problem-tags"><span v-for="tag in problemStore.currentProblem.tags" :key="tag" class="tag">{{ tag }}</span><span class="acceptance-stat">通过率 {{ problemStore.currentProblem.acceptance.toFixed(1) }}%</span></div>
           <article class="problem-content"><p v-for="paragraph in problemStore.currentProblem.description.split('\n\n')" :key="paragraph">{{ paragraph.replaceAll('**', '').replaceAll('*', '') }}</p><h2>示例</h2><div v-for="(example, index) in problemStore.currentProblem.examples" :key="`${example.input}-${index}`" class="example-block"><span>示例 {{ index + 1 }}</span><pre><b>输入：</b>{{ example.input }}
@@ -542,7 +594,7 @@ onBeforeUnmount(() => {
           <button class="reset-button" type="button" @click="resetCode">↺ 重置代码</button>
           <div>
             <button v-if="runFeatureEnabled" class="run-button" type="button" :disabled="!canRun || runStore.isRunning || submissionStore.isSubmitting" :title="runDisabledReason || '运行自定义输入'" @click="openRunDialog">{{ runButtonLabel }}</button>
-            <button class="submit-button" type="button" :disabled="!submitFeatureEnabled || submissionStore.isSubmitting || runStore.isRunning || !code.trim()" :title="submitFeatureEnabled ? '' : '提交评测暂未开放'" @click="submitCode">{{ !submitFeatureEnabled ? '提交评测暂未开放' : submissionStore.isSubmitting ? '评测中…' : '提交代码' }} <span v-if="submitFeatureEnabled">→</span></button>
+            <button class="submit-button" type="button" :disabled="!submitFeatureEnabled || submissionStore.isSubmitting || runStore.isRunning || !code.trim() || (Boolean(assignmentId) && !canSubmitCode)" :title="assignmentStateLabel || (submitFeatureEnabled ? '' : '提交评测暂未开放')" @click="submitCode">{{ !submitFeatureEnabled ? '提交评测暂未开放' : submissionStore.isSubmitting ? '评测中…' : assignmentId && !canSubmitCode ? '不可提交' : '提交代码' }} <span v-if="submitFeatureEnabled">→</span></button>
           </div>
         </footer>
       </section>

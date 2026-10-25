@@ -1,4 +1,10 @@
+pub mod admin_forum_handler;
+pub mod admin_user_handler;
+pub mod assignment_handler;
 pub mod auth_handler;
+pub mod class_handler;
+pub mod forum_handler;
+pub mod notification_handler;
 pub mod problem_handler;
 pub mod run_handler;
 pub mod submission_handler;

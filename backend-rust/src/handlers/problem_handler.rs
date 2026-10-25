@@ -17,7 +17,7 @@ use crate::{
         cpp_template, java_template, javascript_template, python_template, validate_judge_cases,
         validate_run_config,
     },
-    middleware::auth::{optional_authenticate, require_admin},
+    middleware::auth::{optional_authenticate, require_admin, require_teacher},
     models::problem::{
         AdminProblemResponse, PendingProblemResponse, ProblemListQuery, ProblemListResponse,
         ProblemMutationResponse, ProblemRequest, ProblemResponse, ProblemReviewRequest, ProblemRow,
@@ -77,7 +77,9 @@ pub async fn list(
 ) -> Result<impl IntoResponse, AppError> {
     let page = query.page.unwrap_or(DEFAULT_PAGE).max(1);
     let size = query.size.unwrap_or(DEFAULT_SIZE).clamp(1, MAX_PAGE_SIZE);
-    let user_id = optional_authenticate(&headers, &state.config).map(|user| user.id);
+    let user_id = optional_authenticate(&state.pool, &headers, &state.config)
+        .await
+        .map(|user| user.id);
     validate_status_filter(query.status.as_deref(), user_id)?;
     let (sort_expression, sort_direction) =
         parse_sort(query.sort.as_deref(), query.order.as_deref())?;
@@ -130,7 +132,9 @@ pub async fn get(
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
-    let user_id = optional_authenticate(&headers, &state.config).map(|user| user.id);
+    let user_id = optional_authenticate(&state.pool, &headers, &state.config)
+        .await
+        .map(|user| user.id);
     let row = sqlx::query_as::<_, ProblemWithStatusRow>(
         "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = $2 WHERE p.id = $1 AND p.review_status = 'approved'",
     )
@@ -148,7 +152,7 @@ pub async fn create(
     headers: HeaderMap,
     Json(request): Json<ProblemRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let admin = require_admin(&headers, &state.config)?;
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
     validate_problem(&request)?;
     let (run_config, code_template, judge_cases) = prepare_problem_judging(&request)?;
     let id = insert_problem(
@@ -172,7 +176,7 @@ pub async fn submit_custom(
     headers: HeaderMap,
     Json(request): Json<ProblemRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = crate::middleware::auth::authenticate(&headers, &state.config)?;
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
     validate_problem(&request)?;
     let (run_config, code_template, judge_cases) = prepare_problem_judging(&request)?;
     let id = insert_problem(
@@ -196,7 +200,7 @@ pub async fn admin_get(
     headers: HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin(&headers, &state.config)?;
+    require_admin(&state.pool, &headers, &state.config).await?;
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
@@ -215,7 +219,7 @@ pub async fn pending(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin(&headers, &state.config)?;
+    require_admin(&state.pool, &headers, &state.config).await?;
     let rows = sqlx::query_as::<_, PendingProblemResponse>(
         "SELECT id, title, difficulty, created_by, review_status, created_at FROM problems WHERE review_status = 'pending' ORDER BY created_at ASC LIMIT 100",
     )
@@ -231,7 +235,7 @@ pub async fn review(
     Path(id): Path<i32>,
     Json(request): Json<ProblemReviewRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin(&headers, &state.config)?;
+    require_admin(&state.pool, &headers, &state.config).await?;
     if id <= 0 || !matches!(request.status.as_str(), "approved" | "rejected") {
         return Err(AppError::BadRequest("题目 ID 或审核状态无效".to_owned()));
     }
@@ -262,7 +266,7 @@ pub async fn update(
     Path(id): Path<i32>,
     Json(request): Json<ProblemRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin(&headers, &state.config)?;
+    require_admin(&state.pool, &headers, &state.config).await?;
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
@@ -308,7 +312,7 @@ pub async fn delete(
     headers: HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin(&headers, &state.config)?;
+    require_admin(&state.pool, &headers, &state.config).await?;
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }

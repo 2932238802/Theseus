@@ -33,6 +33,7 @@ pub struct SubmissionRow {
     pub id: i32,
     pub user_id: i32,
     pub problem_id: i32,
+    pub assignment_id: Option<i32>,
     pub problem_title: String,
     pub language: String,
     pub code: String,
@@ -117,6 +118,7 @@ fn first_failed_case(cases: &Value, status: &str) -> Option<SubmissionCaseView> 
 pub struct SubmissionResponse {
     pub id: i32,
     pub problem_id: i32,
+    pub assignment_id: Option<i32>,
     pub problem_title: String,
     pub language: String,
     pub code: String,
@@ -138,6 +140,7 @@ impl From<SubmissionRow> for SubmissionResponse {
         Self {
             id: row.id,
             problem_id: row.problem_id,
+            assignment_id: row.assignment_id,
             problem_title: row.problem_title,
             language: row.language,
             code: row.code,
@@ -160,6 +163,8 @@ pub struct SubmissionRequest {
     pub problem_id: i32,
     pub language: String,
     pub code: String,
+    #[serde(default)]
+    pub assignment_id: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]

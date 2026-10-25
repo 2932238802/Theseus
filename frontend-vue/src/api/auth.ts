@@ -25,3 +25,8 @@ export const register = async (username: string, email: string, password: string
   )
   return data.message
 }
+
+export const fetchCurrentUser = async (): Promise<User> => {
+  const data = await unwrap(http.get<ApiEnvelope<BackendUser>>('/auth/me'))
+  return mapUser(data)
+}

@@ -20,7 +20,7 @@ pub async fn create(
     headers: HeaderMap,
     Json(request): Json<SubmissionRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = authenticate(&headers, &state.config)?;
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
     let response = state
         .submission_service
         .create(&state.pool, &user, request)
@@ -33,7 +33,7 @@ pub async fn status(
     headers: HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = authenticate(&headers, &state.config)?;
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
     let response = state
         .submission_service
         .status(&state.pool, &user, id)
@@ -46,7 +46,7 @@ pub async fn get(
     headers: HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = authenticate(&headers, &state.config)?;
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
     let response = state
         .submission_service
         .detail(&state.pool, &user, id)
@@ -59,7 +59,7 @@ pub async fn list(
     headers: HeaderMap,
     Query(query): Query<SubmissionListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = authenticate(&headers, &state.config)?;
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
     let response = state
         .submission_service
         .list(&state.pool, &user, query)

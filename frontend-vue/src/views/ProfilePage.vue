@@ -101,7 +101,7 @@ onMounted(() => {
 <template>
   <NavBar />
   <main class="profile-page page-shell">
-    <header class="page-title"><h1>个人中心</h1><p>查看你的练习进度与最近提交。</p></header>
+    <header class="page-title"><h1>个人中心</h1></header>
     <section class="profile-overview"><div class="large-avatar">{{ authStore.user?.avatar ?? authStore.user?.username.slice(0, 1).toUpperCase() ?? 'T' }}</div><div><h2>{{ authStore.user?.username ?? '游客' }}</h2><p>{{ authStore.user?.email ?? '登录后同步你的练习进度' }}</p></div></section>
     <section class="profile-stats"><article><strong>{{ acceptedProblemCount }}</strong><span>通过题目</span></article><article><strong>{{ submissionStore.total }}</strong><span>总提交数</span></article><article><strong>{{ acceptanceRate }}<small>%</small></strong><span>通过率</span></article><article><strong>{{ attemptedProblemCount }}</strong><span>已尝试题目</span></article></section>
 

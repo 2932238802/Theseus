@@ -63,7 +63,6 @@ const handleSubmit = async (): Promise<void> => {
 
       <header class="auth-heading">
         <h1 id="auth-title">{{ isLogin ? '登录' : '注册' }}</h1>
-        <p>{{ isLogin ? '登录后继续你的算法练习。' : '创建账号，开始算法练习。' }}</p>
       </header>
 
       <div class="auth-tabs" role="tablist" aria-label="登录或注册">

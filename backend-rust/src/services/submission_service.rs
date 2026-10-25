@@ -32,6 +32,12 @@ const LOCK_TTL_BUFFER_SECONDS: u64 = 30;
 const PENDING_TIMEOUT_MESSAGE: &str = "排队超时：评测服务不可用";
 const STALE_TIMEOUT_MESSAGE: &str = "评测超时：Worker 可能已离线";
 
+#[derive(Debug, Clone, Copy)]
+struct AssignmentContext {
+    assignment_id: i32,
+    class_id: i32,
+}
+
 #[derive(Clone)]
 pub struct SubmissionService {
     config: Arc<Config>,
@@ -141,6 +147,12 @@ impl SubmissionService {
         if case_total > self.config.submit_max_cases {
             return Err(AppError::BadRequest("该题评测用例过多".to_owned()));
         }
+        let assignment_context = match request.assignment_id {
+            Some(assignment_id) => {
+                Some(precheck_assignment(pool, user, assignment_id, request.problem_id).await?)
+            }
+            None => None,
+        };
 
         let mut redis = self.redis()?;
         let worker_alive = queue::has_live_submit_worker(&mut redis)
@@ -184,25 +196,22 @@ impl SubmissionService {
             ));
         }
 
-        let submission_id = match sqlx::query_scalar::<_, i32>(
-            "INSERT INTO submissions (user_id, problem_id, language, code, status, total_test_cases, run_config_snapshot, judge_cases_snapshot) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+        let submission_id = match persist_submission(
+            pool,
+            user,
+            &request,
+            case_total as i32,
+            &run_config_value,
+            &judge_cases_value,
+            assignment_context.as_ref(),
         )
-        .bind(user.id)
-        .bind(request.problem_id)
-        .bind(&request.language)
-        .bind(&request.code)
-        .bind(SUBMISSION_STATUS_PENDING)
-        .bind(case_total as i32)
-        .bind(&run_config_value)
-        .bind(&judge_cases_value)
-        .fetch_one(pool)
         .await
         {
             Ok(submission_id) => submission_id,
             Err(error) => {
                 release_lock(&mut redis, &lock_key, &token).await;
                 release_rate(&mut redis, &rate_key).await;
-                return Err(AppError::Database(error));
+                return Err(error);
             }
         };
 
@@ -280,23 +289,25 @@ impl SubmissionService {
             if let Some(raw) = queue::status_key_get(&mut redis, &key).await
                 && let Ok(cached) = serde_json::from_str::<CachedSubmissionStatus>(&raw)
             {
-                if cached.user_id != user.id && !user.is_admin() {
-                    return Err(AppError::Forbidden);
-                }
-                // A non-terminal cache entry can go stale if the worker dies
-                // between claiming and writing its verdict; fall back to the
-                // database after a short grace period.
-                let fresh = Utc::now()
-                    .signed_duration_since(cached.updated_at)
-                    .num_seconds()
-                    < 10;
-                if is_terminal_status(&cached.status) || fresh {
-                    return Ok(cached.response());
+                // Only the submitter may satisfy the request from the cache.
+                // Teachers who own the assignment fall through to the database
+                // so their access can be checked against the assignment owner.
+                if cached.user_id == user.id {
+                    // A non-terminal cache entry can go stale if the worker
+                    // dies between claiming and writing its verdict; fall back
+                    // to the database after a short grace period.
+                    let fresh = Utc::now()
+                        .signed_duration_since(cached.updated_at)
+                        .num_seconds()
+                        < 10;
+                    if is_terminal_status(&cached.status) || fresh {
+                        return Ok(cached.response());
+                    }
                 }
             }
         }
         let row = fetch_submission_row(pool, submission_id).await?;
-        check_owner(&row, user)?;
+        check_access(pool, &row, user).await?;
         let response = row.status_response();
         if let Some(mut redis) = self.redis.clone() {
             let cached = CachedSubmissionStatus::new(
@@ -324,7 +335,7 @@ impl SubmissionService {
             return Err(AppError::BadRequest("提交 ID 无效".to_owned()));
         }
         let row = fetch_submission_row(pool, submission_id).await?;
-        check_owner(&row, user)?;
+        check_access(pool, &row, user).await?;
         Ok(row.into())
     }
 
@@ -336,11 +347,10 @@ impl SubmissionService {
     ) -> Result<SubmissionListResponse, AppError> {
         let page = query.page.unwrap_or(1).max(1);
         let size = query.size.unwrap_or(20).clamp(1, 50);
-        let target_user_id = if user.is_admin() {
-            query.user_id.unwrap_or(user.id)
-        } else {
-            user.id
-        };
+        if query.user_id.is_some_and(|target| target != user.id) {
+            return Err(AppError::Forbidden);
+        }
+        let target_user_id = user.id;
         let offset = i64::from(page - 1) * i64::from(size);
         let limit = i64::from(size);
         let (total, submissions) = match query.problem_id.filter(|id| *id > 0) {
@@ -492,7 +502,7 @@ impl SubmissionService {
 
 pub async fn fetch_submission_row(pool: &PgPool, id: i32) -> Result<SubmissionRow, AppError> {
     sqlx::query_as::<_, SubmissionRow>(
-        "SELECT s.id, s.user_id, s.problem_id, p.title AS problem_title, s.language, s.code, s.status, s.test_cases_passed, s.total_test_cases, s.runtime, s.memory, s.error_message, s.run_config_snapshot, s.judge_cases_snapshot, s.cases, s.compile_output, s.attempt_count, s.submitted_at, s.started_at, s.finished_at FROM submissions s JOIN problems p ON p.id = s.problem_id WHERE s.id = $1",
+        "SELECT s.id, s.user_id, s.problem_id, s.assignment_id, p.title AS problem_title, s.language, s.code, s.status, s.test_cases_passed, s.total_test_cases, s.runtime, s.memory, s.error_message, s.run_config_snapshot, s.judge_cases_snapshot, s.cases, s.compile_output, s.attempt_count, s.submitted_at, s.started_at, s.finished_at FROM submissions s JOIN problems p ON p.id = s.problem_id WHERE s.id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -744,11 +754,217 @@ fn random_token() -> String {
     )
 }
 
-fn check_owner(row: &SubmissionRow, user: &AuthUser) -> Result<(), AppError> {
-    if row.user_id != user.id && !user.is_admin() {
+async fn check_access(pool: &PgPool, row: &SubmissionRow, user: &AuthUser) -> Result<(), AppError> {
+    if row.user_id == user.id {
+        return Ok(());
+    }
+    if user.is_admin() {
         return Err(AppError::Forbidden);
     }
-    Ok(())
+    if let Some(assignment_id) = row.assignment_id {
+        let is_owner: Option<bool> = sqlx::query_scalar(
+            "SELECT c.owner_id = $2 FROM assignments a JOIN classes c ON c.id = a.class_id WHERE a.id = $1",
+        )
+        .bind(assignment_id)
+        .bind(user.id)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)?;
+        if user.is_teacher() && is_owner == Some(true) {
+            return Ok(());
+        }
+    }
+    Err(AppError::NotFound("提交记录不存在".to_owned()))
+}
+
+async fn precheck_assignment(
+    pool: &PgPool,
+    user: &AuthUser,
+    assignment_id: i32,
+    problem_id: i32,
+) -> Result<AssignmentContext, AppError> {
+    #[derive(sqlx::FromRow)]
+    struct AssignmentPrecheck {
+        class_id: i32,
+        status: String,
+        class_archived_at: Option<DateTime<Utc>>,
+        started: bool,
+        open: bool,
+    }
+
+    if !user.is_student() {
+        return Err(AppError::ForbiddenWith(
+            "教师/管理员不能提交班级作业".to_owned(),
+        ));
+    }
+    if assignment_id <= 0 {
+        return Err(AppError::BadRequest("作业 ID 无效".to_owned()));
+    }
+    let assignment: Option<AssignmentPrecheck> = sqlx::query_as(
+        "SELECT a.class_id, a.status, c.archived_at AS class_archived_at, \
+         (a.start_at IS NULL OR a.start_at <= CURRENT_TIMESTAMP) AS started, \
+         (a.due_at IS NOT NULL AND CURRENT_TIMESTAMP <= a.due_at) AS open \
+         FROM assignments a JOIN classes c ON c.id = a.class_id WHERE a.id = $1",
+    )
+    .bind(assignment_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+    let AssignmentPrecheck {
+        class_id,
+        status,
+        class_archived_at,
+        started,
+        open,
+    } = assignment.ok_or_else(|| AppError::NotFound("作业不存在".to_owned()))?;
+    let member: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM class_members WHERE class_id = $1 AND user_id = $2 AND status = 'active')",
+    )
+    .bind(class_id)
+    .bind(user.id)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::Database)?;
+    if !member {
+        return Err(AppError::NotFound("作业不存在".to_owned()));
+    }
+    if status == "draft" {
+        return Err(AppError::NotFound("作业不存在".to_owned()));
+    }
+    if status == "archived" {
+        return Err(AppError::Conflict("作业已归档".to_owned()));
+    }
+    if class_archived_at.is_some() {
+        return Err(AppError::Conflict("班级已归档".to_owned()));
+    }
+    if !started {
+        return Err(AppError::Conflict("作业尚未开始".to_owned()));
+    }
+    if !open {
+        return Err(AppError::Conflict("作业已截止".to_owned()));
+    }
+    let in_assignment: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM assignment_problems WHERE assignment_id = $1 AND problem_id = $2)",
+    )
+    .bind(assignment_id)
+    .bind(problem_id)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::Database)?;
+    if !in_assignment {
+        return Err(AppError::BadRequest("题目不属于该作业".to_owned()));
+    }
+    Ok(AssignmentContext {
+        assignment_id,
+        class_id,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn persist_submission(
+    pool: &PgPool,
+    user: &AuthUser,
+    request: &SubmissionRequest,
+    case_total: i32,
+    run_config_value: &Value,
+    judge_cases_value: &Option<Value>,
+    assignment: Option<&AssignmentContext>,
+) -> Result<i32, AppError> {
+    let Some(context) = assignment else {
+        return sqlx::query_scalar::<_, i32>(
+            "INSERT INTO submissions (user_id, problem_id, language, code, status, total_test_cases, run_config_snapshot, judge_cases_snapshot) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+        )
+        .bind(user.id)
+        .bind(request.problem_id)
+        .bind(&request.language)
+        .bind(&request.code)
+        .bind(SUBMISSION_STATUS_PENDING)
+        .bind(case_total)
+        .bind(run_config_value)
+        .bind(judge_cases_value)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::Database);
+    };
+
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let class: Option<(i32, Option<DateTime<Utc>>)> =
+        sqlx::query_as("SELECT id, archived_at FROM classes WHERE id = $1 FOR SHARE")
+            .bind(context.class_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?;
+    let (_, class_archived_at) =
+        class.ok_or_else(|| AppError::NotFound("作业不存在".to_owned()))?;
+    if class_archived_at.is_some() {
+        return Err(AppError::Conflict("班级已归档".to_owned()));
+    }
+    let assignment_row: Option<(i32, String, bool, bool)> = sqlx::query_as(
+        "SELECT class_id, status, \
+         (start_at IS NULL OR start_at <= CURRENT_TIMESTAMP) AS started, \
+         (due_at IS NOT NULL AND CURRENT_TIMESTAMP <= due_at) AS open \
+         FROM assignments WHERE id = $1 FOR SHARE",
+    )
+    .bind(context.assignment_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    let (class_id, status, started, open) =
+        assignment_row.ok_or_else(|| AppError::NotFound("作业不存在".to_owned()))?;
+    if class_id != context.class_id {
+        return Err(AppError::NotFound("作业不存在".to_owned()));
+    }
+    if status == "archived" {
+        return Err(AppError::Conflict("作业已归档".to_owned()));
+    }
+    if status == "draft" {
+        return Err(AppError::NotFound("作业不存在".to_owned()));
+    }
+    let membership: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM class_members WHERE class_id = $1 AND user_id = $2 FOR SHARE",
+    )
+    .bind(context.class_id)
+    .bind(user.id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    if membership.as_deref() != Some("active") {
+        return Err(AppError::NotFound("作业不存在".to_owned()));
+    }
+    if !started {
+        return Err(AppError::Conflict("作业尚未开始".to_owned()));
+    }
+    if !open {
+        return Err(AppError::Conflict("作业已截止".to_owned()));
+    }
+    let in_assignment: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM assignment_problems WHERE assignment_id = $1 AND problem_id = $2)",
+    )
+    .bind(context.assignment_id)
+    .bind(request.problem_id)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    if !in_assignment {
+        return Err(AppError::BadRequest("题目不属于该作业".to_owned()));
+    }
+    let submission_id: i32 = sqlx::query_scalar(
+        "INSERT INTO submissions (user_id, problem_id, assignment_id, language, code, status, total_test_cases, run_config_snapshot, judge_cases_snapshot) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
+    )
+    .bind(user.id)
+    .bind(request.problem_id)
+    .bind(context.assignment_id)
+    .bind(&request.language)
+    .bind(&request.code)
+    .bind(SUBMISSION_STATUS_PENDING)
+    .bind(case_total)
+    .bind(run_config_value)
+    .bind(judge_cases_value)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    transaction.commit().await.map_err(AppError::Database)?;
+    Ok(submission_id)
 }
 
 fn validate_language(language: &str) -> Result<(), AppError> {
@@ -831,6 +1047,7 @@ mod tests {
             id: 1,
             user_id: 1,
             problem_id: 1,
+            assignment_id: None,
             problem_title: "t".to_owned(),
             language: "python".to_owned(),
             code: "pass".to_owned(),

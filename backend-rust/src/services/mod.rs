@@ -1,3 +1,9 @@
+pub mod admin_user_service;
+pub mod assignment_service;
 pub mod auth_service;
+pub mod class_service;
+pub mod forum_service;
+pub mod grade_service;
+pub mod notification_service;
 pub mod run_service;
 pub mod submission_service;

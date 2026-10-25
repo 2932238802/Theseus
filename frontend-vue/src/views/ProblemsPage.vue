@@ -62,7 +62,7 @@ onBeforeUnmount(() => window.clearTimeout(keywordTimer))
 <template>
   <NavBar />
   <main class="problems-page page-shell">
-    <header class="page-title"><h1>题库</h1><p>按难度、标签和状态筛选题目。</p></header>
+    <header class="page-title"><h1>题库</h1></header>
     <section class="filter-panel" aria-label="题目筛选">
       <form class="filter-search" @submit.prevent="applyFilters"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg><input v-model.trim="store.query.keyword" aria-label="搜索题目名称或标签" placeholder="搜索题目名称或标签" @input="onKeywordInput" /><button class="primary-button" type="submit">搜索</button></form>
       <div class="filter-row"><span>难度</span><div class="filter-pills"><button v-for="option in difficultyOptions" :key="option.value" type="button" :class="{ active: store.query.difficulty === option.value }" @click="store.query.difficulty = option.value; applyFilters()">{{ option.label }}</button></div></div>

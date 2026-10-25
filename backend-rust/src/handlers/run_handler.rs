@@ -21,7 +21,7 @@ pub async fn create(
     headers: HeaderMap,
     Json(request): Json<RunCreateRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = authenticate(&headers, &state.config)?;
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
     let response = state
         .run_service
         .create(&state.pool, &user, request)
@@ -34,7 +34,7 @@ pub async fn status(
     headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = authenticate(&headers, &state.config)?;
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
     let response = state.run_service.status(&state.pool, &user, id).await?;
     Ok(ok(response))
 }
@@ -44,7 +44,7 @@ pub async fn detail(
     headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = authenticate(&headers, &state.config)?;
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
     let response = state.run_service.detail(&state.pool, &user, id).await?;
     Ok(ok(response))
 }
@@ -54,7 +54,7 @@ pub async fn list(
     headers: HeaderMap,
     Query(query): Query<RunListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = authenticate(&headers, &state.config)?;
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
     let response = state.run_service.list(&state.pool, &user, query).await?;
     Ok(ok(response))
 }
@@ -64,7 +64,7 @@ pub async fn remove(
     headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = authenticate(&headers, &state.config)?;
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
     state.run_service.delete(&state.pool, &user, id).await?;
     Ok(ok(json!({})))
 }

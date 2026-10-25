@@ -36,7 +36,7 @@ const search = (): void => { void router.push({ path: '/problems', query: { keyw
 <template>
   <NavBar />
   <main class="home-page page-shell">
-    <header class="page-title"><h1>开始刷题</h1><p>搜索题目，或从今日推荐开始。</p></header>
+    <header class="page-title"><h1>开始刷题</h1></header>
 
     <section class="search-card" aria-label="题目搜索">
       <form class="search-form" @submit.prevent="search">

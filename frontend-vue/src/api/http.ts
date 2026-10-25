@@ -23,6 +23,9 @@ http.interceptors.response.use(
       clearSession()
       if (window.location.pathname !== '/login') window.location.assign('/login')
     }
+    if (status === 403) {
+      window.dispatchEvent(new CustomEvent('theseus:forbidden'))
+    }
     return Promise.reject(error)
   },
 )

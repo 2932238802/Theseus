@@ -25,12 +25,14 @@ export const createSubmission = async (
   problemId: number,
   language: Language,
   code: string,
+  assignmentId?: number,
 ): Promise<CreatedSubmission> => {
   const data = await unwrap(
     http.post<ApiEnvelope<BackendCreatedSubmission>>('/submissions', {
       problem_id: problemId,
       language,
       code,
+      assignment_id: assignmentId,
     }),
   )
   return { submissionId: data.submission_id, status: data.status, message: data.message }

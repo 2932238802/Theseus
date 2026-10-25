@@ -18,10 +18,14 @@ pub enum AppError {
     InvalidCredentials,
     #[error("没有执行该操作的权限")]
     Forbidden,
+    #[error("{0}")]
+    ForbiddenWith(String),
     #[error("资源不存在: {0}")]
     NotFound(String),
     #[error("资源已存在: {0}")]
     Conflict(String),
+    #[error("{0}")]
+    ConflictWith(String),
     #[error("{0}")]
     RateLimited(String, u64),
     #[error("{0}")]
@@ -37,9 +41,9 @@ impl AppError {
         match self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Unauthorized | Self::InvalidCredentials => StatusCode::UNAUTHORIZED,
-            Self::Forbidden => StatusCode::FORBIDDEN,
+            Self::Forbidden | Self::ForbiddenWith(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
-            Self::Conflict(_) => StatusCode::CONFLICT,
+            Self::Conflict(_) | Self::ConflictWith(_) => StatusCode::CONFLICT,
             Self::RateLimited(_, _) => StatusCode::TOO_MANY_REQUESTS,
             Self::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Database(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,

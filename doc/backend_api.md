@@ -8,6 +8,8 @@
 
 认证接口返回的 JWT 通过 `Authorization: Bearer <token>` 访问受保护资源。管理员接口还要求 token 中的用户角色是 `admin`。
 
+> **角色模型迁移说明：** 目标模型为 `student` / `teacher` / `admin` 三个互斥角色，详见 `doc/总体设计.md` v1.1 和 `doc/2610259_班级与作业设计方案.md`。当前代码仍只有 `user` / `admin`，且授权读取 JWT 中的角色；迁移后改为每次从 `users.role` 读取，角色变更立即生效。迁移后管理员不能查看其他人的提交（包括练习提交），`GET /api/submissions?user_id=` 的管理员分支会被移除；教师创建题目、班级/作业和角色管理接口尚未实现。
+
 ## 运行环境
 
 ```bash
@@ -28,15 +30,15 @@ cargo run
 | GET | `/api/problems/tags` | 否 | 已审核题目的去重标签数组 |
 | GET | `/api/problems/{id}` | 可选 | 已审核题目详情 |
 | GET | `/api/stats` | 否 | `{total_problems,total_submissions,accepted_submissions}` |
-| POST | `/api/problems/custom` | 用户 | 提交自定义题目，状态为 `pending` |
+| POST | `/api/problems/custom` | 用户 | 提交自定义题目，状态为 `pending`；迁移后仅 `teacher` 可提交 |
 | POST | `/api/admin/problems` | 管理员 | 创建题目 |
 | GET | `/api/admin/problems/pending` | 管理员 | 待审核题目 |
 | PUT | `/api/admin/problems/{id}/review` | 管理员 | 审核题目 |
 | PUT | `/api/admin/problems/{id}` | 管理员 | 更新题目 |
 | DELETE | `/api/admin/problems/{id}` | 管理员 | 删除题目 |
-| GET | `/api/submissions` | 用户 | 当前用户提交列表，管理员可传 `user_id` |
+| GET | `/api/submissions` | 用户 | 当前用户提交列表；管理员当前可传 `user_id`，角色迁移后该分支移除 |
 | POST | `/api/submissions` | 用户 | 创建提交，返回 `{submission_id,status,message}` |
-| GET | `/api/submissions/{id}` | 用户/管理员 | 提交详情，仅本人或管理员可读 |
+| GET | `/api/submissions/{id}` | 用户/管理员 | 提交详情；当前仅本人或管理员可读，角色迁移后管理员不能读他人提交 |
 
 ### `GET /api/problems` 查询参数
 

@@ -2,6 +2,25 @@
 
 这是 Theseus 在线编程训练平台的 Axum + PostgreSQL 后端首版。
 
+## 角色模型
+
+设计与 `doc/2610259_班级与作业设计方案.md` 一致：`student` / `teacher` / `admin` 三个**互斥**角色，每个账号只有一个角色，不继承、不兼任。
+
+| 角色 | 能做什么 | 不能做什么 |
+|---|---|---|
+| `student` | 题库练习、4 人匹配、加入班级、提交作业、查看自己的成绩、论坛、通知 | 建班、批改、管理用户、进入管理端 |
+| `teacher` | 题库练习、创建和管理自己的班级、布置/批改作业、创建题目并提交审核、论坛、通知 | 加入班级、提交班级作业、管理用户、论坛管理 |
+| `admin` | 题库练习、用户/角色管理、题目审核、论坛管理、匹配配置、广播、审计、系统配置 | 建班、批改、查看班级/作业/提交/成绩数据 |
+
+- 题库练习、运行、论坛、通知对所有登录角色开放，不代表“学生身份”。
+- 只有带 `assignment_id` 的班级作业提交要求 `student`；教师不能提交作业，只能用题目页“运行”预览。
+- 4 人匹配和段位只允许 `student`。
+- 管理员如果确实需要授课，必须先转为教师；角色变更后立即生效，前端刷新 `/me` 即可。
+- 角色变更需要清理数据：学生升教师前退出所有班级；教师降级前没有未归档的自有班级，或确认归档后降级；最后一个管理员不能降级。
+- 角色变更立即生效；认证中间件每次请求从数据库读取 `users.role`，JWT 里的角色不作为权限依据。
+
+**当前代码状态：** 已实现 `student` / `teacher` / `admin` 迁移、教师角色、班级/作业/批改接口、管理员用户管理接口和对应前端页面。`user` 由迁移回填为 `student`。
+
 ## 运行
 
 1. 安装 Rust stable、PostgreSQL 18 与 Redis。
@@ -25,21 +44,72 @@ cargo run
 
 - `POST /api/auth/register` 注册
 - `POST /api/auth/login` 登录并获取 JWT
+- `GET /api/auth/me` 读取当前账号与角色（每次从数据库读取）
 - `GET /api/problems` 分页获取题目，可按 `difficulty`、`tag`、`status`、`search` 筛选，并通过白名单 `sort=id|difficulty|acceptance_rate`、`order=asc|desc` 排序
 - `GET /api/problems/tags` 获取已审核题目的去重标签
 - `GET /api/problems/:id` 获取题目详情
 - `GET /api/stats` 获取题目总数、提交总数与通过提交数
-- `POST /api/submissions` 提交代码，需要 JWT
-- `GET /api/submissions/:id` 获取自己的提交详情
-- `GET /api/submissions` 获取自己的提交记录（管理员可按 `user_id` 查询）
+- `POST /api/submissions` 提交代码，需要 JWT；无 `assignment_id` 的练习提交对所有登录角色开放，带 `assignment_id` 的作业提交只允许 `student`
+- `GET /api/submissions/:id` 获取自己的提交详情；作业 owner 教师可以查看该作业下的学生提交，管理员不能查看他人提交
+- `GET /api/submissions` 获取自己的提交记录；显式查询他人提交返回 403
 - `POST /api/runs` 创建代码运行任务，需要 JWT
 - `GET /api/runs/:id/status` 轮询运行状态
 - `GET /api/runs/:id` 获取运行详情（代码、输入与逐用例结果）
 - `GET /api/runs` 分页获取自己的运行记录，可按 `problem_id` 过滤
 - `DELETE /api/runs/:id` 删除自己的已结束运行记录
-- `POST /api/admin/problems` 管理员创建题目
+- `GET /api/admin/users` 管理员搜索/筛选用户
+- `PUT /api/admin/users/:id/role` 管理员修改角色；教师降级可携带 `archive_owned_classes`
+- `POST /api/admin/problems` 管理员创建官方题目
+- `GET /api/admin/problems/pending` 管理员查看待审核题目
+- `PUT /api/admin/problems/:id/review` 管理员审核题目
 - `PUT /api/admin/problems/:id` 管理员更新题目
 - `DELETE /api/admin/problems/:id` 管理员删除题目
+- `POST /api/problems/custom` 教师提交自定义题目，初始状态为 `pending`
+
+### 角色相关行为
+
+- JWT 只确认用户身份；`AuthUser.role` 每次从 `users.role` 读取，角色变更立即生效，不要求重新登录。
+- 题目创建：教师通过 `POST /api/problems/custom` 提交审核，管理员审核；`student` / `admin` 返回 403。
+- 管理员访问 `/api/classes/*`、`/api/assignments/*`、教学提交/成绩接口统一返回 403；管理员不能查看其他人的提交，包括练习提交。
+- 教师不能加入班级、不能提交班级作业；学生不能创建班级、不能批改。
+- 4 人匹配只允许 `student`；教师和管理员只能使用题库练习。
+
+### 教学接口
+
+```text
+GET    /api/admin/users
+PUT    /api/admin/users/{id}/role
+
+GET    /api/classes
+POST   /api/classes
+GET    /api/classes/{id}
+PUT    /api/classes/{id}
+POST   /api/classes/join
+POST   /api/classes/{id}/members
+DELETE /api/classes/{id}/members/{user_id}
+DELETE /api/classes/{id}/members/me
+POST   /api/classes/{id}/invite-code/rotate
+POST   /api/classes/{id}/archive
+
+GET    /api/classes/{id}/assignments
+POST   /api/classes/{id}/assignments
+GET    /api/assignments/{id}
+PUT    /api/assignments/{id}
+PUT    /api/assignments/{id}/problems
+POST   /api/assignments/{id}/publish
+POST   /api/assignments/{id}/archive
+DELETE /api/assignments/{id}
+GET    /api/assignments/{id}/submissions
+
+GET    /api/assignments/{id}/gradebook
+PUT    /api/assignments/{id}/grades/{user_id}/problems/{problem_id}
+PUT    /api/assignments/{id}/grades/{user_id}
+POST   /api/assignments/{id}/grades/publish
+```
+
+班级作业的 `POST /api/submissions` 与 `GET /api/submissions/{id}` 复用现有提交接口，不需要新增路径。
+
+具体权限和错误码见 `doc/2610259_班级与作业设计方案.md` 第 6 节。
 
 响应统一为：
 
@@ -99,14 +169,15 @@ redis-cli --scan --pattern 'theseus:submit:worker:*'
 
 ## 开发种子数据
 
-仅用于本地/测试环境，写入固定 ID 1001-1003 的三道题：
+仅用于本地/测试环境。`seed_dev.sql` 写入固定 ID 1001-1003 的三道题；`seed_problems_15.sql` 写入固定 ID 1101-1115 的 15 道题（6 道简单、6 道中等、3 道困难），每题都带 `run_config`、公开用例、隐藏 `judge_cases` 和四种语言的代码模板，可直接用于运行与提交评测：
 
 ```bash
 psql "$DATABASE_URL" -f scripts/seed_dev.sql
-psql "$DATABASE_URL" -f scripts/clean_dev.sql  # 清理
+psql "$DATABASE_URL" -f scripts/seed_problems_15.sql
+psql "$DATABASE_URL" -f scripts/clean_dev.sql  # 清理全部固定 ID 种子题
 ```
 
-自定义题目使用 `POST /api/problems/custom` 提交，初始状态为 `pending`。管理员可通过 `GET /api/admin/problems/pending` 查看待审题目，并用 `PUT /api/admin/problems/:id/review` 携带 `{ "status": "approved" }` 或 `{ "status": "rejected" }` 完成审核。
+自定义题目使用 `POST /api/problems/custom` 提交，仅 `teacher` 可调用，初始状态为 `pending`。管理员可通过 `GET /api/admin/problems/pending` 查看待审题目，并用 `PUT /api/admin/problems/:id/review` 携带 `{ "status": "approved" }` 或 `{ "status": "rejected" }` 完成审核。
 
 ## 冒烟测试
 
@@ -132,6 +203,28 @@ SMOKE_VERBOSE=1 ./backend-rust/scripts/smoke_submission.sh          # 打印每�
 退出码：`0` 全部通过（可含 SKIP）；`1` 存在断言失败；`2` 前置条件不满足（工具、种子、Worker 心跳、开关）；`3` API/PostgreSQL/Redis 不可达。
 
 每次运行会在 `.dev-logs/` 生成 `smoke-submission-<UTC>.log` 与同名 `.json` 报告。报告只记录 `user_id`、`submission_id`、状态与耗时，不写入 token、密码、源码、隐藏用例或数据库连接串。默认会删除测试账号及其级联数据；`SMOKE_KEEP_DATA=1` 时保留并打印清理 SQL。
+
+### 班级与作业
+
+`scripts/smoke_teaching.sh` 对真实运行的 API + PostgreSQL（学生提交还需要 judge_worker）执行一遍教学闭环：管理员改角色 → 教师建班 → 学生邀请码加入 → 发布作业 → 学生提交并判题 → 教师批改 → 发布成绩 → 教师降级归档 → 清理。同时覆盖角色边界、管理员隔离、非 owner 教师 404、成绩发布前后的可见性和截止后提交拒绝。
+
+前置条件：
+
+1. 已应用 `migrations/0005_teaching.sql`；
+2. 已启动 API；验证学生提交和判题时还需启动 judge_worker，并构建 Python 运行镜像；
+3. 已执行 `psql "$DATABASE_URL" -f scripts/seed_problems_15.sql`（题 1101 用于作业）；
+4. 已安装 `bash >= 4.2`、`curl`、`jq`、`psql`。
+
+```bash
+# 在仓库根目录运行
+./backend-rust/scripts/smoke_teaching.sh
+
+SMOKE_KEEP_DATA=1 ./backend-rust/scripts/smoke_teaching.sh   # 保留测试账号与教学数据
+SMOKE_VERBOSE=1 ./backend-rust/scripts/smoke_teaching.sh      # 打印每次 HTTP 请求
+```
+
+脚本只提升/降级自己注册的一次性账号，不修改真实账号；报告不写入 token、密码、提交代码或数据库连接串。默认清理测试账号、其班级、作业和提交；`SMOKE_KEEP_DATA=1` 时保留并打印清理 SQL。
+
 
 ## 检查
 

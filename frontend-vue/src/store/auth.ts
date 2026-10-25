@@ -1,9 +1,15 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { login as loginRequest, register as registerRequest } from '../api/auth'
+import { fetchCurrentUser, login as loginRequest, register as registerRequest } from '../api/auth'
 import { toErrorMessage } from '../api/client'
 import type { User } from '../types/oj'
-import { clearSession, getStoredUser, getToken, persistSession } from '../utils/session'
+import {
+  clearSession,
+  getStoredUser,
+  getToken,
+  persistSession,
+  updateSessionUser,
+} from '../utils/session'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(getToken())
@@ -11,6 +17,10 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoading = ref(false)
   const error = ref('')
   const isAuthenticated = computed(() => Boolean(token.value && user.value))
+  const role = computed(() => (user.value?.role === 'user' ? 'student' : user.value?.role))
+  const isStudent = computed(() => role.value === 'student')
+  const isTeacher = computed(() => role.value === 'teacher')
+  const isAdmin = computed(() => role.value === 'admin')
 
   const applySession = (nextToken: string, nextUser: User, remember: boolean): void => {
     token.value = nextToken
@@ -54,5 +64,31 @@ export const useAuthStore = defineStore('auth', () => {
     clearSession()
   }
 
-  return { token, user, isLoading, error, isAuthenticated, login, register, logout }
+  const refreshMe = async (): Promise<boolean> => {
+    if (!token.value) return false
+    try {
+      const currentUser = await fetchCurrentUser()
+      user.value = currentUser
+      updateSessionUser(currentUser)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  return {
+    token,
+    user,
+    isLoading,
+    error,
+    isAuthenticated,
+    role,
+    isStudent,
+    isTeacher,
+    isAdmin,
+    login,
+    register,
+    logout,
+    refreshMe,
+  }
 })

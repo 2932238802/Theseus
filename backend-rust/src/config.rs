@@ -37,6 +37,14 @@ pub struct Config {
     pub submit_stale_timeout_secs: u64,
     pub submit_run_timeout_secs: u64,
     pub submit_max_cases: usize,
+    pub forum_enabled: bool,
+    pub forum_post_cooldown_secs: u64,
+    pub forum_post_daily_limit: u64,
+    pub forum_comment_cooldown_secs: u64,
+    pub forum_comment_daily_limit: u64,
+    pub forum_report_daily_limit: u64,
+    pub forum_report_hide_threshold: i32,
+    pub forum_max_pinned: i64,
 }
 
 impl Config {
@@ -151,6 +159,40 @@ impl Config {
             .and_then(|value| value.parse::<usize>().ok())
             .unwrap_or(50)
             .max(1);
+        let forum_enabled = env_bool("FORUM_ENABLED", true)?;
+        let forum_post_cooldown_secs = env::var("FORUM_POST_COOLDOWN_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(60);
+        let forum_post_daily_limit = env::var("FORUM_POST_DAILY_LIMIT")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(20)
+            .max(1);
+        let forum_comment_cooldown_secs = env::var("FORUM_COMMENT_COOLDOWN_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(10);
+        let forum_comment_daily_limit = env::var("FORUM_COMMENT_DAILY_LIMIT")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(200)
+            .max(1);
+        let forum_report_daily_limit = env::var("FORUM_REPORT_DAILY_LIMIT")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(20)
+            .max(1);
+        let forum_report_hide_threshold = env::var("FORUM_REPORT_HIDE_THRESHOLD")
+            .ok()
+            .and_then(|value| value.parse::<i32>().ok())
+            .unwrap_or(3)
+            .max(1);
+        let forum_max_pinned = env::var("FORUM_MAX_PINNED")
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(5)
+            .max(1);
         if run_sandbox_runtime != "runsc" && !run_sandbox_allow_runc {
             return Err(AppError::Internal(
                 "RUN_SANDBOX_RUNTIME 必须为 runsc；本地开发需显式设置 RUN_SANDBOX_ALLOW_RUNC=true"
@@ -191,6 +233,14 @@ impl Config {
             submit_stale_timeout_secs,
             submit_run_timeout_secs,
             submit_max_cases,
+            forum_enabled,
+            forum_post_cooldown_secs,
+            forum_post_daily_limit,
+            forum_comment_cooldown_secs,
+            forum_comment_daily_limit,
+            forum_report_daily_limit,
+            forum_report_hide_threshold,
+            forum_max_pinned,
         })
     }
 }

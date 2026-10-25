@@ -2,7 +2,7 @@ use sqlx::PgPool;
 
 use crate::{
     common::error::{AppError, is_unique_violation},
-    models::user::{LoginRequest, RegisterRequest, User},
+    models::user::{LoginRequest, PublicUser, RegisterRequest, User},
     utils::{
         jwt::create_token,
         password::{hash_password, verify_password},
@@ -49,6 +49,18 @@ pub async fn login(
     }
     let token = create_token(user.id, &user.role, secret, expiration_hours)?;
     Ok((user, token))
+}
+
+pub async fn current_user(pool: &PgPool, id: i32) -> Result<PublicUser, AppError> {
+    let user = sqlx::query_as::<_, User>(
+        "SELECT id, username, email, password_hash, role, created_at, updated_at FROM users WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or(AppError::Unauthorized)?;
+    Ok(PublicUser::from(&user))
 }
 
 fn validate_login(request: &LoginRequest) -> Result<(), AppError> {

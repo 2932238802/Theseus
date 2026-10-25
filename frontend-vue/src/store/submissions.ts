@@ -57,11 +57,16 @@ export const useSubmissionStore = defineStore('submissions', () => {
     throw new Error('评测超时，请稍后在个人中心查看结果。')
   }
 
-  const submit = async (problemId: number, language: Language, code: string): Promise<Submission | null> => {
+  const submit = async (
+    problemId: number,
+    language: Language,
+    code: string,
+    assignmentId?: number,
+  ): Promise<Submission | null> => {
     isSubmitting.value = true
     error.value = ''
     try {
-      const created = await createSubmission(problemId, language, code)
+      const created = await createSubmission(problemId, language, code, assignmentId)
       latest.value = {
         id: created.submissionId,
         problemId,

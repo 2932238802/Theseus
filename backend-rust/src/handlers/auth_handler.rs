@@ -1,4 +1,4 @@
-use axum::{Json, extract::State, response::IntoResponse};
+use axum::{Json, extract::State, http::HeaderMap, response::IntoResponse};
 
 use crate::{
     AppState,
@@ -6,6 +6,7 @@ use crate::{
         error::AppError,
         response::{created, ok},
     },
+    middleware::auth::authenticate,
     models::user::{LoginRequest, LoginResponse, PublicUser, RegisterRequest, RegisterResponse},
     services::auth_service,
 };
@@ -35,4 +36,13 @@ pub async fn login(
         token,
         user: PublicUser::from(&user),
     }))
+}
+
+pub async fn me(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data = auth_service::current_user(&state.pool, user.id).await?;
+    Ok(ok(data))
 }
