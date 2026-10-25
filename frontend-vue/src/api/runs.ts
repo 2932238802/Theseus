@@ -3,9 +3,11 @@ import type {
   RunCase,
   RunCaseStatus,
   RunDetail,
+  RunListResult,
   RunMode,
   RunStatus,
   RunStatusResponse,
+  RunSummary,
 } from '../types/run'
 import { type ApiEnvelope, unwrap } from './client'
 import { http } from './http'
@@ -57,6 +59,25 @@ interface BackendRunDetail {
   started_at: string | null
   finished_at: string | null
   cases: BackendRunCase[]
+}
+
+interface BackendRunSummary {
+  id: number
+  problem_id: number | null
+  problem_title: string
+  language: string
+  mode: RunMode
+  status: RunStatus
+  case_passed: number
+  case_total: number
+  created_at: string
+}
+
+interface BackendRunList {
+  total: number
+  page: number
+  size: number
+  runs: BackendRunSummary[]
 }
 
 export interface CreateRunRequest {
@@ -116,6 +137,24 @@ const mapRunDetail = (run: BackendRunDetail): RunDetail => ({
   cases: Array.isArray(run.cases) ? run.cases.map(mapRunCase) : [],
 })
 
+export interface ListRunsParams {
+  page?: number
+  size?: number
+  problemId?: number
+}
+
+const mapRunSummary = (run: BackendRunSummary): RunSummary => ({
+  id: run.id,
+  problemId: run.problem_id,
+  problemTitle: run.problem_title,
+  language: run.language,
+  mode: run.mode,
+  status: run.status,
+  casePassed: run.case_passed,
+  caseTotal: run.case_total,
+  createdAt: run.created_at,
+})
+
 export const createRun = async (request: CreateRunRequest): Promise<CreatedRun> => {
   const data = await unwrap(
     http.post<ApiEnvelope<BackendCreateRun>>('/runs', {
@@ -139,4 +178,23 @@ export const fetchRunStatus = async (id: number): Promise<RunStatusResponse> => 
 export const fetchRun = async (id: number): Promise<RunDetail> => {
   const data = await unwrap(http.get<ApiEnvelope<BackendRunDetail>>(`/runs/${id}`))
   return mapRunDetail(data)
+}
+
+export const listRuns = async (params: ListRunsParams = {}): Promise<RunListResult> => {
+  const query = new URLSearchParams()
+  if (params.page !== undefined) query.set('page', String(params.page))
+  if (params.size !== undefined) query.set('size', String(params.size))
+  if (params.problemId !== undefined) query.set('problem_id', String(params.problemId))
+  const suffix = query.size ? `?${query.toString()}` : ''
+  const data = await unwrap(http.get<ApiEnvelope<BackendRunList>>(`/runs${suffix}`))
+  return {
+    total: data.total,
+    page: data.page,
+    size: data.size,
+    runs: data.runs.map(mapRunSummary),
+  }
+}
+
+export const deleteRun = async (id: number): Promise<void> => {
+  await unwrap(http.delete<ApiEnvelope<unknown>>(`/runs/${id}`))
 }

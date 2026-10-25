@@ -73,6 +73,31 @@ pub struct ProblemRequest {
     pub test_cases: Option<Value>,
     pub code_template: Option<Value>,
     pub run_config: Option<Value>,
+    /// Hidden cases used only for submission judging. Never returned by the
+    /// public problem endpoints.
+    pub judge_cases: Option<Value>,
+}
+
+/// Full problem payload for the admin editor. The public detail endpoint
+/// intentionally omits `test_cases` and `judge_cases`.
+#[derive(Debug, Serialize, FromRow)]
+pub struct AdminProblemResponse {
+    pub id: i32,
+    pub title: String,
+    pub description: String,
+    pub difficulty: String,
+    pub time_limit: i32,
+    pub memory_limit: i32,
+    pub tags: Vec<String>,
+    pub examples: Option<Value>,
+    pub test_cases: Option<Value>,
+    pub code_template: Option<Value>,
+    pub run_config: Option<Value>,
+    pub judge_cases: Option<Value>,
+    pub acceptance_rate: f64,
+    pub submit_count: i32,
+    pub accept_count: i32,
+    pub review_status: String,
 }
 
 #[derive(Debug, Deserialize, Default)]

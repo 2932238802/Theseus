@@ -1,6 +1,12 @@
-import type { Language, Submission } from '../types/oj'
+import type { BackendSubmissionStatus, Language, Submission } from '../types/oj'
 import { type ApiEnvelope, unwrap } from './client'
-import { type BackendSubmission, type BackendSubmissionList, mapSubmission } from './adapters'
+import {
+  type BackendSubmission,
+  type BackendSubmissionList,
+  type BackendSubmissionStatusPayload,
+  mapSubmission,
+  normalizeSubmissionStatus,
+} from './adapters'
 import { http } from './http'
 
 export interface CreatedSubmission {
@@ -28,6 +34,27 @@ export const createSubmission = async (
     }),
   )
   return { submissionId: data.submission_id, status: data.status, message: data.message }
+}
+
+export interface SubmissionStatusSnapshot {
+  rawStatus: BackendSubmissionStatus
+  testCasesPassed: number
+  totalTestCases: number
+  message?: string
+  updatedAt: string
+}
+
+export const fetchSubmissionStatus = async (id: number): Promise<SubmissionStatusSnapshot> => {
+  const data = await unwrap(
+    http.get<ApiEnvelope<BackendSubmissionStatusPayload>>(`/submissions/${id}/status`),
+  )
+  return {
+    rawStatus: normalizeSubmissionStatus(data.status),
+    testCasesPassed: data.test_cases_passed,
+    totalTestCases: data.total_test_cases,
+    message: data.error_message ?? undefined,
+    updatedAt: data.updated_at,
+  }
 }
 
 export const fetchSubmission = async (id: number): Promise<Submission> => {

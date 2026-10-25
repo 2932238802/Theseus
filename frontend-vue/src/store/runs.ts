@@ -1,17 +1,20 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { toErrorMessage } from '../api/client'
-import { createRun, fetchRun, fetchRunStatus } from '../api/runs'
+import { createRun, deleteRun, fetchRun, fetchRunStatus, listRuns } from '../api/runs'
 import type { Language } from '../types/oj'
 import {
   isTerminalRunStatus,
   type RunDetail,
   type RunMode,
   type RunStatusResponse,
+  type RunSummary,
 } from '../types/run'
 
 const POLL_INTERVAL = 800
-const POLL_TIMEOUT = 60_000
+// Backend reaps queued runs after 90s and stuck running runs after 300s by
+// default; keep polling past that so the reaped terminal status is visible.
+const POLL_TIMEOUT = 330_000
 
 const wait = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds))
@@ -21,8 +24,15 @@ export const useRunStore = defineStore('runs', () => {
   const detail = ref<RunDetail | null>(null)
   const isRunning = ref(false)
   const error = ref('')
+  const records = ref<RunSummary[]>([])
+  const recordsTotal = ref(0)
+  const recordsPage = ref(1)
+  const recordsSize = ref(20)
+  const recordsLoading = ref(false)
+  const recordsError = ref('')
 
   let pollToken = 0
+  let recordsRequestSequence = 0
 
   const stopPolling = (): void => {
     pollToken += 1
@@ -43,7 +53,7 @@ export const useRunStore = defineStore('runs', () => {
       await wait(POLL_INTERVAL)
     }
     if (token === pollToken) {
-      throw new Error('运行排队或执行超时，请稍后重试。')
+      throw new Error('运行仍未结束，请稍后刷新运行记录查看结果。')
     }
   }
 
@@ -91,12 +101,61 @@ export const useRunStore = defineStore('runs', () => {
     error.value = ''
   }
 
+  const loadRecords = async (options?: {
+    page?: number
+    size?: number
+    problemId?: number
+  }): Promise<void> => {
+    const requestId = ++recordsRequestSequence
+    recordsLoading.value = true
+    recordsError.value = ''
+    try {
+      const result = await listRuns({
+        page: options?.page ?? recordsPage.value,
+        size: options?.size ?? recordsSize.value,
+        problemId: options?.problemId,
+      })
+      if (requestId !== recordsRequestSequence) return
+      records.value = result.runs
+      recordsTotal.value = result.total
+      recordsPage.value = result.page
+      recordsSize.value = result.size
+    } catch (exception: unknown) {
+      if (requestId !== recordsRequestSequence) return
+      recordsError.value = toErrorMessage(exception)
+    } finally {
+      if (requestId === recordsRequestSequence) recordsLoading.value = false
+    }
+  }
+
+  const loadDetail = async (id: number): Promise<RunDetail> => {
+    const record = await fetchRun(id)
+    detail.value = record
+    return record
+  }
+
+  const removeRecord = async (id: number): Promise<void> => {
+    await deleteRun(id)
+    records.value = records.value.filter((record) => record.id !== id)
+    recordsTotal.value = Math.max(0, recordsTotal.value - 1)
+    if (detail.value?.id === id) detail.value = null
+  }
+
   return {
     status,
     detail,
     isRunning,
     error,
+    records,
+    recordsTotal,
+    recordsPage,
+    recordsSize,
+    recordsLoading,
+    recordsError,
     run,
+    loadRecords,
+    loadDetail,
+    removeRecord,
     reset,
     stopPolling,
   }

@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { toErrorMessage } from '../api/client'
-import { isTerminalStatus } from '../api/adapters'
-import { createSubmission, fetchSubmission, fetchSubmissions } from '../api/submissions'
+import { isTerminalStatus, submissionStatusLabel, submissionStatusMessage } from '../api/adapters'
+import { createSubmission, fetchSubmission, fetchSubmissionStatus, fetchSubmissions } from '../api/submissions'
 import type { Language, Submission } from '../types/oj'
 
-const POLL_INTERVAL = 1000
-const POLL_TIMEOUT = 60_000
+const POLL_INTERVAL = 800
+const POLL_TIMEOUT = 240_000
 
 const wait = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds))
@@ -34,9 +34,23 @@ export const useSubmissionStore = defineStore('submissions', () => {
     let current: Submission | null = null
     while (Date.now() < deadline) {
       if (token !== pollToken) return current
-      current = await fetchSubmission(id)
-      latest.value = current
-      if (isTerminalStatus(current.rawStatus)) return current
+      const snapshot = await fetchSubmissionStatus(id)
+      if (token !== pollToken) return current
+      if (latest.value?.id === id) {
+        latest.value.status = submissionStatusLabel(snapshot.rawStatus)
+        latest.value.rawStatus = snapshot.rawStatus
+        latest.value.testCasesPassed = snapshot.testCasesPassed
+        latest.value.totalTestCases = snapshot.totalTestCases
+        latest.value.message = snapshot.message ?? submissionStatusMessage(snapshot.rawStatus)
+      }
+      if (isTerminalStatus(snapshot.rawStatus)) {
+        // The status endpoint is intentionally small; fetch the detail once
+        // the verdict is final to pick up the first failed case or compile
+        // output for display.
+        current = await fetchSubmission(id)
+        latest.value = current
+        return current
+      }
       await wait(POLL_INTERVAL)
     }
     if (token !== pollToken) return current

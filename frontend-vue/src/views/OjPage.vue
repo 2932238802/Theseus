@@ -15,6 +15,7 @@ import {
 } from '../utils/constants'
 import type { Language } from '../types/oj'
 import type { RunMode } from '../types/run'
+import { formatArgs, formatInline } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,25 +31,25 @@ const isOutputOpen = ref(true)
 const isDark = ref(document.documentElement.dataset.theme === 'dark')
 const draftKey = computed(() => `theseus-draft-${problemId.value}-${language.value}`)
 const isAccepted = computed(() => submissionStore.latest?.status === 'Accepted')
+const latestFailedCase = computed(() => submissionStore.latest?.failedCase ?? null)
 const activeOutputTab = ref<'run' | 'submit'>('submit')
 const isRunDialogOpen = ref(false)
 const runMode = ref<RunMode>('examples')
 const runInput = ref('')
 const runInputError = ref('')
 const runFeatureEnabled = import.meta.env.VITE_RUN_CODE_ENABLED !== 'false'
+const submitFeatureEnabled = import.meta.env.VITE_SUBMIT_JUDGE_ENABLED === 'true'
 
 const runConfig = computed(() => problemStore.currentProblem?.runConfig)
 const canRun = computed(
   () =>
     runFeatureEnabled &&
     Boolean(runConfig.value) &&
-    (language.value === 'python' || language.value === 'javascript') &&
     Boolean(problemStore.currentProblem),
 )
 const runDisabledReason = computed(() => {
   if (!runFeatureEnabled) return '运行功能暂未开放'
   if (!runConfig.value) return '该题暂未配置运行'
-  if (language.value !== 'python' && language.value !== 'javascript') return '暂不支持运行该语言，当前支持 Python 与 JavaScript'
   return ''
 })
 const hasPublicCases = computed(() => (runConfig.value?.publicCases.length ?? 0) > 0)
@@ -128,10 +129,12 @@ const openRunDialog = async (): Promise<void> => {
 const closeRunDialog = (): void => {
   isRunDialogOpen.value = false
 }
+const isIntValue = (value: unknown): boolean =>
+  typeof value === 'number' && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647
 const typeMatches = (type: string, value: unknown): boolean => {
   switch (type) {
     case 'int':
-      return typeof value === 'number' && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647
+      return isIntValue(value)
     case 'long':
       return typeof value === 'number' && Number.isSafeInteger(value)
     case 'double':
@@ -140,10 +143,21 @@ const typeMatches = (type: string, value: unknown): boolean => {
       return typeof value === 'boolean'
     case 'string':
       return typeof value === 'string'
+    case 'ListNode':
+      return Array.isArray(value) && value.every(isIntValue)
+    case 'TreeNode':
+      return Array.isArray(value) && value.every((item) => item === null || isIntValue(item))
     default:
       break
   }
-  if (type.endsWith('[]') && !type.endsWith('[][]')) {
+  if (type.endsWith('[][]')) {
+    const element = type.slice(0, -4)
+    return (
+      Array.isArray(value) &&
+      value.every((row) => Array.isArray(row) && row.every((item) => typeMatches(element, item)))
+    )
+  }
+  if (type.endsWith('[]')) {
     const element = type.slice(0, -2)
     return Array.isArray(value) && value.every((item) => typeMatches(element, item))
   }
@@ -194,12 +208,207 @@ const startRun = (): void => {
     .run(problemStore.currentProblem.id, language.value, code.value, 'custom', parsed)
     .catch(() => undefined)
 }
-const formatValue = (value: unknown): string => {
-  if (value === undefined) return '—'
-  return JSON.stringify(value, null, 2) ?? 'null'
+const MIN_PROBLEM_WIDTH = 320
+const MIN_EDITOR_WIDTH = 420
+const RESIZER_WIDTH = 8
+const SPLIT_STORAGE_KEY = 'theseus-oj-split'
+const pageRef = ref<HTMLElement | null>(null)
+const resizerRef = ref<HTMLElement | null>(null)
+const pageWidth = ref(0)
+const problemWidth = ref(Number(localStorage.getItem(SPLIT_STORAGE_KEY)) || 0)
+
+const currentProblemWidth = computed(
+  () => problemWidth.value || (pageWidth.value - RESIZER_WIDTH) / 2,
+)
+const maxProblemWidth = computed(() =>
+  Math.max(MIN_PROBLEM_WIDTH, pageWidth.value - MIN_EDITOR_WIDTH - RESIZER_WIDTH),
+)
+const clampWidth = (width: number): number =>
+  Math.min(Math.max(width, MIN_PROBLEM_WIDTH), maxProblemWidth.value)
+const applyWidth = (): void => {
+  if (!pageRef.value) return
+  pageRef.value.style.setProperty('--problem-width', `${clampWidth(currentProblemWidth.value)}px`)
+}
+const measurePageWidth = (): void => {
+  if (pageRef.value) pageWidth.value = pageRef.value.clientWidth
 }
 
-onMounted(() => { void loadPage() })
+let dragging = false
+let activePointerId: number | null = null
+
+const startResize = (event: PointerEvent): void => {
+  if (event.pointerType === 'mouse' && event.button !== 0) return
+  dragging = true
+  activePointerId = event.pointerId
+  resizerRef.value?.setPointerCapture(event.pointerId)
+  document.body.classList.add('is-resizing')
+}
+const onPointerMove = (event: PointerEvent): void => {
+  if (!dragging || !pageRef.value) return
+  const left = pageRef.value.getBoundingClientRect().left
+  problemWidth.value = clampWidth(event.clientX - left)
+  applyWidth()
+}
+const stopResize = (): void => {
+  if (!dragging) return
+  dragging = false
+  if (activePointerId !== null) {
+    resizerRef.value?.releasePointerCapture(activePointerId)
+    activePointerId = null
+  }
+  document.body.classList.remove('is-resizing')
+  if (problemWidth.value) {
+    localStorage.setItem(SPLIT_STORAGE_KEY, String(Math.round(problemWidth.value)))
+  }
+}
+const resetSplit = (): void => {
+  problemWidth.value = 0
+  applyWidth()
+  localStorage.removeItem(SPLIT_STORAGE_KEY)
+}
+const nudgeSplit = (delta: number): void => {
+  problemWidth.value = clampWidth(currentProblemWidth.value + delta)
+  applyWidth()
+  localStorage.setItem(SPLIT_STORAGE_KEY, String(Math.round(problemWidth.value)))
+}
+
+// 编辑器与运行结果之间的上下分栏
+const MIN_OUTPUT_HEIGHT = 96
+const MIN_EDITOR_HEIGHT = 200
+const EDITOR_TOOLBAR_HEIGHT = 52
+const EDITOR_ACTIONS_HEIGHT = 60
+const ROW_RESIZER_HEIGHT = 8
+const OUTPUT_STORAGE_KEY = 'theseus-oj-output-height'
+const editorPaneRef = ref<HTMLElement | null>(null)
+const outputResizerRef = ref<HTMLElement | null>(null)
+const outputPanelRef = ref<HTMLElement | null>(null)
+const paneHeight = ref(0)
+const outputHeight = ref(Number(localStorage.getItem(OUTPUT_STORAGE_KEY)) || 0)
+
+// 未拖动过时高度由内容决定（0 表示不写死高度），所以这里直接量当前高度
+const maxOutputHeight = computed(() =>
+  Math.max(
+    MIN_OUTPUT_HEIGHT,
+    paneHeight.value -
+      EDITOR_TOOLBAR_HEIGHT -
+      EDITOR_ACTIONS_HEIGHT -
+      ROW_RESIZER_HEIGHT -
+      MIN_EDITOR_HEIGHT,
+  ),
+)
+const currentOutputHeight = (): number =>
+  Math.min(
+    outputHeight.value || outputPanelRef.value?.offsetHeight || MIN_OUTPUT_HEIGHT,
+    maxOutputHeight.value,
+  )
+const clampOutputHeight = (height: number): number =>
+  Math.min(Math.max(height, MIN_OUTPUT_HEIGHT), maxOutputHeight.value)
+const measurePaneHeight = (): void => {
+  if (editorPaneRef.value) paneHeight.value = editorPaneRef.value.clientHeight
+}
+const applyOutputHeight = (): void => {
+  const panel = outputPanelRef.value
+  if (!panel) return
+  if (!outputHeight.value || !isOutputOpen.value) {
+    panel.style.removeProperty('height')
+    panel.style.removeProperty('max-height')
+    return
+  }
+  // 下限由拖动过程保证，这里只收敛上限，避免把用户拖出的高度弹回去
+  panel.style.height = `${Math.min(outputHeight.value, maxOutputHeight.value)}px`
+  panel.style.maxHeight = 'none'
+}
+
+let resizingRows = false
+let rowPointerId: number | null = null
+let rowStartY = 0
+let rowStartHeight = 0
+let rowMinHeight = MIN_OUTPUT_HEIGHT
+
+const startResizeRows = (event: PointerEvent): void => {
+  if (event.pointerType === 'mouse' && event.button !== 0) return
+  resizingRows = true
+  rowPointerId = event.pointerId
+  rowStartY = event.clientY
+  rowStartHeight = currentOutputHeight()
+  // 结果区本身就比最小高度矮时（只有占位文案），允许它继续降低，避免第一次拖动就跳高
+  rowMinHeight = Math.min(MIN_OUTPUT_HEIGHT, rowStartHeight)
+  outputResizerRef.value?.setPointerCapture(event.pointerId)
+  document.body.classList.add('is-resizing-rows')
+}
+const onRowPointerMove = (event: PointerEvent): void => {
+  if (!resizingRows) return
+  const next = rowStartHeight + (rowStartY - event.clientY)
+  outputHeight.value = Math.min(Math.max(next, rowMinHeight), maxOutputHeight.value)
+  applyOutputHeight()
+}
+const stopResizeRows = (): void => {
+  if (!resizingRows) return
+  resizingRows = false
+  if (rowPointerId !== null) {
+    outputResizerRef.value?.releasePointerCapture(rowPointerId)
+    rowPointerId = null
+  }
+  document.body.classList.remove('is-resizing-rows')
+  if (outputHeight.value) {
+    localStorage.setItem(OUTPUT_STORAGE_KEY, String(Math.round(outputHeight.value)))
+  }
+}
+const resetOutputHeight = (): void => {
+  outputHeight.value = 0
+  applyOutputHeight()
+  localStorage.removeItem(OUTPUT_STORAGE_KEY)
+}
+const nudgeOutput = (delta: number): void => {
+  const base = currentOutputHeight()
+  outputHeight.value = Math.min(
+    Math.max(base + delta, Math.min(MIN_OUTPUT_HEIGHT, base)),
+    maxOutputHeight.value,
+  )
+  applyOutputHeight()
+  localStorage.setItem(OUTPUT_STORAGE_KEY, String(Math.round(outputHeight.value)))
+}
+const onWindowResize = (): void => {
+  measurePageWidth()
+  applyWidth()
+  measurePaneHeight()
+  applyOutputHeight()
+}
+
+// 面板随题目加载才出现，出现后再补一次测量与恢复
+watch(
+  [editorPaneRef, outputPanelRef],
+  () => {
+    measurePaneHeight()
+    applyOutputHeight()
+  },
+  { flush: 'post' },
+)
+watch(isOutputOpen, () => { applyOutputHeight() }, { flush: 'post' })
+
+let pageObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  void loadPage()
+  measurePageWidth()
+  applyWidth()
+  measurePaneHeight()
+  applyOutputHeight()
+  window.addEventListener('resize', onWindowResize)
+  window.addEventListener('pointermove', onPointerMove)
+  window.addEventListener('pointerup', stopResize)
+  window.addEventListener('pointercancel', stopResize)
+  window.addEventListener('pointermove', onRowPointerMove)
+  window.addEventListener('pointerup', stopResizeRows)
+  window.addEventListener('pointercancel', stopResizeRows)
+  if (typeof ResizeObserver !== 'undefined') {
+    pageObserver = new ResizeObserver(() => {
+      measurePageWidth()
+      applyWidth()
+    })
+    if (pageRef.value) pageObserver.observe(pageRef.value)
+  }
+})
 watch(language, () => {
   restoreDraft()
   isRunDialogOpen.value = false
@@ -209,12 +418,23 @@ watch(() => route.params.id, () => { void loadPage() })
 onBeforeUnmount(() => {
   submissionStore.stopPolling()
   runStore.stopPolling()
+  window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('pointerup', stopResize)
+  window.removeEventListener('pointercancel', stopResize)
+  window.removeEventListener('pointermove', onRowPointerMove)
+  window.removeEventListener('pointerup', stopResizeRows)
+  window.removeEventListener('pointercancel', stopResizeRows)
+  pageObserver?.disconnect()
+  pageObserver = null
+  document.body.classList.remove('is-resizing')
+  document.body.classList.remove('is-resizing-rows')
 })
 </script>
 
 <template>
   <NavBar />
-  <main class="oj-page">
+  <main ref="pageRef" class="oj-page">
     <div v-if="problemStore.isLoading" class="oj-loading">正在准备题目…</div>
     <div v-else-if="problemStore.error" class="oj-error"><h1>无法打开题目</h1><p>{{ problemStore.error }}</p><RouterLink class="primary-button" to="/problems">返回题库</RouterLink></div>
     <template v-else-if="problemStore.currentProblem">
@@ -227,10 +447,40 @@ onBeforeUnmount(() => {
 <b>输出：</b>{{ example.output }}</pre><p v-if="example.explanation"><b>解释：</b>{{ example.explanation }}</p></div><p v-if="!problemStore.currentProblem.examples.length" class="output-placeholder">暂无示例。</p><h2>限制</h2><ul><li>时间限制：{{ problemStore.currentProblem.timeLimit }} ms</li><li>内存限制：{{ problemStore.currentProblem.memoryLimit }} MB</li></ul></article>
         </div>
       </section>
-      <section class="editor-pane">
+      <div
+        ref="resizerRef"
+        class="pane-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整题目与编辑器宽度"
+        :aria-valuenow="Math.round(clampWidth(currentProblemWidth))"
+        :aria-valuemin="MIN_PROBLEM_WIDTH"
+        :aria-valuemax="maxProblemWidth"
+        tabindex="0"
+        @pointerdown="startResize"
+        @dblclick="resetSplit"
+        @keydown.left.prevent="nudgeSplit(-24)"
+        @keydown.right.prevent="nudgeSplit(24)"
+      ></div>
+      <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
         <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(12, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(20, fontSize + 1)">A+</button><button type="button" aria-label="切换编辑器主题" title="切换编辑器主题" @click="isDark = !isDark">◐</button></div></div>
         <CodeEditor v-model="code" :language="language" :font-size="fontSize" :dark="isDark" />
-        <section class="output-panel" :class="{ collapsed: !isOutputOpen }">
+        <div
+          ref="outputResizerRef"
+          class="pane-resizer-h"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="调整编辑器与运行结果的高度"
+          :aria-valuenow="Math.round(clampOutputHeight(currentOutputHeight()))"
+          :aria-valuemin="MIN_OUTPUT_HEIGHT"
+          :aria-valuemax="maxOutputHeight"
+          tabindex="0"
+          @pointerdown="startResizeRows"
+          @dblclick="resetOutputHeight"
+          @keydown.up.prevent="nudgeOutput(24)"
+          @keydown.down.prevent="nudgeOutput(-24)"
+        ></div>
+        <section ref="outputPanelRef" class="output-panel" :class="{ collapsed: !isOutputOpen }">
           <header>
             <div class="output-tabs">
               <button type="button" :class="{ active: activeOutputTab === 'run' }" @click="activeOutputTab = 'run'; isOutputOpen = true">运行结果</button>
@@ -245,13 +495,14 @@ onBeforeUnmount(() => {
               <p class="run-note">运行结果不计入提交，也不影响通过率。</p>
               <template v-if="runStore.detail">
                 <p v-if="runStore.detail.errorMessage" class="form-error" role="alert">{{ runStore.detail.errorMessage }}</p>
+                <div v-if="runStore.detail.compileOutput" class="run-block"><span>编译输出</span><pre>{{ runStore.detail.compileOutput }}</pre></div>
                 <p class="run-summary">通过 {{ runStore.detail.casePassed }} / {{ runStore.detail.caseTotal }}</p>
                 <template v-if="runStore.detail.mode === 'examples'">
                   <div v-for="item in runStore.detail.cases" :key="item.index" class="run-case">
                     <header><span>示例 {{ item.index + 1 }}</span><span :class="['case-status', item.status]">{{ RUN_CASE_STATUS_LABELS[item.status] }}</span></header>
-                    <div class="run-block"><span>输入</span><pre>{{ formatValue(item.args) }}</pre></div>
-                    <div class="run-block"><span>期望</span><pre>{{ formatValue(item.expected) }}</pre></div>
-                    <div v-if="item.actual !== undefined" class="run-block"><span>实际</span><pre>{{ formatValue(item.actual) }}</pre></div>
+                    <div class="run-block"><span>输入</span><pre>{{ formatArgs(item.args, runConfig?.params) }}</pre></div>
+                    <div class="run-block"><span>期望</span><pre>{{ formatInline(item.expected) }}</pre></div>
+                    <div v-if="item.actual !== undefined" class="run-block"><span>实际</span><pre>{{ formatInline(item.actual) }}</pre></div>
                     <div v-if="item.stdout" class="run-block"><span>stdout</span><pre>{{ item.stdout }}</pre></div>
                     <div v-if="item.stderr" class="run-block"><span>stderr</span><pre>{{ item.stderr }}</pre></div>
                     <p v-if="item.truncated" class="run-note">输出超过 64 KB，已截断。</p>
@@ -262,7 +513,7 @@ onBeforeUnmount(() => {
                     <div v-if="runStore.detail.runtimeMs !== null"><dt>执行用时</dt><dd>{{ runStore.detail.runtimeMs }} ms</dd></div>
                     <div v-if="runStore.detail.memoryKb"><dt>内存消耗</dt><dd>{{ runStore.detail.memoryKb >= 1024 ? `${(runStore.detail.memoryKb / 1024).toFixed(1)} MB` : `${runStore.detail.memoryKb} KB` }}</dd></div>
                   </dl>
-                  <div v-if="runCase && runCase.status === 'passed'" class="run-block"><span>返回值</span><pre>{{ formatValue(runCase.actual) }}</pre></div>
+                  <div v-if="runCase && runCase.status === 'passed'" class="run-block"><span>返回值</span><pre>{{ formatInline(runCase.actual) }}</pre></div>
                   <div v-if="runCase?.stdout" class="run-block"><span>stdout</span><pre>{{ runCase.stdout }}</pre></div>
                   <div v-if="runCase?.stderr" class="run-block"><span>stderr</span><pre>{{ runCase.stderr }}</pre></div>
                   <p v-if="runCase?.truncated" class="run-note">输出超过 64 KB，已截断。</p>
@@ -272,7 +523,16 @@ onBeforeUnmount(() => {
               <p v-else-if="!runStore.isRunning" class="output-placeholder">运行代码后将在这里显示结果。</p>
             </template>
             <template v-else>
-              <template v-if="submissionStore.latest"><p>{{ submissionStore.latest.message }}</p><dl><div v-if="submissionStore.latest.totalTestCases"><dt>通过用例</dt><dd>{{ submissionStore.latest.testCasesPassed }} / {{ submissionStore.latest.totalTestCases }}</dd></div><div v-if="submissionStore.latest.runtime"><dt>执行用时</dt><dd>{{ submissionStore.latest.runtime }}</dd></div><div v-if="submissionStore.latest.memory"><dt>内存消耗</dt><dd>{{ submissionStore.latest.memory }}</dd></div></dl></template>
+              <template v-if="submissionStore.latest"><p>{{ submissionStore.latest.message }}</p><dl><div v-if="submissionStore.latest.totalTestCases"><dt>通过用例</dt><dd>{{ submissionStore.latest.testCasesPassed }} / {{ submissionStore.latest.totalTestCases }}</dd></div><div v-if="submissionStore.latest.runtime"><dt>执行用时</dt><dd>{{ submissionStore.latest.runtime }}</dd></div><div v-if="submissionStore.latest.memory"><dt>内存消耗</dt><dd>{{ submissionStore.latest.memory }}</dd></div></dl>
+                <div v-if="submissionStore.latest.compileOutput" class="run-block"><span>编译输出</span><pre>{{ submissionStore.latest.compileOutput }}</pre></div>
+                <template v-if="latestFailedCase">
+                  <div class="run-block"><span>失败用例 #{{ latestFailedCase.index + 1 }} · 输入</span><pre>{{ formatInline(latestFailedCase.args) }}</pre></div>
+                  <div v-if="latestFailedCase.expected !== undefined" class="run-block"><span>期望</span><pre>{{ formatInline(latestFailedCase.expected) }}</pre></div>
+                  <div v-if="latestFailedCase.actual !== null" class="run-block"><span>实际</span><pre>{{ formatInline(latestFailedCase.actual) }}</pre></div>
+                  <div v-if="latestFailedCase.stdout" class="run-block"><span>stdout</span><pre>{{ latestFailedCase.stdout }}</pre></div>
+                  <div v-if="latestFailedCase.stderr" class="run-block"><span>stderr</span><pre>{{ latestFailedCase.stderr }}</pre></div>
+                </template>
+              </template>
               <p v-else class="output-placeholder">提交代码后将在这里显示评测结果。</p>
               <p v-if="submissionStore.error" class="form-error" role="alert">{{ submissionStore.error }}</p>
             </template>
@@ -282,7 +542,7 @@ onBeforeUnmount(() => {
           <button class="reset-button" type="button" @click="resetCode">↺ 重置代码</button>
           <div>
             <button v-if="runFeatureEnabled" class="run-button" type="button" :disabled="!canRun || runStore.isRunning || submissionStore.isSubmitting" :title="runDisabledReason || '运行自定义输入'" @click="openRunDialog">{{ runButtonLabel }}</button>
-            <button class="submit-button" type="button" :disabled="submissionStore.isSubmitting || runStore.isRunning || !code.trim()" @click="submitCode">{{ submissionStore.isSubmitting ? '评测中…' : '提交代码' }} <span>→</span></button>
+            <button class="submit-button" type="button" :disabled="!submitFeatureEnabled || submissionStore.isSubmitting || runStore.isRunning || !code.trim()" :title="submitFeatureEnabled ? '' : '提交评测暂未开放'" @click="submitCode">{{ !submitFeatureEnabled ? '提交评测暂未开放' : submissionStore.isSubmitting ? '评测中…' : '提交代码' }} <span v-if="submitFeatureEnabled">→</span></button>
           </div>
         </footer>
       </section>
@@ -302,8 +562,8 @@ onBeforeUnmount(() => {
           <ol class="example-preview">
             <li v-for="(item, index) in runConfig?.publicCases ?? []" :key="index">
               <span>示例 {{ index + 1 }}</span>
-              <pre>输入：{{ formatValue(item.args) }}
-期望：{{ formatValue(item.expected) }}</pre>
+              <pre>输入：{{ formatArgs(item.args, runConfig?.params) }}
+期望：{{ formatInline(item.expected) }}</pre>
             </li>
           </ol>
         </template>

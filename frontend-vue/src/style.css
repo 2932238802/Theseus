@@ -1018,7 +1018,10 @@ select {
   display: grid;
   height: calc(100vh - 64px);
   min-height: 600px;
-  grid-template-columns: minmax(0, 1fr) minmax(420px, 1fr);
+  grid-template-columns:
+    minmax(320px, var(--problem-width, 1fr))
+    8px
+    minmax(420px, 1fr);
   background: var(--color-surface);
 }
 
@@ -1043,7 +1046,34 @@ select {
 .problem-pane {
   min-width: 0;
   overflow-y: auto;
-  border-right: 1px solid var(--color-border);
+  border-right: 0;
+}
+
+.pane-resizer {
+  position: relative;
+  width: 8px;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.pane-resizer::after {
+  position: absolute;
+  inset: 0 3px;
+  background: var(--color-border);
+  content: '';
+  transition: background-color var(--duration);
+}
+
+.pane-resizer:hover::after,
+.pane-resizer:focus-visible::after,
+body.is-resizing .pane-resizer::after {
+  background: var(--color-accent);
+}
+
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .problem-pane-inner {
@@ -1158,7 +1188,43 @@ select {
   display: grid;
   min-width: 0;
   min-height: 0;
+  grid-template-rows: 52px minmax(0, 1fr) 8px auto 60px;
+}
+
+/* 结果面板收起时只剩标题栏：去掉分隔条，避免出现无法拖动的高亮条 */
+.editor-pane.output-collapsed {
   grid-template-rows: 52px minmax(0, 1fr) auto 60px;
+}
+
+.editor-pane.output-collapsed .pane-resizer-h {
+  display: none;
+}
+
+.pane-resizer-h {
+  position: relative;
+  height: 8px;
+  cursor: row-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.pane-resizer-h::after {
+  position: absolute;
+  inset: 3px 0;
+  background: var(--color-border);
+  content: '';
+  transition: background-color var(--duration);
+}
+
+.pane-resizer-h:hover::after,
+.pane-resizer-h:focus-visible::after,
+body.is-resizing-rows .pane-resizer-h::after {
+  background: var(--color-accent);
+}
+
+body.is-resizing-rows {
+  cursor: row-resize;
+  user-select: none;
 }
 
 .editor-toolbar {
@@ -1203,8 +1269,13 @@ select {
   display: flex;
   max-height: 260px;
   flex-direction: column;
-  border-top: 1px solid var(--color-border);
+  border-top: 0;
   background: var(--color-surface);
+}
+
+/* 收起时没有分隔条，线由面板自己画 */
+.editor-pane.output-collapsed .output-panel {
+  border-top: 1px solid var(--color-border);
 }
 
 .output-panel > header {
@@ -1682,6 +1753,104 @@ select {
   margin-top: var(--space-xl);
 }
 
+.profile-tabs {
+  display: inline-flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-xl);
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.profile-tabs > button {
+  min-height: 34px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.profile-tabs > button:hover {
+  color: var(--color-text);
+}
+
+.profile-tabs > button.active {
+  background: var(--color-bg);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.submission-list.run-record-list article {
+  grid-template-columns: minmax(0, 1fr) 90px 180px 170px 130px;
+}
+
+.run-record-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+}
+
+.run-record-actions > button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.run-record-actions > button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.run-record-actions > button.danger:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.run-record-actions > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.run-record-dialog {
+  width: min(720px, 100%);
+}
+
+.run-record-dialog dl {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.run-code {
+  margin-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-sm);
+}
+
+.run-code summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.run-code pre {
+  max-height: 320px;
+  overflow: auto;
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .submission-list {
   overflow: hidden;
   border: 1px solid var(--color-border);
@@ -1779,7 +1948,10 @@ select {
 
 @media (max-width: 1024px) {
   .oj-page {
-    grid-template-columns: minmax(0, 1fr) minmax(380px, 0.95fr);
+    grid-template-columns:
+      minmax(320px, var(--problem-width, 1fr))
+      8px
+      minmax(380px, 0.95fr);
   }
 
   .problem-pane-inner {
@@ -1875,6 +2047,10 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .pane-resizer {
+    display: none;
+  }
+
   .problem-pane {
     overflow: visible;
     border-right: 0;
@@ -1913,6 +2089,15 @@ select {
 
   .submission-list time {
     display: none;
+  }
+
+  .submission-list.run-record-list article {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .run-record-list .run-record-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 
   .auth-page {

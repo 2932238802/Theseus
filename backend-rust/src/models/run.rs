@@ -123,6 +123,7 @@ pub struct CodeRunRow {
     pub error_message: Option<String>,
     pub runtime_ms: Option<i32>,
     pub memory_kb: Option<i32>,
+    pub attempt_count: i32,
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
@@ -145,6 +146,34 @@ impl CodeRunRow {
             updated_at: self.updated_at(),
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RunListQuery {
+    pub page: Option<u32>,
+    pub size: Option<u32>,
+    pub problem_id: Option<i32>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct RunSummary {
+    pub id: i64,
+    pub problem_id: Option<i32>,
+    pub problem_title: String,
+    pub language: String,
+    pub mode: String,
+    pub status: String,
+    pub case_passed: i32,
+    pub case_total: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RunListResponse {
+    pub total: i64,
+    pub page: u32,
+    pub size: u32,
+    pub runs: Vec<RunSummary>,
 }
 
 #[derive(Debug, Serialize)]

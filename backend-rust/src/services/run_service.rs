@@ -14,13 +14,21 @@ use crate::{
     },
     middleware::auth::AuthUser,
     models::run::{
-        CodeRunRow, RUN_STATUS_QUEUED, RunConfig, RunCreateRequest, RunCreateResponse,
-        RunDetailResponse, RunStatusResponse,
+        CodeRunRow, RUN_STATUS_INTERNAL_ERROR, RUN_STATUS_QUEUED, RunConfig, RunCreateRequest,
+        RunCreateResponse, RunDetailResponse, RunListQuery, RunListResponse, RunStatusResponse,
+        RunSummary, is_terminal_status,
     },
 };
 
 const RUNS_PER_MINUTE: i64 = 10;
-const CONCURRENCY_TTL_SECONDS: u64 = 600;
+/// Run phase budget, mirrors the worker's `RUN_TIMEOUT`.
+const RUN_TIMEOUT_SECONDS: u64 = 10;
+/// Per-case budget, mirrors the worker's `CASE_TIMEOUT`.
+const CASE_TIMEOUT_SECONDS: u64 = 2;
+/// Extra slack so the concurrency lock outlives the slowest legitimate run.
+const LOCK_TTL_BUFFER_SECONDS: u64 = 30;
+const QUEUED_TIMEOUT_MESSAGE: &str = "排队超时：评测服务不可用";
+const STALE_TIMEOUT_MESSAGE: &str = "执行超时：Worker 可能已离线";
 
 #[derive(Clone)]
 pub struct RunService {
@@ -129,16 +137,34 @@ impl RunService {
         };
 
         let mut redis = self.redis()?;
+        let worker_alive = queue::has_live_worker(&mut redis).await.map_err(|error| {
+            tracing::error!(error = ?error, "failed to check judge worker heartbeat");
+            AppError::ServiceUnavailable("运行队列暂不可用".to_owned())
+        })?;
+        if !worker_alive {
+            tracing::warn!(
+                user_id = user.id,
+                "rejecting run because no judge worker is alive"
+            );
+            return Err(AppError::ServiceUnavailable(
+                "评测服务暂不可用，请稍后再试".to_owned(),
+            ));
+        }
         self.enforce_rate(&mut redis, user.id).await?;
         let rate_key = rate_key(user.id);
         let lock_key = concurrency_key(user.id);
         let token = random_token();
+        let lock_ttl = concurrency_ttl(
+            self.config.run_queue_timeout_secs,
+            self.config.run_compile_timeout_secs,
+            case_total,
+        );
         let acquired: Option<String> = cmd("SET")
             .arg(&lock_key)
             .arg(&token)
             .arg("NX")
             .arg("EX")
-            .arg(CONCURRENCY_TTL_SECONDS)
+            .arg(lock_ttl)
             .query_async(&mut redis)
             .await
             .map_err(|_| AppError::ServiceUnavailable("运行队列暂不可用".to_owned()))?;
@@ -174,7 +200,7 @@ impl RunService {
             }
         };
 
-        if !swap_lock(&mut redis, &lock_key, &token, run_id).await {
+        if !swap_lock(&mut redis, &lock_key, &token, run_id, lock_ttl).await {
             release_lock(&mut redis, &lock_key, &token).await;
             release_rate(&mut redis, &rate_key).await;
             mark_internal_error(pool, run_id, "运行并发锁失效").await;
@@ -239,6 +265,160 @@ impl RunService {
         Ok(RunDetailResponse::from(row))
     }
 
+    pub async fn list(
+        &self,
+        pool: &PgPool,
+        user: &AuthUser,
+        query: RunListQuery,
+    ) -> Result<RunListResponse, AppError> {
+        let (page, size) = normalize_page(query.page, query.size);
+        let offset = i64::from(page - 1) * i64::from(size);
+        let limit = i64::from(size);
+        let (total, runs) = match query.problem_id {
+            Some(problem_id) if problem_id > 0 => {
+                let total: i64 = sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM code_runs WHERE user_id = $1 AND problem_id = $2",
+                )
+                .bind(user.id)
+                .bind(problem_id)
+                .fetch_one(pool)
+                .await
+                .map_err(AppError::Database)?;
+                let runs = sqlx::query_as::<_, RunSummary>(
+                    "SELECT id, problem_id, problem_title, language, mode, status, case_passed, case_total, created_at FROM code_runs WHERE user_id = $1 AND problem_id = $2 ORDER BY created_at DESC, id DESC LIMIT $3 OFFSET $4",
+                )
+                .bind(user.id)
+                .bind(problem_id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(pool)
+                .await
+                .map_err(AppError::Database)?;
+                (total, runs)
+            }
+            _ => {
+                let total: i64 =
+                    sqlx::query_scalar("SELECT COUNT(*) FROM code_runs WHERE user_id = $1")
+                        .bind(user.id)
+                        .fetch_one(pool)
+                        .await
+                        .map_err(AppError::Database)?;
+                let runs = sqlx::query_as::<_, RunSummary>(
+                    "SELECT id, problem_id, problem_title, language, mode, status, case_passed, case_total, created_at FROM code_runs WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
+                )
+                .bind(user.id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(pool)
+                .await
+                .map_err(AppError::Database)?;
+                (total, runs)
+            }
+        };
+        Ok(RunListResponse {
+            total,
+            page,
+            size,
+            runs,
+        })
+    }
+
+    pub async fn delete(
+        &self,
+        pool: &PgPool,
+        user: &AuthUser,
+        run_id: i64,
+    ) -> Result<(), AppError> {
+        if run_id <= 0 {
+            return Err(AppError::BadRequest("运行 ID 无效".to_owned()));
+        }
+        let row = fetch_run_row(pool, run_id).await?;
+        check_owner(&row, user)?;
+        if !is_terminal_status(&row.status) {
+            return Err(AppError::Conflict("运行尚未结束，无法删除".to_owned()));
+        }
+        sqlx::query("DELETE FROM code_runs WHERE id = $1 AND user_id = $2")
+            .bind(run_id)
+            .bind(user.id)
+            .execute(pool)
+            .await
+            .map_err(AppError::Database)?;
+        if let Some(mut redis) = self.redis.clone() {
+            queue::status_key_delete(&mut redis, &status_key(run_id)).await;
+        }
+        Ok(())
+    }
+
+    /// Fails runs that stayed non-terminal for too long and releases their
+    /// concurrency locks. This is the safety net for the case where no judge
+    /// worker consumes the queue at all: without it a `queued` run would hold
+    /// its user's lock until the lock TTL expires.
+    ///
+    /// The updates are conditional on the previous status so they never
+    /// overwrite a result the worker wrote concurrently.
+    pub async fn expire_stale_runs(&self, pool: &PgPool) -> Result<usize, AppError> {
+        if !self.config.run_code_enabled {
+            return Ok(0);
+        }
+        let Some(mut redis) = self.redis.clone() else {
+            return Ok(0);
+        };
+
+        let queued = sqlx::query_as::<_, (i64, i32, i32, i32)>(
+            "UPDATE code_runs \
+             SET status = 'internal_error', error_message = $1, finished_at = CURRENT_TIMESTAMP \
+             WHERE status = 'queued' \
+               AND created_at < CURRENT_TIMESTAMP - make_interval(secs => $2::double precision) \
+             RETURNING id, user_id, case_passed, case_total",
+        )
+        .bind(QUEUED_TIMEOUT_MESSAGE)
+        .bind(self.config.run_queue_timeout_secs as f64)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        let stale = sqlx::query_as::<_, (i64, i32, i32, i32)>(
+            "UPDATE code_runs \
+             SET status = 'internal_error', error_message = $1, finished_at = CURRENT_TIMESTAMP \
+             WHERE status IN ('compiling', 'running') \
+               AND COALESCE(started_at, created_at) < CURRENT_TIMESTAMP - make_interval(secs => $2::double precision) \
+             RETURNING id, user_id, case_passed, case_total",
+        )
+        .bind(STALE_TIMEOUT_MESSAGE)
+        .bind(self.config.run_stale_timeout_secs as f64)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        let mut expired = 0usize;
+        let entries = queued
+            .into_iter()
+            .map(|row| (row, QUEUED_TIMEOUT_MESSAGE))
+            .chain(stale.into_iter().map(|row| (row, STALE_TIMEOUT_MESSAGE)));
+        for ((run_id, user_id, case_passed, case_total), message) in entries {
+            tracing::warn!(
+                run_id,
+                user_id,
+                error = message,
+                "expired stale run and released its concurrency lock"
+            );
+            let cached = CachedRunStatus::new(
+                user_id,
+                run_id,
+                RUN_STATUS_INTERNAL_ERROR,
+                case_passed,
+                case_total,
+                Some(message.to_owned()),
+            );
+            if let Err(error) = write_status_cache(&mut redis, cached).await {
+                tracing::warn!(run_id, error = ?error, "failed to cache expired run status");
+            }
+            release_user_lock(&mut redis, user_id, run_id).await;
+            expired += 1;
+        }
+        Ok(expired)
+    }
+
     fn redis(&self) -> Result<ConnectionManager, AppError> {
         self.redis
             .clone()
@@ -273,13 +453,28 @@ impl RunService {
 
 pub async fn fetch_run_row(pool: &PgPool, run_id: i64) -> Result<CodeRunRow, AppError> {
     sqlx::query_as::<_, CodeRunRow>(
-        "SELECT id, user_id, problem_id, problem_title, language, mode, code, input, run_config_snapshot, status, cases, case_total, case_passed, compile_output, error_message, runtime_ms, memory_kb, created_at, started_at, finished_at FROM code_runs WHERE id = $1",
+        "SELECT id, user_id, problem_id, problem_title, language, mode, code, input, run_config_snapshot, status, cases, case_total, case_passed, compile_output, error_message, runtime_ms, memory_kb, attempt_count, created_at, started_at, finished_at FROM code_runs WHERE id = $1",
     )
     .bind(run_id)
     .fetch_optional(pool)
     .await
     .map_err(AppError::Database)?
     .ok_or_else(|| AppError::NotFound("运行记录不存在".to_owned()))
+}
+
+pub async fn increment_attempt(pool: &PgPool, run_id: i64) -> Result<i32, AppError> {
+    sqlx::query_scalar(
+        "UPDATE code_runs SET attempt_count = attempt_count + 1 WHERE id = $1 RETURNING attempt_count",
+    )
+    .bind(run_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or_else(|| AppError::NotFound("运行记录不存在".to_owned()))
+}
+
+pub fn normalize_page(page: Option<u32>, size: Option<u32>) -> (u32, u32) {
+    (page.unwrap_or(1).max(1), size.unwrap_or(20).clamp(1, 50))
 }
 
 fn check_owner(row: &CodeRunRow, user: &AuthUser) -> Result<(), AppError> {
@@ -295,7 +490,7 @@ pub fn parse_run_config(row: &CodeRunRow) -> Result<RunConfig, AppError> {
 
 pub async fn claim_run(pool: &PgPool, run_id: i64) -> Result<bool, AppError> {
     let result = sqlx::query(
-        "UPDATE code_runs SET status = 'compiling', started_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'queued'",
+        "UPDATE code_runs SET status = 'compiling', started_at = CURRENT_TIMESTAMP WHERE id = $1 AND status IN ('queued', 'compiling', 'running')",
     )
     .bind(run_id)
     .execute(pool)
@@ -382,7 +577,13 @@ async fn release_lock(redis: &mut ConnectionManager, key: &str, expected: &str) 
         .await;
 }
 
-async fn swap_lock(redis: &mut ConnectionManager, key: &str, token: &str, run_id: i64) -> bool {
+async fn swap_lock(
+    redis: &mut ConnectionManager,
+    key: &str,
+    token: &str,
+    run_id: i64,
+    ttl_seconds: u64,
+) -> bool {
     let script = "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3]); return 1 else return 0 end";
     cmd("EVAL")
         .arg(script)
@@ -390,7 +591,7 @@ async fn swap_lock(redis: &mut ConnectionManager, key: &str, token: &str, run_id
         .arg(key)
         .arg(token)
         .arg(run_id.to_string())
-        .arg(CONCURRENCY_TTL_SECONDS)
+        .arg(ttl_seconds)
         .query_async::<i64>(redis)
         .await
         .map(|value| value == 1)
@@ -410,6 +611,18 @@ fn concurrency_key(user_id: i32) -> String {
     format!("theseus:run:concurrency:{user_id}")
 }
 
+/// Lock TTL is derived from the task itself instead of a fixed 10 minutes:
+/// waiting in queue + one compile + one full run + every case's own budget +
+/// slack.
+fn concurrency_ttl(queue_timeout_secs: u64, compile_timeout_secs: u64, case_total: i32) -> u64 {
+    let cases = case_total.max(1) as u64;
+    queue_timeout_secs
+        + compile_timeout_secs
+        + RUN_TIMEOUT_SECONDS
+        + cases * CASE_TIMEOUT_SECONDS
+        + LOCK_TTL_BUFFER_SECONDS
+}
+
 fn status_key(run_id: i64) -> String {
     format!("theseus:run:status:{run_id}")
 }
@@ -424,10 +637,7 @@ fn random_token() -> String {
 
 fn validate_language(language: &str) -> Result<(), AppError> {
     match language {
-        "python" | "javascript" => Ok(()),
-        "cpp" | "java" => Err(AppError::BadRequest(
-            "当前仅支持 Python 和 JavaScript 运行".to_owned(),
-        )),
+        "python" | "javascript" | "cpp" | "java" => Ok(()),
         _ => Err(AppError::BadRequest("不支持的编程语言".to_owned())),
     }
 }
@@ -441,15 +651,27 @@ fn validate_mode(mode: &str) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{concurrency_key, rate_key, validate_language, validate_mode};
+    use super::{
+        concurrency_key, concurrency_ttl, normalize_page, rate_key, validate_language,
+        validate_mode,
+    };
 
     #[test]
-    fn python_and_javascript_are_supported() {
-        assert!(validate_language("python").is_ok());
-        assert!(validate_language("javascript").is_ok());
-        assert!(validate_language("cpp").is_err());
-        assert!(validate_language("java").is_err());
+    fn all_supported_languages_pass() {
+        for language in ["python", "javascript", "cpp", "java"] {
+            assert!(
+                validate_language(language).is_ok(),
+                "{language} should pass"
+            );
+        }
         assert!(validate_language("ruby").is_err());
+    }
+
+    #[test]
+    fn pagination_is_clamped() {
+        assert_eq!(normalize_page(None, None), (1, 20));
+        assert_eq!(normalize_page(Some(0), Some(0)), (1, 1));
+        assert_eq!(normalize_page(Some(3), Some(500)), (3, 50));
     }
 
     #[test]
@@ -463,5 +685,12 @@ mod tests {
     fn redis_keys_are_stable() {
         assert_eq!(concurrency_key(7), "theseus:run:concurrency:7");
         assert!(rate_key(7).starts_with("theseus:run:rate:7:"));
+    }
+
+    #[test]
+    fn lock_ttl_covers_queue_compile_and_case_budget() {
+        assert_eq!(concurrency_ttl(90, 60, 0), 90 + 60 + 10 + 2 + 30);
+        assert_eq!(concurrency_ttl(90, 60, 5), 90 + 60 + 10 + 10 + 30);
+        assert!(concurrency_ttl(30, 60, 10) > concurrency_ttl(30, 60, 1));
     }
 }

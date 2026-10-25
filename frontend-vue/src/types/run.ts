@@ -72,5 +72,24 @@ export interface RunDetail {
   cases: RunCase[]
 }
 
+export interface RunSummary {
+  id: number
+  problemId: number | null
+  problemTitle: string
+  language: string
+  mode: RunMode
+  status: RunStatus
+  casePassed: number
+  caseTotal: number
+  createdAt: string
+}
+
+export interface RunListResult {
+  total: number
+  page: number
+  size: number
+  runs: RunSummary[]
+}
+
 export const isTerminalRunStatus = (status: RunStatus): boolean =>
   status !== 'queued' && status !== 'compiling' && status !== 'running'

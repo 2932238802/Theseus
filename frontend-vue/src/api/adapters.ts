@@ -7,6 +7,7 @@ import type {
   ProblemStatus,
   Stats,
   Submission,
+  SubmissionCaseResult,
   SubmissionStatus,
   User,
 } from '../types/oj'
@@ -48,14 +49,26 @@ export interface BackendSubmission {
   problem_id: number
   problem_title: string
   language: string
-  code: string
+  code?: string
   status: string
   test_cases_passed: number
   total_test_cases: number
   runtime: number | null
   memory: number | null
   error_message: string | null
+  compile_output?: string | null
+  failed_case?: unknown
   submitted_at: string
+  finished_at?: string | null
+}
+
+export interface BackendSubmissionStatusPayload {
+  id: number
+  status: string
+  test_cases_passed: number
+  total_test_cases: number
+  error_message: string | null
+  updated_at: string
 }
 
 export interface BackendSubmissionList {
@@ -82,6 +95,7 @@ const STATUS_LABELS: Record<BackendSubmissionStatus, SubmissionStatus> = {
   memory_limit_exceeded: 'Memory Limit Exceeded',
   runtime_error: 'Runtime Error',
   compile_error: 'Compile Error',
+  internal_error: 'Internal Error',
 }
 
 const STATUS_MESSAGES: Record<BackendSubmissionStatus, string> = {
@@ -93,6 +107,7 @@ const STATUS_MESSAGES: Record<BackendSubmissionStatus, string> = {
   memory_limit_exceeded: '运行内存超过题目限制。',
   runtime_error: '程序运行时发生错误。',
   compile_error: '代码编译失败。',
+  internal_error: '评测服务出现异常，请稍后重试。',
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -109,6 +124,12 @@ const normalizeProblemStatus = (value: string | null): ProblemStatus =>
 
 export const normalizeSubmissionStatus = (value: string): BackendSubmissionStatus =>
   value in STATUS_LABELS ? (value as BackendSubmissionStatus) : 'runtime_error'
+
+export const submissionStatusLabel = (value: BackendSubmissionStatus): SubmissionStatus =>
+  STATUS_LABELS[value]
+
+export const submissionStatusMessage = (value: BackendSubmissionStatus): string =>
+  STATUS_MESSAGES[value]
 
 export const isTerminalStatus = (value: BackendSubmissionStatus): boolean =>
   value !== 'pending' && value !== 'judging'
@@ -197,6 +218,19 @@ export const mapProblem = (problem: BackendProblem): Problem => ({
   acceptCount: problem.accept_count,
 })
 
+const mapFailedCase = (value: unknown): SubmissionCaseResult | undefined => {
+  if (!isRecord(value)) return undefined
+  return {
+    index: typeof value.index === 'number' ? value.index : 0,
+    args: value.args,
+    expected: 'expected' in value ? value.expected : undefined,
+    actual: value.actual ?? null,
+    stdout: typeof value.stdout === 'string' ? value.stdout : '',
+    stderr: typeof value.stderr === 'string' ? value.stderr : '',
+    status: typeof value.status === 'string' ? value.status : 'failed',
+  }
+}
+
 export const mapSubmission = (submission: BackendSubmission): Submission => {
   const rawStatus = normalizeSubmissionStatus(submission.status)
   return {
@@ -204,7 +238,7 @@ export const mapSubmission = (submission: BackendSubmission): Submission => {
     problemId: submission.problem_id,
     problemTitle: submission.problem_title,
     language: normalizeLanguage(submission.language),
-    code: submission.code,
+    code: submission.code ?? '',
     status: STATUS_LABELS[rawStatus],
     rawStatus,
     testCasesPassed: submission.test_cases_passed,
@@ -212,6 +246,9 @@ export const mapSubmission = (submission: BackendSubmission): Submission => {
     runtime: formatRuntime(submission.runtime),
     memory: formatMemory(submission.memory),
     createdAt: submission.submitted_at,
+    finishedAt: submission.finished_at ?? undefined,
+    compileOutput: submission.compile_output ?? undefined,
+    failedCase: mapFailedCase(submission.failed_case),
     message: submission.error_message ?? STATUS_MESSAGES[rawStatus],
   }
 }

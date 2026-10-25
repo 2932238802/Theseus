@@ -13,11 +13,15 @@ use crate::{
         error::AppError,
         response::{created, ok},
     },
-    judge::run_config::{javascript_template, python_template, validate_run_config},
+    judge::run_config::{
+        cpp_template, java_template, javascript_template, python_template, validate_judge_cases,
+        validate_run_config,
+    },
     middleware::auth::{optional_authenticate, require_admin},
     models::problem::{
-        PendingProblemResponse, ProblemListQuery, ProblemListResponse, ProblemMutationResponse,
-        ProblemRequest, ProblemResponse, ProblemReviewRequest, ProblemRow, StatsResponse,
+        AdminProblemResponse, PendingProblemResponse, ProblemListQuery, ProblemListResponse,
+        ProblemMutationResponse, ProblemRequest, ProblemResponse, ProblemReviewRequest, ProblemRow,
+        StatsResponse,
     },
 };
 
@@ -146,12 +150,13 @@ pub async fn create(
 ) -> Result<impl IntoResponse, AppError> {
     let admin = require_admin(&headers, &state.config)?;
     validate_problem(&request)?;
-    let (run_config, code_template) = prepare_run_config(&request)?;
+    let (run_config, code_template, judge_cases) = prepare_problem_judging(&request)?;
     let id = insert_problem(
         &state.pool,
         &request,
         run_config,
         code_template,
+        judge_cases,
         Some(admin.id),
         "approved",
     )
@@ -169,12 +174,13 @@ pub async fn submit_custom(
 ) -> Result<impl IntoResponse, AppError> {
     let user = crate::middleware::auth::authenticate(&headers, &state.config)?;
     validate_problem(&request)?;
-    let (run_config, code_template) = prepare_run_config(&request)?;
+    let (run_config, code_template, judge_cases) = prepare_problem_judging(&request)?;
     let id = insert_problem(
         &state.pool,
         &request,
         run_config,
         code_template,
+        judge_cases,
         Some(user.id),
         "pending",
     )
@@ -183,6 +189,26 @@ pub async fn submit_custom(
         id,
         message: "题目已提交，等待管理员审核".to_owned(),
     }))
+}
+
+pub async fn admin_get(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    require_admin(&headers, &state.config)?;
+    if id <= 0 {
+        return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
+    }
+    let row = sqlx::query_as::<_, AdminProblemResponse>(
+        "SELECT id, title, description, difficulty, time_limit, memory_limit, tags, examples, test_cases, code_template, run_config, judge_cases, acceptance_rate, submit_count, accept_count, review_status FROM problems WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or_else(|| AppError::NotFound("题目不存在".to_owned()))?;
+    Ok(ok(row))
 }
 
 pub async fn pending(
@@ -241,9 +267,17 @@ pub async fn update(
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
     validate_problem(&request)?;
-    let (run_config, code_template) = prepare_run_config(&request)?;
+    let (run_config, code_template, judge_cases) = prepare_problem_judging(&request)?;
+    // Removing run_config also removes hidden cases: they cannot be judged
+    // without a function signature. When run_config is kept and judge_cases is
+    // omitted, COALESCE below preserves the stored cases.
+    let judge_cases_bind = if run_config.is_some() {
+        judge_cases
+    } else {
+        Some(Value::Null)
+    };
     let result = sqlx::query(
-        "UPDATE problems SET title = $1, description = $2, difficulty = $3, time_limit = $4, memory_limit = $5, tags = $6, examples = $7, test_cases = $8, code_template = $9, run_config = $10, updated_at = CURRENT_TIMESTAMP WHERE id = $11",
+        "UPDATE problems SET title = $1, description = $2, difficulty = $3, time_limit = $4, memory_limit = $5, tags = $6, examples = $7, test_cases = $8, code_template = $9, run_config = $10, judge_cases = COALESCE($11, judge_cases), updated_at = CURRENT_TIMESTAMP WHERE id = $12",
     )
     .bind(request.title.trim())
     .bind(request.description.trim())
@@ -255,6 +289,7 @@ pub async fn update(
     .bind(request.test_cases.unwrap_or_else(|| Value::Array(Vec::new())))
     .bind(code_template.unwrap_or_else(|| Value::Object(Default::default())))
     .bind(run_config)
+    .bind(judge_cases_bind)
     .bind(id)
     .execute(&state.pool)
     .await
@@ -392,11 +427,12 @@ async fn insert_problem(
     request: &ProblemRequest,
     run_config: Option<Value>,
     code_template: Option<Value>,
+    judge_cases: Option<Value>,
     created_by: Option<i32>,
     review_status: &str,
 ) -> Result<i32, AppError> {
     sqlx::query_scalar(
-        "INSERT INTO problems (title, description, difficulty, time_limit, memory_limit, tags, examples, test_cases, code_template, run_config, created_by, review_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id",
+        "INSERT INTO problems (title, description, difficulty, time_limit, memory_limit, tags, examples, test_cases, code_template, run_config, judge_cases, created_by, review_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id",
     )
     .bind(request.title.trim())
     .bind(request.description.trim())
@@ -408,6 +444,7 @@ async fn insert_problem(
     .bind(request.test_cases.clone().unwrap_or_else(|| Value::Array(Vec::new())))
     .bind(code_template.unwrap_or_else(|| Value::Object(Default::default())))
     .bind(run_config)
+    .bind(judge_cases)
     .bind(created_by)
     .bind(review_status)
     .fetch_one(pool)
@@ -415,13 +452,34 @@ async fn insert_problem(
     .map_err(AppError::Database)
 }
 
-fn prepare_run_config(
-    request: &ProblemRequest,
-) -> Result<(Option<Value>, Option<Value>), AppError> {
+type PreparedJudging = (Option<Value>, Option<Value>, Option<Value>);
+
+fn prepare_problem_judging(request: &ProblemRequest) -> Result<PreparedJudging, AppError> {
     let Some(run_config) = request.run_config.as_ref().filter(|value| !value.is_null()) else {
-        return Ok((None, request.code_template.clone()));
+        if request
+            .judge_cases
+            .as_ref()
+            .and_then(Value::as_array)
+            .is_some_and(|cases| !cases.is_empty())
+        {
+            return Err(AppError::BadRequest(
+                "配置 judge_cases 前需要先配置 run_config".to_owned(),
+            ));
+        }
+        return Ok((None, request.code_template.clone(), None));
     };
     let config = validate_run_config(run_config)?;
+    let judge_cases = match request
+        .judge_cases
+        .as_ref()
+        .filter(|value| !value.is_null())
+    {
+        Some(value) => {
+            validate_judge_cases(&config, value)?;
+            Some(value.clone())
+        }
+        None => None,
+    };
     let mut template = match &request.code_template {
         Some(Value::Object(object)) => object.clone(),
         _ => serde_json::Map::new(),
@@ -431,7 +489,13 @@ fn prepare_run_config(
         "javascript".to_owned(),
         Value::String(javascript_template(&config)),
     );
-    Ok((Some(run_config.clone()), Some(Value::Object(template))))
+    template.insert("cpp".to_owned(), Value::String(cpp_template(&config)));
+    template.insert("java".to_owned(), Value::String(java_template(&config)));
+    Ok((
+        Some(run_config.clone()),
+        Some(Value::Object(template)),
+        judge_cases,
+    ))
 }
 
 fn parse_sort(
@@ -489,9 +553,13 @@ fn validate_problem(request: &ProblemRequest) -> Result<(), AppError> {
             .test_cases
             .as_ref()
             .is_some_and(|value| !value.is_array())
+        || request
+            .judge_cases
+            .as_ref()
+            .is_some_and(|value| !value.is_array() && !value.is_null())
     {
         return Err(AppError::BadRequest(
-            "examples 和 test_cases 必须是 JSON 数组".to_owned(),
+            "examples、test_cases 和 judge_cases 必须是 JSON 数组".to_owned(),
         ));
     }
     if request.time_limit.unwrap_or(1000) <= 0 || request.memory_limit.unwrap_or(256) <= 0 {
@@ -519,6 +587,7 @@ mod tests {
             test_cases: None,
             code_template: None,
             run_config: None,
+            judge_cases: None,
         };
         assert!(validate_problem(&request).is_err());
     }

@@ -14,6 +14,7 @@ export type BackendSubmissionStatus =
   | 'memory_limit_exceeded'
   | 'runtime_error'
   | 'compile_error'
+  | 'internal_error'
 
 export type SubmissionStatus =
   | 'Accepted'
@@ -23,6 +24,7 @@ export type SubmissionStatus =
   | 'Time Limit Exceeded'
   | 'Memory Limit Exceeded'
   | 'Compile Error'
+  | 'Internal Error'
 
 export interface User {
   id: number
@@ -55,6 +57,16 @@ export interface Problem {
   acceptCount: number
 }
 
+export interface SubmissionCaseResult {
+  index: number
+  args: unknown
+  expected?: unknown
+  actual: unknown
+  stdout: string
+  stderr: string
+  status: string
+}
+
 export interface Submission {
   id: number
   problemId: number
@@ -68,6 +80,9 @@ export interface Submission {
   runtime?: string
   memory?: string
   createdAt: string
+  finishedAt?: string
+  compileOutput?: string
+  failedCase?: SubmissionCaseResult
   message?: string
 }
 

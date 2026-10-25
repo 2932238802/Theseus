@@ -3,7 +3,7 @@
 
 INSERT INTO problems (
     id, title, description, difficulty, time_limit, memory_limit, tags,
-    examples, test_cases, code_template, run_config, review_status
+    examples, test_cases, code_template, run_config, judge_cases, review_status
 ) VALUES
 (
     1001,
@@ -43,6 +43,11 @@ INSERT INTO problems (
             {"args": [[3, 3], 6], "expected": [0, 1]}
         ]
     }$json$::jsonb,
+    $json$[
+        {"args": [[1, 2], 3], "expected": [0, 1]},
+        {"args": [[0, 4, 3, 0], 0], "expected": [0, 3]},
+        {"args": [[-1, -2, -3, -4, -5], -8], "expected": [2, 4]}
+    ]$json$::jsonb,
     'approved'
 ),
 (
@@ -68,7 +73,25 @@ INSERT INTO problems (
         "cpp": "#include <string>\nusing namespace std;\n\nclass Solution {\npublic:\n    int lengthOfLongestSubstring(string s) {\n        \n    }\n};\n",
         "java": "class Solution {\n    public int lengthOfLongestSubstring(String s) {\n        \n    }\n}\n"
     }$json$::jsonb,
-    NULL,
+    $json${
+        "version": 1,
+        "function_name": "lengthOfLongestSubstring",
+        "params": [
+            {"name": "s", "type": "string"}
+        ],
+        "return_type": "int",
+        "compare": {"mode": "exact"},
+        "public_cases": [
+            {"args": ["abcabcbb"], "expected": 3},
+            {"args": ["bbbbb"], "expected": 1},
+            {"args": ["pwwkew"], "expected": 3}
+        ]
+    }$json$::jsonb,
+    $json$[
+        {"args": ["dvdf"], "expected": 3},
+        {"args": ["abba"], "expected": 2},
+        {"args": [""], "expected": 0}
+    ]$json$::jsonb,
     'approved'
 ),
 (
@@ -94,6 +117,7 @@ INSERT INTO problems (
         "java": "class Solution {\n    public double findMedianSortedArrays(int[] nums1, int[] nums2) {\n        \n    }\n}\n"
     }$json$::jsonb,
     NULL,
+    NULL,
     'approved'
 )
 ON CONFLICT (id) DO UPDATE SET
@@ -107,6 +131,7 @@ ON CONFLICT (id) DO UPDATE SET
     test_cases = EXCLUDED.test_cases,
     code_template = EXCLUDED.code_template,
     run_config = EXCLUDED.run_config,
+    judge_cases = EXCLUDED.judge_cases,
     review_status = EXCLUDED.review_status,
     updated_at = CURRENT_TIMESTAMP;
 

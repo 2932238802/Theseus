@@ -16,8 +16,27 @@ pub struct Config {
     pub run_worker_concurrency: usize,
     pub run_image_python: String,
     pub run_image_node: String,
+    pub run_image_cpp: String,
+    pub run_image_java: String,
     pub run_sandbox_runtime: String,
     pub run_sandbox_allow_runc: bool,
+    pub run_dead_stream: String,
+    pub run_max_deliveries: u32,
+    pub run_claim_interval_secs: u64,
+    pub run_compile_timeout_secs: u64,
+    pub run_compile_memory_mb: u32,
+    pub run_queue_timeout_secs: u64,
+    pub run_stale_timeout_secs: u64,
+    pub run_reaper_interval_secs: u64,
+    pub submit_judge_enabled: bool,
+    pub submit_stream: String,
+    pub submit_consumer_group: String,
+    pub submit_dead_stream: String,
+    pub submit_max_deliveries: u32,
+    pub submit_queue_timeout_secs: u64,
+    pub submit_stale_timeout_secs: u64,
+    pub submit_run_timeout_secs: u64,
+    pub submit_max_cases: usize,
 }
 
 impl Config {
@@ -56,9 +75,82 @@ impl Config {
             env::var("RUN_IMAGE_PYTHON").unwrap_or_else(|_| "python:3.12-slim".to_owned());
         let run_image_node =
             env::var("RUN_IMAGE_NODE").unwrap_or_else(|_| "node:22-slim".to_owned());
+        let run_image_cpp =
+            env::var("RUN_IMAGE_CPP").unwrap_or_else(|_| "theseus/runner-cpp:dev".to_owned());
+        let run_image_java =
+            env::var("RUN_IMAGE_JAVA").unwrap_or_else(|_| "theseus/runner-java:dev".to_owned());
         let run_sandbox_runtime =
             env::var("RUN_SANDBOX_RUNTIME").unwrap_or_else(|_| "runsc".to_owned());
         let run_sandbox_allow_runc = env_bool("RUN_SANDBOX_ALLOW_RUNC", false)?;
+        let run_dead_stream =
+            env::var("RUN_DEAD_STREAM").unwrap_or_else(|_| "theseus:judge:runs:dead".to_owned());
+        let run_max_deliveries = env::var("RUN_MAX_DELIVERIES")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(3)
+            .max(1);
+        let run_claim_interval_secs = env::var("RUN_CLAIM_INTERVAL_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(30)
+            .max(5);
+        let run_compile_timeout_secs = env::var("RUN_COMPILE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(60)
+            .max(10);
+        let run_compile_memory_mb = env::var("RUN_COMPILE_MEMORY_MB")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(1024)
+            .max(256);
+        let run_queue_timeout_secs = env::var("RUN_QUEUE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(90)
+            .max(30);
+        let run_stale_timeout_secs = env::var("RUN_STALE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(300)
+            .max(run_queue_timeout_secs);
+        let run_reaper_interval_secs = env::var("RUN_REAPER_INTERVAL_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(30)
+            .max(5);
+        let submit_judge_enabled = env_bool("SUBMIT_JUDGE_ENABLED", false)?;
+        let submit_stream =
+            env::var("SUBMIT_STREAM").unwrap_or_else(|_| "theseus:judge:submissions".to_owned());
+        let submit_consumer_group =
+            env::var("SUBMIT_CONSUMER_GROUP").unwrap_or_else(|_| "judge-submit-workers".to_owned());
+        let submit_dead_stream = env::var("SUBMIT_DEAD_STREAM")
+            .unwrap_or_else(|_| "theseus:judge:submissions:dead".to_owned());
+        let submit_max_deliveries = env::var("SUBMIT_MAX_DELIVERIES")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(3)
+            .max(1);
+        let submit_queue_timeout_secs = env::var("SUBMIT_QUEUE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(90)
+            .max(30);
+        let submit_stale_timeout_secs = env::var("SUBMIT_STALE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(300)
+            .max(submit_queue_timeout_secs);
+        let submit_run_timeout_secs = env::var("SUBMIT_RUN_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(60)
+            .max(5);
+        let submit_max_cases = env::var("SUBMIT_MAX_CASES")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(50)
+            .max(1);
         if run_sandbox_runtime != "runsc" && !run_sandbox_allow_runc {
             return Err(AppError::Internal(
                 "RUN_SANDBOX_RUNTIME 必须为 runsc；本地开发需显式设置 RUN_SANDBOX_ALLOW_RUNC=true"
@@ -78,8 +170,27 @@ impl Config {
             run_worker_concurrency,
             run_image_python,
             run_image_node,
+            run_image_cpp,
+            run_image_java,
             run_sandbox_runtime,
             run_sandbox_allow_runc,
+            run_dead_stream,
+            run_max_deliveries,
+            run_claim_interval_secs,
+            run_compile_timeout_secs,
+            run_compile_memory_mb,
+            run_queue_timeout_secs,
+            run_stale_timeout_secs,
+            run_reaper_interval_secs,
+            submit_judge_enabled,
+            submit_stream,
+            submit_consumer_group,
+            submit_dead_stream,
+            submit_max_deliveries,
+            submit_queue_timeout_secs,
+            submit_stale_timeout_secs,
+            submit_run_timeout_secs,
+            submit_max_cases,
         })
     }
 }

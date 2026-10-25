@@ -16,14 +16,14 @@ use sqlx::PgPool;
 
 use crate::{
     config::Config,
-    services::{judge_service::JudgeService, run_service::RunService},
+    services::{run_service::RunService, submission_service::SubmissionService},
 };
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub config: Arc<Config>,
-    pub judge_service: JudgeService,
+    pub submission_service: SubmissionService,
     pub run_service: RunService,
 }
 
@@ -32,7 +32,7 @@ impl AppState {
         let config = Arc::new(config);
         Self {
             pool,
-            judge_service: JudgeService,
+            submission_service: SubmissionService::new(config.clone(), redis.clone()),
             run_service: RunService::new(config.clone(), redis),
             config,
         }

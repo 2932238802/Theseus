@@ -59,6 +59,12 @@ impl IntoResponse for AppError {
                 tracing::error!(error = ?error, "database request failed");
                 "数据库服务暂不可用".to_owned()
             }
+            Self::Internal(detail) => {
+                // Keep the client-facing message generic, but never lose the
+                // actual cause on the server side.
+                tracing::error!(error = %detail, "internal server error");
+                "内部服务错误".to_owned()
+            }
             _ => self.to_string(),
         };
         let mut response = (status, Json(ApiResponse::<()>::error(message))).into_response();

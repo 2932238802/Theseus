@@ -78,3 +78,6 @@ frontend-vue/node_modules/
 frontend-vue/dist/
 frontend-vue/.env
 frontend-vue/.env.local
+
+# Local dev logs (dev.sh)
+.dev-logs/
