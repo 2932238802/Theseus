@@ -108,6 +108,31 @@ psql "$DATABASE_URL" -f scripts/clean_dev.sql  # 清理
 
 自定义题目使用 `POST /api/problems/custom` 提交，初始状态为 `pending`。管理员可通过 `GET /api/admin/problems/pending` 查看待审题目，并用 `PUT /api/admin/problems/:id/review` 携带 `{ "status": "approved" }` 或 `{ "status": "rejected" }` 完成审核。
 
+## 冒烟测试
+
+`scripts/smoke_submission.sh` 对真实运行的 API + judge_worker + PostgreSQL + Redis + Docker 沙箱执行一遍「注册 → 提交 → 排队 → 评测 → 终态 → 计数」链路，覆盖 AC / WA / CE / TLE / RE、首错裁剪、隐藏用例不泄露、权限隔离、重复投递幂等与计数一致性。
+
+前置条件：
+
+1. 已启动 API 与 judge_worker（`SUBMIT_JUDGE_ENABLED=true`），并构建 Python/C++ 运行镜像；
+2. 已执行 `psql "$DATABASE_URL" -f scripts/seed_dev.sql`（题 1001 需 3 条公开 + 3 条隐藏用例）；
+3. 已安装 `bash >= 4.2`、`curl`、`jq`、`psql`、`redis-cli`。
+
+```bash
+# 在仓库根目录运行
+./backend-rust/scripts/smoke_submission.sh
+
+# 常用选项
+SMOKE_KEEP_DATA=1 ./backend-rust/scripts/smoke_submission.sh        # 保留测试账号与提交
+SMOKE_SKIP_CPP=1 ./backend-rust/scripts/smoke_submission.sh         # 跳过 C++ 编译错误用例
+SMOKE_RESTORE_COUNTERS=1 ./backend-rust/scripts/smoke_submission.sh # 回滚题目计数（需无并发提交）
+SMOKE_VERBOSE=1 ./backend-rust/scripts/smoke_submission.sh          # 打印每次 HTTP 请求
+```
+
+退出码：`0` 全部通过（可含 SKIP）；`1` 存在断言失败；`2` 前置条件不满足（工具、种子、Worker 心跳、开关）；`3` API/PostgreSQL/Redis 不可达。
+
+每次运行会在 `.dev-logs/` 生成 `smoke-submission-<UTC>.log` 与同名 `.json` 报告。报告只记录 `user_id`、`submission_id`、状态与耗时，不写入 token、密码、源码、隐藏用例或数据库连接串。默认会删除测试账号及其级联数据；`SMOKE_KEEP_DATA=1` 时保留并打印清理 SQL。
+
 ## 检查
 
 ```bash
