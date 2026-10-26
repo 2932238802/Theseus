@@ -11,7 +11,7 @@ use crate::{
         error::AppError,
         response::{created, ok},
     },
-    middleware::auth::{authenticate, optional_authenticate},
+    middleware::auth::{authenticate, optional_authenticate, require_verified_email},
     models::forum::{
         CreateCommentRequest, CreatePostRequest, CreateReportRequest, ForumCommentListQuery,
         ForumPostListQuery, ForumReplyListQuery, UpdateCommentRequest, UpdatePostRequest,
@@ -46,6 +46,7 @@ pub async fn create_post(
     Json(request): Json<CreatePostRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let user = authenticate(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
     let data = forum_service::create_post(&state.pool, &state.config, &user, &request).await?;
     Ok(created(data))
 }
@@ -131,6 +132,7 @@ pub async fn create_comment(
     Json(request): Json<CreateCommentRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let user = authenticate(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
     let data =
         forum_service::create_comment(&state.pool, &state.config, &user, id, &request).await?;
     Ok(created(data))

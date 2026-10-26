@@ -10,6 +10,9 @@ pub struct User {
     #[serde(skip_serializing)]
     pub password_hash: String,
     pub role: String,
+    pub email_verified_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing)]
+    pub token_version: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -20,6 +23,7 @@ pub struct PublicUser {
     pub username: String,
     pub email: String,
     pub role: String,
+    pub email_verified: bool,
 }
 
 impl From<&User> for PublicUser {
@@ -29,6 +33,7 @@ impl From<&User> for PublicUser {
             username: user.username.clone(),
             email: user.email.clone(),
             role: user.role.clone(),
+            email_verified: user.email_verified_at.is_some(),
         }
     }
 }
@@ -55,4 +60,31 @@ pub struct RegisterResponse {
 pub struct LoginResponse {
     pub token: String,
     pub user: PublicUser,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VerifyEmailRequest {
+    pub token: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgotPasswordRequest {
+    pub email: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuthMessageResponse {
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResendVerificationResponse {
+    pub message: String,
+    pub email: String,
 }

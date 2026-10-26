@@ -42,9 +42,13 @@ cargo run
 
 ## API
 
-- `POST /api/auth/register` 注册
+- `POST /api/auth/register` 注册并排队发送验证邮件
 - `POST /api/auth/login` 登录并获取 JWT
-- `GET /api/auth/me` 读取当前账号与角色（每次从数据库读取）
+- `GET /api/auth/me` 读取当前账号、角色与邮箱验证状态（每次从数据库读取）
+- `POST /api/auth/verify-email` 使用一次性令牌验证邮箱
+- `POST /api/auth/verify-email/resend` 重新发送验证邮件（需登录，60 秒冷却）
+- `POST /api/auth/forgot-password` 请求密码重置邮件；无论邮箱是否存在都返回相同文案
+- `POST /api/auth/reset-password` 使用一次性令牌重置密码；成功后旧 JWT 全部失效
 - `GET /api/problems` 分页获取题目，可按 `difficulty`、`tag`、`status`、`search` 筛选，并通过白名单 `sort=id|difficulty|acceptance_rate`、`order=asc|desc` 排序
 - `GET /api/problems/tags` 获取已审核题目的去重标签
 - `GET /api/problems/:id` 获取题目详情
@@ -65,6 +69,11 @@ cargo run
 - `PUT /api/admin/problems/:id` 管理员更新题目
 - `DELETE /api/admin/problems/:id` 管理员删除题目
 - `POST /api/problems/custom` 教师提交自定义题目，初始状态为 `pending`
+- `GET /api/problems/mine` 教师查看自己创建的题目，可按 `status` 筛选
+- `GET /api/problems/mine/:id` 教师查看自己的题目详情
+- `PUT /api/problems/mine/:id` 教师修改被退回的题目并重新提交审核
+- `GET /api/admin/problems` 管理员分页查看题目，可按 `status`、`q` 筛选
+- `GET /api/admin/problems/:id` 管理员查看题目完整配置
 
 ### 角色相关行为
 
@@ -73,6 +82,32 @@ cargo run
 - 管理员访问 `/api/classes/*`、`/api/assignments/*`、教学提交/成绩接口统一返回 403；管理员不能查看其他人的提交，包括练习提交。
 - 教师不能加入班级、不能提交班级作业；学生不能创建班级、不能批改。
 - 4 人匹配只允许 `student`；教师和管理员只能使用题库练习。
+
+### 邮箱验证与密码找回
+
+- 新注册账号的 `email_verified_at` 为空；迁移前的已有账号会自动标记为已验证。
+- 未验证账号**可以登录、刷题和查看通知**，但加入班级、提交班级作业、发帖和评论会返回 403，提示先验证邮箱。
+- 验证与重置令牌都是 32 字节随机值，数据库只保存 SHA-256；令牌一次性使用并带过期时间。
+- 重置密码会把 `users.token_version` 加一，旧 JWT 立即失效，需要重新登录；重置链接同时被视为邮箱所有权证明，会把未验证账号标记为已验证。
+- 找回密码对不存在的邮箱也返回同一句通用文案，避免枚举账号。
+- 注册、重发验证和找回密码只向 `email_outbox` 入队；API 进程内的 dispatcher 负责投递，SMTP 延迟不会阻塞请求。
+- `EMAIL_MODE=log` 会把邮件正文（含一次性链接）写入服务端日志，**仅用于本地开发**；生产必须使用 `smtp`。
+
+| 变量 | 默认值 | 说明 |
+|---|---:|---|
+| `FRONTEND_BASE_URL` | `http://localhost:5173` | 生成验证/重置链接的前端地址 |
+| `EMAIL_MODE` | `log` | `log` 只写日志；`smtp` 投递到 SMTP |
+| `EMAIL_FROM` | `Theseus <no-reply@theseus.local>` | 发件人 |
+| `EMAIL_SMTP_HOST` | `127.0.0.1` | SMTP 主机；本地 Mailpit 用 `127.0.0.1` |
+| `EMAIL_SMTP_PORT` | `1025` | SMTP 端口 |
+| `EMAIL_SMTP_USERNAME` | 空 | 可选 SMTP 用户名 |
+| `EMAIL_SMTP_PASSWORD` | 空 | 可选 SMTP 密码 |
+| `EMAIL_SMTP_TLS` | `false` | 本地 Mailpit 关闭；生产按服务商开启 |
+| `EMAIL_VERIFY_TTL_HOURS` | `24` | 验证链接有效期 |
+| `PASSWORD_RESET_TTL_MINUTES` | `30` | 重置链接有效期 |
+| `EMAIL_DISPATCH_INTERVAL_SECS` | `5` | dispatcher 轮询间隔 |
+
+投递失败会按 30 秒递增退避重试，最多 5 次，之后标记为 `failed` 并保留 `last_error`。
 
 ### 教学接口
 
@@ -225,6 +260,46 @@ SMOKE_VERBOSE=1 ./backend-rust/scripts/smoke_teaching.sh      # 打印每次 HTT
 
 脚本只提升/降级自己注册的一次性账号，不修改真实账号；报告不写入 token、密码、提交代码或数据库连接串。默认清理测试账号、其班级、作业和提交；`SMOKE_KEEP_DATA=1` 时保留并打印清理 SQL。
 
+### 教师出题与题目审核
+
+`scripts/smoke_problem_review.sh` 对真实运行的 API + PostgreSQL 执行一遍题目生命周期：教师提交待审核题目 → 教师自审被拒 → 管理员列表/详情 → 退回必须填写原因 → 教师收到通知 → 编辑重提并清空意见 → 审核通过并公开 → 重复审核拒绝 → 空用例题目不能通过 → 清理。
+
+前置条件：
+
+1. 已应用 `migrations/0006_problem_review.sql`；
+2. 已启动 API；
+3. 已安装 `bash >= 4.2`、`curl`、`jq`、`psql`。
+
+```bash
+# 在仓库根目录运行
+./backend-rust/scripts/smoke_problem_review.sh
+
+SMOKE_KEEP_DATA=1 ./backend-rust/scripts/smoke_problem_review.sh   # 保留测试账号与题目
+SMOKE_VERBOSE=1 ./backend-rust/scripts/smoke_problem_review.sh      # 打印每次 HTTP 请求
+```
+
+脚本只使用随机一次性账号，报告不写入 token、密码、隐藏用例或数据库连接串。默认清理测试账号及其创建的题目；`SMOKE_KEEP_DATA=1` 时保留并打印清理 SQL。
+
+### 邮箱验证与密码找回
+
+`scripts/smoke_auth_email.sh` 对真实运行的 API + PostgreSQL 执行：注册 → 未验证仍可登录 → 加入班级/交作业/发帖被拦 → 重发冷却 → 读取 outbox 验证邮箱 → 重复验证拒绝 → 找回密码 → 重置密码 → 旧 JWT/旧密码失效 → 新密码登录 → 清理。
+
+前置条件：
+
+1. 已应用 `migrations/0007_auth_email.sql`；
+2. 已启动 API；
+3. 已安装 `bash >= 4.2`、`curl`、`jq`、`psql`。
+
+```bash
+# 在仓库根目录运行
+./backend-rust/scripts/smoke_auth_email.sh
+
+SMOKE_KEEP_DATA=1 ./backend-rust/scripts/smoke_auth_email.sh   # 保留测试账号
+SMOKE_VERBOSE=1 ./backend-rust/scripts/smoke_auth_email.sh      # 打印每次 HTTP 请求
+```
+
+脚本从 `email_outbox` 读取一次性令牌，但不会打印令牌、密码或邮件正文。默认清理测试账号与对应 outbox；`SMOKE_KEEP_DATA=1` 时保留。
+
 
 ## 检查
 
@@ -232,4 +307,9 @@ SMOKE_VERBOSE=1 ./backend-rust/scripts/smoke_teaching.sh      # 打印每次 HTT
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
+
+# 前端
+cd ../frontend-vue && npm run build
 ```
+
+数据库迁移和真实 API 链路用 `scripts/` 下的冒烟脚本验证。

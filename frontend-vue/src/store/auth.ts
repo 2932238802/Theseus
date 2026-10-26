@@ -23,6 +23,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isStudent = computed(() => role.value === 'student')
   const isTeacher = computed(() => role.value === 'teacher')
   const isAdmin = computed(() => role.value === 'admin')
+  const isEmailVerified = computed(() => user.value?.emailVerified === true)
 
   const applySession = (nextToken: string, nextUser: User, remember: boolean): void => {
     token.value = nextToken
@@ -91,6 +92,7 @@ export const useAuthStore = defineStore('auth', () => {
     isStudent,
     isTeacher,
     isAdmin,
+    isEmailVerified,
     login,
     register,
     logout,

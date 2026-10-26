@@ -98,6 +98,70 @@ pub struct AdminProblemResponse {
     pub submit_count: i32,
     pub accept_count: i32,
     pub review_status: String,
+    pub review_note: Option<String>,
+    pub created_by: Option<i32>,
+    pub created_by_username: Option<String>,
+    pub reviewed_by: Option<i32>,
+    pub reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct AdminProblemListQuery {
+    pub page: Option<u32>,
+    pub size: Option<u32>,
+    pub status: Option<String>,
+    pub q: Option<String>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct AdminProblemListItem {
+    pub id: i32,
+    pub title: String,
+    pub difficulty: String,
+    pub created_by: Option<i32>,
+    pub created_by_username: Option<String>,
+    pub review_status: String,
+    pub review_note: Option<String>,
+    pub reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminProblemListResponse {
+    pub total: i64,
+    pub page: u32,
+    pub size: u32,
+    pub problems: Vec<AdminProblemListItem>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct MyProblemListQuery {
+    pub page: Option<u32>,
+    pub size: Option<u32>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct MyProblemListItem {
+    pub id: i32,
+    pub title: String,
+    pub difficulty: String,
+    pub review_status: String,
+    pub review_note: Option<String>,
+    pub reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MyProblemListResponse {
+    pub total: i64,
+    pub page: u32,
+    pub size: u32,
+    pub problems: Vec<MyProblemListItem>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -136,6 +200,7 @@ pub struct ProblemMutationResponse {
 #[derive(Debug, Deserialize)]
 pub struct ProblemReviewRequest {
     pub status: String,
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

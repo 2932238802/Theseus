@@ -19,6 +19,7 @@ export interface BackendUser {
   username: string
   email: string
   role: string
+  email_verified: boolean
 }
 
 export interface BackendProblem {
@@ -152,7 +153,7 @@ export const submissionStatusMessage = (value: BackendSubmissionStatus): string 
 export const isTerminalStatus = (value: BackendSubmissionStatus): boolean =>
   value !== 'pending' && value !== 'judging'
 
-const mapExamples = (value: unknown): ProblemExample[] => {
+export const mapExamples = (value: unknown): ProblemExample[] => {
   if (!Array.isArray(value)) return []
   return value.filter(isRecord).map((example) => ({
     input: typeof example.input === 'string' ? example.input : String(example.input ?? ''),
@@ -161,7 +162,7 @@ const mapExamples = (value: unknown): ProblemExample[] => {
   }))
 }
 
-const mapCodeTemplate = (value: unknown): Partial<Record<Language, string>> => {
+export const mapCodeTemplate = (value: unknown): Partial<Record<Language, string>> => {
   if (!isRecord(value)) return {}
   const template: Partial<Record<Language, string>> = {}
   for (const language of LANGUAGES) {
@@ -217,6 +218,7 @@ export const mapUser = (user: BackendUser): User => ({
   email: user.email,
   role: user.role,
   avatar: user.username.slice(0, 1).toUpperCase(),
+  emailVerified: user.email_verified === true,
 })
 
 export const mapProblem = (problem: BackendProblem): Problem => ({

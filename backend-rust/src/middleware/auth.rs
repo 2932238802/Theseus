@@ -11,6 +11,7 @@ use crate::{
 pub struct AuthUser {
     pub id: i32,
     pub role: String,
+    pub email_verified: bool,
 }
 
 impl AuthUser {
@@ -36,14 +37,23 @@ pub async fn authenticate(
     config: &Config,
 ) -> Result<AuthUser, AppError> {
     let token = bearer_token(headers).ok_or(AppError::Unauthorized)?;
-    let Claims { sub, .. } = decode_token(token, &config.jwt_secret)?;
-    let role: Option<String> = sqlx::query_scalar("SELECT role FROM users WHERE id = $1")
-        .bind(sub)
-        .fetch_optional(pool)
-        .await
-        .map_err(AppError::Database)?;
-    role.map(|role| AuthUser { id: sub, role })
-        .ok_or(AppError::Unauthorized)
+    let Claims { sub, ver, .. } = decode_token(token, &config.jwt_secret)?;
+    let row: Option<(String, bool, i32)> = sqlx::query_as(
+        "SELECT role, email_verified_at IS NOT NULL, token_version FROM users WHERE id = $1",
+    )
+    .bind(sub)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+    let (role, email_verified, token_version) = row.ok_or(AppError::Unauthorized)?;
+    if ver != token_version {
+        return Err(AppError::Unauthorized);
+    }
+    Ok(AuthUser {
+        id: sub,
+        role,
+        email_verified,
+    })
 }
 
 pub async fn optional_authenticate(
@@ -97,6 +107,18 @@ pub async fn require_teacher(
     }
 }
 
+/// Login and practice stay available, but teaching participation and public
+/// posting require a verified email.
+pub fn require_verified_email(user: &AuthUser) -> Result<(), AppError> {
+    if user.email_verified {
+        Ok(())
+    } else {
+        Err(AppError::ForbiddenWith(
+            "请先验证邮箱后再加入班级、提交作业或发帖".to_owned(),
+        ))
+    }
+}
+
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
     headers
         .get(axum::http::header::AUTHORIZATION)
@@ -126,14 +148,17 @@ mod tests {
         let student = AuthUser {
             id: 1,
             role: "student".to_owned(),
+            email_verified: true,
         };
         let teacher = AuthUser {
             id: 2,
             role: "teacher".to_owned(),
+            email_verified: true,
         };
         let admin = AuthUser {
             id: 3,
             role: "admin".to_owned(),
+            email_verified: true,
         };
         assert!(student.is_student() && !student.is_teacher() && !student.is_admin());
         assert!(!teacher.is_student() && teacher.is_teacher() && !teacher.is_admin());

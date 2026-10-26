@@ -11,7 +11,7 @@ use crate::{
         error::AppError,
         response::{created, ok},
     },
-    middleware::auth::{authenticate, require_student, require_teacher},
+    middleware::auth::{authenticate, require_student, require_teacher, require_verified_email},
     models::teaching::{
         AddClassMemberRequest, CreateClassRequest, JoinClassRequest, UpdateClassRequest,
     },
@@ -64,6 +64,7 @@ pub async fn join(
     Json(request): Json<JoinClassRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let user = require_student(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
     let data = class_service::join_class(&state.pool, &user, &request).await?;
     Ok(ok(data))
 }

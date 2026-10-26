@@ -7,6 +7,17 @@ pub struct Config {
     pub database_url: String,
     pub jwt_secret: String,
     pub jwt_expiration_hours: i64,
+    pub frontend_base_url: String,
+    pub email_mode: String,
+    pub email_from: String,
+    pub email_smtp_host: String,
+    pub email_smtp_port: u16,
+    pub email_smtp_username: Option<String>,
+    pub email_smtp_password: Option<String>,
+    pub email_smtp_tls: bool,
+    pub email_verify_ttl_hours: i64,
+    pub password_reset_ttl_minutes: i64,
+    pub email_dispatch_interval_secs: u64,
     pub bind_address: SocketAddr,
     pub redis_url: String,
     pub run_code_enabled: bool,
@@ -63,6 +74,64 @@ impl Config {
                 "JWT_EXPIRATION_HOURS 必须大于 0".to_owned(),
             ));
         }
+        let frontend_base_url = env::var("FRONTEND_BASE_URL")
+            .unwrap_or_else(|_| "http://localhost:5173".to_owned())
+            .trim_end_matches('/')
+            .to_owned();
+        if frontend_base_url.is_empty() {
+            return Err(AppError::Internal("FRONTEND_BASE_URL 不能为空".to_owned()));
+        }
+        let email_mode = env::var("EMAIL_MODE")
+            .unwrap_or_else(|_| "log".to_owned())
+            .trim()
+            .to_ascii_lowercase();
+        if !matches!(email_mode.as_str(), "log" | "smtp") {
+            return Err(AppError::Internal(
+                "EMAIL_MODE 必须是 log 或 smtp".to_owned(),
+            ));
+        }
+        let email_from = env::var("EMAIL_FROM")
+            .unwrap_or_else(|_| "Theseus <no-reply@theseus.local>".to_owned());
+        let email_smtp_host =
+            env::var("EMAIL_SMTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_owned());
+        let email_smtp_port = env::var("EMAIL_SMTP_PORT")
+            .ok()
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(1025);
+        if email_smtp_port == 0 {
+            return Err(AppError::Internal("EMAIL_SMTP_PORT 必须大于 0".to_owned()));
+        }
+        let email_smtp_username = env::var("EMAIL_SMTP_USERNAME")
+            .ok()
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
+        let email_smtp_password = env::var("EMAIL_SMTP_PASSWORD")
+            .ok()
+            .filter(|value| !value.is_empty());
+        let email_smtp_tls = env_bool("EMAIL_SMTP_TLS", false)?;
+        let email_verify_ttl_hours = env::var("EMAIL_VERIFY_TTL_HOURS")
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(24);
+        if email_verify_ttl_hours <= 0 {
+            return Err(AppError::Internal(
+                "EMAIL_VERIFY_TTL_HOURS 必须大于 0".to_owned(),
+            ));
+        }
+        let password_reset_ttl_minutes = env::var("PASSWORD_RESET_TTL_MINUTES")
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(30);
+        if password_reset_ttl_minutes <= 0 {
+            return Err(AppError::Internal(
+                "PASSWORD_RESET_TTL_MINUTES 必须大于 0".to_owned(),
+            ));
+        }
+        let email_dispatch_interval_secs = env::var("EMAIL_DISPATCH_INTERVAL_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(5)
+            .max(1);
         let bind_address = env::var("BIND_ADDRESS")
             .unwrap_or_else(|_| "127.0.0.1:3000".to_owned())
             .parse()
@@ -203,6 +272,17 @@ impl Config {
             database_url,
             jwt_secret,
             jwt_expiration_hours,
+            frontend_base_url,
+            email_mode,
+            email_from,
+            email_smtp_host,
+            email_smtp_port,
+            email_smtp_username,
+            email_smtp_password,
+            email_smtp_tls,
+            email_verify_ttl_hours,
+            password_reset_ttl_minutes,
+            email_dispatch_interval_secs,
             bind_address,
             redis_url,
             run_code_enabled,

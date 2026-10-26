@@ -18,6 +18,19 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/register", post(auth_handler::register))
         .route("/api/auth/login", post(auth_handler::login))
         .route("/api/auth/me", get(auth_handler::me))
+        .route("/api/auth/verify-email", post(auth_handler::verify_email))
+        .route(
+            "/api/auth/verify-email/resend",
+            post(auth_handler::resend_verification),
+        )
+        .route(
+            "/api/auth/forgot-password",
+            post(auth_handler::forgot_password),
+        )
+        .route(
+            "/api/auth/reset-password",
+            post(auth_handler::reset_password),
+        )
         .route("/api/admin/users", get(admin_user_handler::list))
         .route(
             "/api/admin/users/{id}/role",
@@ -100,7 +113,15 @@ pub fn router(state: AppState) -> Router {
         .route("/api/stats", get(problem_handler::stats))
         .route("/api/rankings", get(ranking_handler::list))
         .route("/api/problems/custom", post(problem_handler::submit_custom))
-        .route("/api/admin/problems", post(problem_handler::create))
+        .route("/api/problems/mine", get(problem_handler::mine))
+        .route(
+            "/api/problems/mine/{id}",
+            get(problem_handler::mine_get).put(problem_handler::update_mine),
+        )
+        .route(
+            "/api/admin/problems",
+            get(problem_handler::admin_list).post(problem_handler::create),
+        )
         .route("/api/admin/problems/pending", get(problem_handler::pending))
         .route(
             "/api/admin/problems/{id}/review",

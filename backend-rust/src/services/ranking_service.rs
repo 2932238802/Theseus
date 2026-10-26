@@ -112,7 +112,7 @@ fn page_count(total: i64, size: u32) -> u32 {
     }
     let total = total as u64;
     let size = u64::from(size.max(1));
-    ((total + size - 1) / size) as u32
+    total.div_ceil(size) as u32
 }
 
 #[cfg(test)]

@@ -42,6 +42,9 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   forum_mention: '@提及',
   forum_moderation: '审核',
   forum_mute: '禁言',
+  assignment_published: '作业',
+  assignment_grades_published: '成绩',
+  problem_review: '题目审核',
 }
 
 export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
@@ -50,6 +53,9 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
   forum_mention: '@',
   forum_moderation: '⚑',
   forum_mute: '⏸',
+  assignment_published: '📘',
+  assignment_grades_published: '📊',
+  problem_review: '✓',
 }
 
 export const notificationIcon = (type: NotificationType | string): string =>

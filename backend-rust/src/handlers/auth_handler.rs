@@ -7,7 +7,10 @@ use crate::{
         response::{created, ok},
     },
     middleware::auth::authenticate,
-    models::user::{LoginRequest, LoginResponse, PublicUser, RegisterRequest, RegisterResponse},
+    models::user::{
+        ForgotPasswordRequest, LoginRequest, LoginResponse, PublicUser, RegisterRequest,
+        RegisterResponse, ResetPasswordRequest, VerifyEmailRequest,
+    },
     services::auth_service,
 };
 
@@ -15,9 +18,9 @@ pub async fn register(
     State(state): State<AppState>,
     Json(request): Json<RegisterRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_service::register(&state.pool, request).await?;
+    auth_service::register(&state.pool, &state.config, request).await?;
     Ok(created(RegisterResponse {
-        message: "注册成功".to_owned(),
+        message: "注册成功，请查收验证邮件".to_owned(),
     }))
 }
 
@@ -44,5 +47,38 @@ pub async fn me(
 ) -> Result<impl IntoResponse, AppError> {
     let user = authenticate(&state.pool, &headers, &state.config).await?;
     let data = auth_service::current_user(&state.pool, user.id).await?;
+    Ok(ok(data))
+}
+
+pub async fn verify_email(
+    State(state): State<AppState>,
+    Json(request): Json<VerifyEmailRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let data = auth_service::verify_email(&state.pool, &request.token).await?;
+    Ok(ok(data))
+}
+
+pub async fn resend_verification(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data = auth_service::resend_verification(&state.pool, &state.config, user.id).await?;
+    Ok(ok(data))
+}
+
+pub async fn forgot_password(
+    State(state): State<AppState>,
+    Json(request): Json<ForgotPasswordRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let data = auth_service::forgot_password(&state.pool, &state.config, &request.email).await?;
+    Ok(ok(data))
+}
+
+pub async fn reset_password(
+    State(state): State<AppState>,
+    Json(request): Json<ResetPasswordRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let data = auth_service::reset_password(&state.pool, &request.token, &request.password).await?;
     Ok(ok(data))
 }

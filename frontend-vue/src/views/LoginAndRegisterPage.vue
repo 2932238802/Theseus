@@ -45,6 +45,8 @@ const handleSubmit = async (): Promise<void> => {
         return
       }
       await authStore.register(registerForm.value.username, registerForm.value.email, registerForm.value.password)
+      await router.push({ name: 'verify-email', query: { sent: '1' } })
+      return
     }
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
     await router.push(redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/')
@@ -75,7 +77,10 @@ const handleSubmit = async (): Promise<void> => {
         <template v-if="isLogin">
           <label>用户名或邮箱<input v-model.trim="loginForm.username" autocomplete="username" placeholder="请输入用户名或邮箱" /></label>
           <label>密码<div class="password-field"><input v-model="loginForm.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码" /><button type="button" :aria-label="showPassword ? '隐藏密码' : '显示密码'" @click="showPassword = !showPassword">{{ showPassword ? '隐藏' : '显示' }}</button></div></label>
-          <label class="remember" title="只记住账号 不保存密码"><input v-model="loginForm.remember" type="checkbox" /><span>记住账号</span></label>
+          <div class="auth-inline-links">
+            <label class="remember" title="只记住账号 不保存密码"><input v-model="loginForm.remember" type="checkbox" /><span>记住账号</span></label>
+            <RouterLink to="/forgot-password">忘记密码</RouterLink>
+          </div>
         </template>
         <template v-else>
           <label>用户名<input v-model.trim="registerForm.username" autocomplete="username" placeholder="3-16 位字母 数字或下划线" /></label>

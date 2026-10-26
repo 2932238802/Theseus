@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../store/auth'
 import AdminForumPage from '../views/AdminForumPage.vue'
+import AdminProblemsPage from '../views/AdminProblemsPage.vue'
 import AdminUsersPage from '../views/AdminUsersPage.vue'
 import AssignmentComposePage from '../views/AssignmentComposePage.vue'
 import AssignmentDetailPage from '../views/AssignmentDetailPage.vue'
@@ -9,6 +10,7 @@ import ClassesPage from '../views/ClassesPage.vue'
 import ForumComposePage from '../views/ForumComposePage.vue'
 import ForumPage from '../views/ForumPage.vue'
 import ForumPostPage from '../views/ForumPostPage.vue'
+import ForgotPasswordPage from '../views/ForgotPasswordPage.vue'
 import GradebookPage from '../views/GradebookPage.vue'
 import IndexPage from '../views/IndexPage.vue'
 import LoginAndRegisterPage from '../views/LoginAndRegisterPage.vue'
@@ -18,6 +20,10 @@ import OjPage from '../views/OjPage.vue'
 import ProblemsPage from '../views/ProblemsPage.vue'
 import ProfilePage from '../views/ProfilePage.vue'
 import RankingsPage from '../views/RankingsPage.vue'
+import ResetPasswordPage from '../views/ResetPasswordPage.vue'
+import TeacherProblemComposePage from '../views/TeacherProblemComposePage.vue'
+import TeacherProblemsPage from '../views/TeacherProblemsPage.vue'
+import VerifyEmailPage from '../views/VerifyEmailPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -25,6 +31,9 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: IndexPage },
     { path: '/login', name: 'login', component: LoginAndRegisterPage, meta: { guestOnly: true } },
+    { path: '/verify-email', name: 'verify-email', component: VerifyEmailPage },
+    { path: '/forgot-password', name: 'forgot-password', component: ForgotPasswordPage },
+    { path: '/reset-password', name: 'reset-password', component: ResetPasswordPage },
     { path: '/problems', name: 'problems', component: ProblemsPage },
     { path: '/problem/:id', name: 'problem', component: OjPage, props: true },
     { path: '/profile', name: 'profile', component: ProfilePage, meta: { requiresAuth: true } },
@@ -68,6 +77,30 @@ const router = createRouter({
       name: 'assignment-grade',
       component: GradebookPage,
       meta: { requiresAuth: true, requiresTeacher: true },
+    },
+    {
+      path: '/teacher/problems',
+      name: 'teacher-problems',
+      component: TeacherProblemsPage,
+      meta: { requiresAuth: true, requiresTeacher: true },
+    },
+    {
+      path: '/teacher/problems/new',
+      name: 'teacher-problem-new',
+      component: TeacherProblemComposePage,
+      meta: { requiresAuth: true, requiresTeacher: true },
+    },
+    {
+      path: '/teacher/problems/:id/edit',
+      name: 'teacher-problem-edit',
+      component: TeacherProblemComposePage,
+      meta: { requiresAuth: true, requiresTeacher: true },
+    },
+    {
+      path: '/admin/problems',
+      name: 'admin-problems',
+      component: AdminProblemsPage,
+      meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
       path: '/admin/forum',

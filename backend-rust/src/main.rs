@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use backend_rust::{AppState, config::Config, db, db::pool::create_pool, judge::queue, routes};
+use backend_rust::{
+    AppState, config::Config, db, db::pool::create_pool, judge::queue, routes,
+    services::email_service,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,6 +35,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let bind_address = config.bind_address;
     let state = AppState::new(pool, config, redis);
+    if state.config.email_mode == "log" {
+        tracing::warn!(
+            "EMAIL_MODE=log: verification and reset links are written to the server log; use smtp in production"
+        );
+    }
+    tokio::spawn(email_dispatch_loop(state.clone()));
     if state.config.run_code_enabled || state.config.submit_judge_enabled {
         tokio::spawn(reaper_loop(state.clone()));
     }
@@ -74,6 +83,22 @@ async fn reaper_loop(state: AppState) {
                     tracing::error!(error = %error, "failed to expire stale submissions")
                 }
             }
+        }
+    }
+}
+
+/// Polls the email outbox in the API process. Registration and password reset
+/// only enqueue rows, so SMTP latency never blocks those requests.
+async fn email_dispatch_loop(state: AppState) {
+    let interval = Duration::from_secs(state.config.email_dispatch_interval_secs);
+    let mut ticker = tokio::time::interval(interval);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        ticker.tick().await;
+        match email_service::dispatch_pending(&state.pool, &state.config, 20).await {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "delivered queued emails"),
+            Err(error) => tracing::error!(error = %error, "email dispatcher failed"),
         }
     }
 }

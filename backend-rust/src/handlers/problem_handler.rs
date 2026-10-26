@@ -19,10 +19,12 @@ use crate::{
     },
     middleware::auth::{optional_authenticate, require_admin, require_teacher},
     models::problem::{
-        AdminProblemResponse, PendingProblemResponse, ProblemListQuery, ProblemListResponse,
-        ProblemMutationResponse, ProblemRequest, ProblemResponse, ProblemReviewRequest, ProblemRow,
-        StatsResponse,
+        AdminProblemListItem, AdminProblemListQuery, AdminProblemListResponse,
+        AdminProblemResponse, MyProblemListItem, MyProblemListQuery, MyProblemListResponse,
+        PendingProblemResponse, ProblemListQuery, ProblemListResponse, ProblemMutationResponse,
+        ProblemRequest, ProblemResponse, ProblemReviewRequest, ProblemRow, StatsResponse,
     },
+    services::notification_service,
 };
 
 const DEFAULT_PAGE: u32 = 1;
@@ -46,6 +48,15 @@ struct ProblemWithStatusRow {
     submit_count: i32,
     accept_count: i32,
     status: Option<String>,
+}
+
+#[derive(Clone, Debug, FromRow)]
+struct ReviewProblemRow {
+    title: String,
+    created_by: Option<i32>,
+    review_status: String,
+    run_config: Option<Value>,
+    judge_cases: Option<Value>,
 }
 
 impl ProblemWithStatusRow {
@@ -147,6 +158,108 @@ pub async fn get(
     Ok(ok(row.response()))
 }
 
+pub async fn mine(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<MyProblemListQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let page = query.page.unwrap_or(DEFAULT_PAGE).max(1);
+    let size = query.size.unwrap_or(DEFAULT_SIZE).clamp(1, MAX_PAGE_SIZE);
+    let status = validate_review_status(query.status.as_deref())?;
+    let offset = i64::from(page.saturating_sub(1)) * i64::from(size);
+
+    let mut count_builder =
+        QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM problems p WHERE p.created_by = ");
+    count_builder.push_bind(user.id);
+    if let Some(status) = status {
+        count_builder
+            .push(" AND p.review_status = ")
+            .push_bind(status.to_owned());
+    }
+    let total = count_builder
+        .build_query_scalar::<i64>()
+        .fetch_one(&state.pool)
+        .await
+        .map_err(AppError::Database)?;
+
+    let mut builder = QueryBuilder::<Postgres>::new(
+        "SELECT p.id, p.title, p.difficulty, p.review_status, p.review_note, p.reviewed_at, p.created_at, p.updated_at FROM problems p WHERE p.created_by = ",
+    );
+    builder.push_bind(user.id);
+    if let Some(status) = status {
+        builder
+            .push(" AND p.review_status = ")
+            .push_bind(status.to_owned());
+    }
+    builder
+        .push(" ORDER BY p.created_at DESC, p.id DESC LIMIT ")
+        .push_bind(i64::from(size))
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let problems = builder
+        .build_query_as::<MyProblemListItem>()
+        .fetch_all(&state.pool)
+        .await
+        .map_err(AppError::Database)?;
+
+    Ok(ok(MyProblemListResponse {
+        total,
+        page,
+        size,
+        problems,
+    }))
+}
+
+pub async fn admin_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AdminProblemListQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    require_admin(&state.pool, &headers, &state.config).await?;
+    let page = query.page.unwrap_or(DEFAULT_PAGE).max(1);
+    let size = query.size.unwrap_or(DEFAULT_SIZE).clamp(1, MAX_PAGE_SIZE);
+    let status = validate_review_status(query.status.as_deref())?;
+    let search = query
+        .q
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(100).collect::<String>());
+    let offset = i64::from(page.saturating_sub(1)) * i64::from(size);
+
+    let mut count_builder =
+        QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM problems p WHERE 1 = 1");
+    append_review_filters(&mut count_builder, status, search.as_deref());
+    let total = count_builder
+        .build_query_scalar::<i64>()
+        .fetch_one(&state.pool)
+        .await
+        .map_err(AppError::Database)?;
+
+    let mut builder = QueryBuilder::<Postgres>::new(
+        "SELECT p.id, p.title, p.difficulty, p.created_by, u.username AS created_by_username, p.review_status, p.review_note, p.reviewed_at, p.created_at, p.updated_at FROM problems p LEFT JOIN users u ON u.id = p.created_by WHERE 1 = 1",
+    );
+    append_review_filters(&mut builder, status, search.as_deref());
+    builder
+        .push(" ORDER BY p.created_at DESC, p.id DESC LIMIT ")
+        .push_bind(i64::from(size))
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let problems = builder
+        .build_query_as::<AdminProblemListItem>()
+        .fetch_all(&state.pool)
+        .await
+        .map_err(AppError::Database)?;
+
+    Ok(ok(AdminProblemListResponse {
+        total,
+        page,
+        size,
+        problems,
+    }))
+}
+
 pub async fn create(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -165,6 +278,14 @@ pub async fn create(
         "approved",
     )
     .await?;
+    sqlx::query(
+        "UPDATE problems SET reviewed_by = $1, reviewed_at = CURRENT_TIMESTAMP WHERE id = $2",
+    )
+    .bind(admin.id)
+    .bind(id)
+    .execute(&state.pool)
+    .await
+    .map_err(AppError::Database)?;
     Ok(created(ProblemMutationResponse {
         id,
         message: "题目创建成功".to_owned(),
@@ -195,6 +316,90 @@ pub async fn submit_custom(
     }))
 }
 
+pub async fn mine_get(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    if id <= 0 {
+        return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
+    }
+    let row = fetch_problem_detail(&state.pool, id, Some(user.id)).await?;
+    Ok(ok(row))
+}
+
+pub async fn update_mine(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+    Json(request): Json<ProblemRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    if id <= 0 {
+        return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
+    }
+    validate_problem(&request)?;
+    let current_status = sqlx::query_scalar::<_, String>(
+        "SELECT review_status FROM problems WHERE id = $1 AND created_by = $2",
+    )
+    .bind(id)
+    .bind(user.id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or_else(|| AppError::NotFound("题目不存在".to_owned()))?;
+    if current_status != "rejected" {
+        return Err(AppError::ConflictWith(
+            "只有已退回的题目可以修改并重新提交".to_owned(),
+        ));
+    }
+    let (run_config, code_template, judge_cases) = prepare_problem_judging(&request)?;
+    let judge_cases_bind = if run_config.is_some() {
+        judge_cases
+    } else {
+        Some(Value::Null)
+    };
+    let result = sqlx::query(
+        "UPDATE problems SET title = $1, description = $2, difficulty = $3, time_limit = $4, memory_limit = $5, tags = $6, examples = $7, test_cases = $8, code_template = $9, run_config = $10, judge_cases = $11, review_status = 'pending', review_note = NULL, reviewed_by = NULL, reviewed_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $12 AND created_by = $13 AND review_status = 'rejected'",
+    )
+    .bind(request.title.trim())
+    .bind(request.description.trim())
+    .bind(&request.difficulty)
+    .bind(request.time_limit.unwrap_or(1000))
+    .bind(request.memory_limit.unwrap_or(256))
+    .bind(request.tags.clone().unwrap_or_default())
+    .bind(
+        request
+            .examples
+            .clone()
+            .unwrap_or_else(|| Value::Array(Vec::new())),
+    )
+    .bind(
+        request
+            .test_cases
+            .clone()
+            .unwrap_or_else(|| Value::Array(Vec::new())),
+    )
+    .bind(code_template.unwrap_or_else(|| Value::Object(Default::default())))
+    .bind(run_config)
+    .bind(judge_cases_bind)
+    .bind(id)
+    .bind(user.id)
+    .execute(&state.pool)
+    .await
+    .map_err(AppError::Database)?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::ConflictWith(
+            "只有已退回的题目可以修改并重新提交".to_owned(),
+        ));
+    }
+    Ok(ok(ProblemMutationResponse {
+        id,
+        message: "题目已重新提交，等待管理员审核".to_owned(),
+    }))
+}
+
 pub async fn admin_get(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -204,14 +409,7 @@ pub async fn admin_get(
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
-    let row = sqlx::query_as::<_, AdminProblemResponse>(
-        "SELECT id, title, description, difficulty, time_limit, memory_limit, tags, examples, test_cases, code_template, run_config, judge_cases, acceptance_rate, submit_count, accept_count, review_status FROM problems WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(AppError::Database)?
-    .ok_or_else(|| AppError::NotFound("题目不存在".to_owned()))?;
+    let row = fetch_problem_detail(&state.pool, id, None).await?;
     Ok(ok(row))
 }
 
@@ -235,24 +433,90 @@ pub async fn review(
     Path(id): Path<i32>,
     Json(request): Json<ProblemReviewRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin(&state.pool, &headers, &state.config).await?;
-    if id <= 0 || !matches!(request.status.as_str(), "approved" | "rejected") {
-        return Err(AppError::BadRequest("题目 ID 或审核状态无效".to_owned()));
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    if id <= 0 {
+        return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
-    let result = sqlx::query(
-        "UPDATE problems SET review_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND review_status = 'pending'",
+    let status = request.status.trim();
+    if !matches!(status, "approved" | "rejected") {
+        return Err(AppError::BadRequest("审核状态无效".to_owned()));
+    }
+    let note = request
+        .note
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if note.is_some_and(|value| value.chars().count() > 1000) {
+        return Err(AppError::BadRequest(
+            "审核意见不能超过 1000 个字符".to_owned(),
+        ));
+    }
+    if status == "rejected" && note.is_none() {
+        return Err(AppError::BadRequest(
+            "拒绝题目时必须填写退回原因".to_owned(),
+        ));
+    }
+
+    let mut transaction = state.pool.begin().await.map_err(AppError::Database)?;
+    let problem = sqlx::query_as::<_, ReviewProblemRow>(
+        "SELECT title, created_by, review_status, run_config, judge_cases FROM problems WHERE id = $1 FOR UPDATE",
     )
-    .bind(&request.status)
     .bind(id)
-    .execute(&state.pool)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or_else(|| AppError::NotFound("待审核题目不存在".to_owned()))?;
+    if problem.review_status != "pending" {
+        return Err(AppError::ConflictWith("题目已审核".to_owned()));
+    }
+    if status == "approved" {
+        ensure_problem_reviewable(&problem)?;
+    }
+
+    let result = sqlx::query(
+        "UPDATE problems SET review_status = $1, review_note = $2, reviewed_by = $3, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND review_status = 'pending'",
+    )
+    .bind(status)
+    .bind(note)
+    .bind(admin.id)
+    .bind(id)
+    .execute(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("待审核题目不存在".to_owned()));
+        return Err(AppError::ConflictWith("题目已审核".to_owned()));
     }
+
+    if let Some(creator_id) = problem.created_by {
+        let approved = status == "approved";
+        let title = if approved {
+            format!("题目审核通过：{}", problem.title)
+        } else {
+            format!("题目未通过：{}", problem.title)
+        };
+        let body = match note {
+            Some(note) => note.to_owned(),
+            None if approved => "题目已通过审核，可以用于练习和作业".to_owned(),
+            None => String::new(),
+        };
+        notification_service::create(
+            &mut transaction,
+            creator_id,
+            "problem_review",
+            Some(admin.id),
+            &title,
+            (!body.is_empty()).then_some(body.as_str()),
+            Some("/teacher/problems"),
+            Some("problem"),
+            Some(i64::from(id)),
+        )
+        .await?;
+    }
+
+    transaction.commit().await.map_err(AppError::Database)?;
     Ok(ok(ProblemMutationResponse {
         id,
-        message: if request.status == "approved" {
+        message: if status == "approved" {
             "题目审核通过".to_owned()
         } else {
             "题目已拒绝".to_owned()
@@ -328,6 +592,27 @@ pub async fn delete(
         id,
         message: "题目删除成功".to_owned(),
     }))
+}
+
+async fn fetch_problem_detail(
+    pool: &PgPool,
+    id: i32,
+    owner_id: Option<i32>,
+) -> Result<AdminProblemResponse, AppError> {
+    let sql = if owner_id.is_some() {
+        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.judge_cases, p.acceptance_rate, p.submit_count, p.accept_count, p.review_status, p.review_note, p.created_by, u.username AS created_by_username, p.reviewed_by, p.reviewed_at, p.created_at, p.updated_at FROM problems p LEFT JOIN users u ON u.id = p.created_by WHERE p.id = $1 AND p.created_by = $2"
+    } else {
+        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.judge_cases, p.acceptance_rate, p.submit_count, p.accept_count, p.review_status, p.review_note, p.created_by, u.username AS created_by_username, p.reviewed_by, p.reviewed_at, p.created_at, p.updated_at FROM problems p LEFT JOIN users u ON u.id = p.created_by WHERE p.id = $1"
+    };
+    let mut query = sqlx::query_as::<_, AdminProblemResponse>(sql).bind(id);
+    if let Some(owner_id) = owner_id {
+        query = query.bind(owner_id);
+    }
+    query
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound("题目不存在".to_owned()))
 }
 
 async fn fetch_problem_page(
@@ -535,6 +820,58 @@ fn validate_status_filter(status: Option<&str>, user_id: Option<i32>) -> Result<
     Ok(())
 }
 
+fn validate_review_status(status: Option<&str>) -> Result<Option<&str>, AppError> {
+    let Some(status) = status.filter(|value| !value.is_empty() && *value != "all") else {
+        return Ok(None);
+    };
+    if matches!(status, "pending" | "approved" | "rejected") {
+        Ok(Some(status))
+    } else {
+        Err(AppError::BadRequest("审核状态无效".to_owned()))
+    }
+}
+
+fn append_review_filters(
+    builder: &mut QueryBuilder<'_, Postgres>,
+    status: Option<&str>,
+    search: Option<&str>,
+) {
+    if let Some(status) = status {
+        builder
+            .push(" AND p.review_status = ")
+            .push_bind(status.to_owned());
+    }
+    if let Some(search) = search {
+        builder
+            .push(" AND p.title ILIKE ")
+            .push_bind(format!("%{search}%"));
+    }
+}
+
+fn ensure_problem_reviewable(problem: &ReviewProblemRow) -> Result<(), AppError> {
+    let Some(run_config_value) = problem.run_config.as_ref().filter(|value| !value.is_null())
+    else {
+        return Err(AppError::BadRequest(
+            "审核通过前必须配置 run_config".to_owned(),
+        ));
+    };
+    let config = validate_run_config(run_config_value)?;
+    let hidden_cases = match problem
+        .judge_cases
+        .as_ref()
+        .filter(|value| !value.is_null())
+    {
+        Some(value) => validate_judge_cases(&config, value)?,
+        None => Vec::new(),
+    };
+    if config.public_cases.is_empty() && hidden_cases.is_empty() {
+        return Err(AppError::BadRequest(
+            "审核通过前至少配置 1 条评测用例".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_problem(request: &ProblemRequest) -> Result<(), AppError> {
     if request.title.trim().is_empty() || request.title.len() > 200 {
         return Err(AppError::BadRequest(
@@ -574,8 +911,12 @@ fn validate_problem(request: &ProblemRequest) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_filters, parse_sort, validate_problem};
+    use super::{
+        ReviewProblemRow, append_filters, ensure_problem_reviewable, parse_sort, validate_problem,
+        validate_review_status,
+    };
     use crate::models::problem::ProblemRequest;
+    use serde_json::json;
     use sqlx::{Postgres, QueryBuilder};
 
     #[test]
@@ -594,6 +935,64 @@ mod tests {
             judge_cases: None,
         };
         assert!(validate_problem(&request).is_err());
+    }
+
+    #[test]
+    fn validates_review_status_filter() {
+        assert_eq!(validate_review_status(None).expect("no filter"), None);
+        assert_eq!(validate_review_status(Some("all")).expect("all"), None);
+        assert_eq!(
+            validate_review_status(Some("pending")).expect("pending"),
+            Some("pending")
+        );
+        assert!(validate_review_status(Some("draft")).is_err());
+    }
+
+    #[test]
+    fn requires_reviewable_config_before_approval() {
+        let config = json!({
+            "version": 1,
+            "function_name": "solve",
+            "params": [],
+            "return_type": "int",
+            "compare": { "mode": "exact" },
+            "public_cases": []
+        });
+        let missing = ReviewProblemRow {
+            title: "题目".to_owned(),
+            created_by: Some(7),
+            review_status: "pending".to_owned(),
+            run_config: None,
+            judge_cases: None,
+        };
+        assert!(ensure_problem_reviewable(&missing).is_err());
+
+        let empty = ReviewProblemRow {
+            run_config: Some(config.clone()),
+            ..missing.clone()
+        };
+        assert!(ensure_problem_reviewable(&empty).is_err());
+
+        let with_public_case = ReviewProblemRow {
+            run_config: Some(json!({
+                "version": 1,
+                "function_name": "solve",
+                "params": [],
+                "return_type": "int",
+                "compare": { "mode": "exact" },
+                "public_cases": [{ "args": [], "expected": 1 }]
+            })),
+            judge_cases: None,
+            ..empty
+        };
+        assert!(ensure_problem_reviewable(&with_public_case).is_ok());
+
+        let with_hidden_case = ReviewProblemRow {
+            run_config: Some(config),
+            judge_cases: Some(json!([{ "args": [], "expected": 2 }])),
+            ..missing
+        };
+        assert!(ensure_problem_reviewable(&with_hidden_case).is_ok());
     }
 
     #[test]

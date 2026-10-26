@@ -292,6 +292,9 @@ export type NotificationType =
   | 'forum_mention'
   | 'forum_moderation'
   | 'forum_mute'
+  | 'assignment_published'
+  | 'assignment_grades_published'
+  | 'problem_review'
 
 export interface ForumNotification {
   id: number

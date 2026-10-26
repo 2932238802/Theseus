@@ -62,6 +62,7 @@ onBeforeUnmount(() => {
       <RouterLink to="/problems">题库</RouterLink>
       <RouterLink to="/forum">校园墙</RouterLink>
       <RouterLink class="nav-rankings" to="/rankings">排行榜</RouterLink>
+      <RouterLink v-if="authStore.isTeacher" class="nav-teacher-problems" to="/teacher/problems">出题</RouterLink>
       <RouterLink v-if="authStore.isStudent || authStore.isTeacher" class="nav-classes" to="/classes">我的班级</RouterLink>
       <RouterLink v-if="authStore.isAuthenticated" class="nav-profile" to="/profile">个人</RouterLink>
       <div v-if="authStore.isAdmin" ref="manageRef" class="nav-menu" :class="{ 'is-active': isAdminArea }">
@@ -82,6 +83,7 @@ onBeforeUnmount(() => {
           role="menu"
           aria-labelledby="admin-menu-button"
         >
+          <RouterLink role="menuitem" to="/admin/problems" @click="closeManage">题目审核</RouterLink>
           <RouterLink role="menuitem" to="/admin/forum" @click="closeManage">论坛管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/users" @click="closeManage">用户管理</RouterLink>
         </div>
@@ -100,6 +102,7 @@ onBeforeUnmount(() => {
           <strong>{{ authStore.user?.username }}</strong>
           <span>{{ authStore.user?.email }}</span>
           <hr />
+          <RouterLink v-if="authStore.isTeacher" to="/teacher/problems" @click="isMenuOpen = false">我的题目</RouterLink>
           <RouterLink to="/profile" @click="isMenuOpen = false">个人中心</RouterLink>
           <button type="button" @click="logout">退出登录</button>
         </div>

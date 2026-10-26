@@ -11,7 +11,7 @@ use crate::{
         error::AppError,
         response::{created, ok},
     },
-    middleware::auth::authenticate,
+    middleware::auth::{authenticate, require_verified_email},
     models::submission::{SubmissionListQuery, SubmissionRequest},
 };
 
@@ -21,6 +21,9 @@ pub async fn create(
     Json(request): Json<SubmissionRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let user = authenticate(&state.pool, &headers, &state.config).await?;
+    if request.assignment_id.is_some() {
+        require_verified_email(&user)?;
+    }
     let response = state
         .submission_service
         .create(&state.pool, &user, request)
