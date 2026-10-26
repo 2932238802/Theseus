@@ -19,6 +19,13 @@ pub struct NotificationItem {
     pub link: Option<String>,
     pub read: bool,
     pub created_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub related_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub related_id: Option<i64>,
+    /// 仅 class_invite 通知返回：邀请当前的 pending/accepted/... 状态。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invitation_status: Option<String>,
 }
 
 #[derive(Debug, FromRow)]
@@ -31,6 +38,9 @@ pub struct NotificationRow {
     pub read: bool,
     pub created_at: DateTime<Utc>,
     pub total: i64,
+    pub related_type: Option<String>,
+    pub related_id: Option<i64>,
+    pub invitation_status: Option<String>,
 }
 
 impl NotificationRow {
@@ -43,6 +53,9 @@ impl NotificationRow {
             link: self.link,
             read: self.read,
             created_at: self.created_at,
+            related_type: self.related_type,
+            related_id: self.related_id,
+            invitation_status: self.invitation_status,
         }
     }
 }
@@ -64,5 +77,31 @@ pub struct UnreadCountResponse {
 #[derive(Debug, Serialize)]
 pub struct NotificationReadResponse {
     pub id: Option<i64>,
+    pub message: String,
+}
+
+/// 自定义站内通知。受众三选一：
+/// - 教师：class_id（可选 user_ids 限定本班成员）
+/// - 管理员：user_ids / role / all
+#[derive(Debug, Deserialize)]
+pub struct SendNotificationRequest {
+    pub title: String,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub link: Option<String>,
+    #[serde(default)]
+    pub class_id: Option<i32>,
+    #[serde(default)]
+    pub user_ids: Option<Vec<i32>>,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub all: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SendNotificationResponse {
+    pub recipient_count: u64,
     pub message: String,
 }

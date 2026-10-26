@@ -1,10 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import MarkdownBody from '../components/MarkdownBody.vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import {
+  fetchClassInvitations,
+  fetchInviteCandidates,
+  sendClassInvitations,
+} from '../api/invitations'
+import { sendNotification } from '../api/notifications'
 import { useClassStore } from '../store/classes'
-import type { AssignmentSummary } from '../types/teaching'
+import type {
+  AssignmentSummary,
+  InviteCandidate,
+  OwnerInvitation,
+} from '../types/teaching'
 import {
   assignmentStatusLabel,
   formatDateTime,
@@ -22,12 +33,34 @@ const isArchived = computed(() => Boolean(detail.value?.archivedAt))
 const actionError = ref('')
 const actionMessage = ref('')
 const inviteCode = ref('')
-const memberIdentifier = ref('')
-const isAddingMember = ref(false)
 const removingUserId = ref<number | null>(null)
 const isRotating = ref(false)
 const isArchiving = ref(false)
 const isLeaving = ref(false)
+
+const inviteQuery = ref('')
+const inviteCandidates = ref<InviteCandidate[]>([])
+const selectedCandidateIds = ref<number[]>([])
+const pendingInvitations = ref<OwnerInvitation[]>([])
+const invitationsError = ref('')
+const invitationsMessage = ref('')
+const isSearchingInvites = ref(false)
+const isSendingInvites = ref(false)
+const hasSearchedInvites = ref(false)
+
+const notifyForm = reactive({
+  audience: 'all' as 'all' | 'selected',
+  title: '',
+  body: '',
+  link: '',
+})
+const selectedNotifyIds = ref<number[]>([])
+const showNotifyPreview = ref(false)
+const isSendingNotice = ref(false)
+const notifyError = ref('')
+const notifyMessage = ref('')
+
+let inviteSearchSequence = 0
 
 const classMeta = computed(() =>
   [detail.value?.courseName, detail.value?.term].filter(Boolean).join(' · '),
@@ -84,18 +117,104 @@ const rotateCode = async (): Promise<void> => {
   }
 }
 
-const addMember = async (): Promise<void> => {
-  if (!detail.value || !memberIdentifier.value.trim() || isAddingMember.value) return
-  clearActionState()
-  isAddingMember.value = true
+const loadInvitations = async (): Promise<void> => {
+  if (!detail.value || !isOwner.value) return
   try {
-    await classStore.addMember(detail.value.id, memberIdentifier.value.trim())
-    memberIdentifier.value = ''
-    inviteCode.value = detail.value.inviteCode ?? inviteCode.value
+    pendingInvitations.value = await fetchClassInvitations(detail.value.id)
   } catch (exception: unknown) {
-    actionError.value = toErrorMessage(exception)
+    invitationsError.value = toErrorMessage(exception)
+  }
+}
+
+const searchCandidates = async (): Promise<void> => {
+  if (!detail.value || !inviteQuery.value.trim() || isSearchingInvites.value) return
+  const requestId = ++inviteSearchSequence
+  invitationsError.value = ''
+  invitationsMessage.value = ''
+  isSearchingInvites.value = true
+  try {
+    const result = await fetchInviteCandidates(detail.value.id, inviteQuery.value.trim())
+    if (requestId !== inviteSearchSequence) return
+    inviteCandidates.value = result
+    hasSearchedInvites.value = true
+    selectedCandidateIds.value = selectedCandidateIds.value.filter((id) =>
+      result.some((candidate) => candidate.userId === id),
+    )
+  } catch (exception: unknown) {
+    if (requestId !== inviteSearchSequence) return
+    inviteCandidates.value = []
+    selectedCandidateIds.value = []
+    hasSearchedInvites.value = false
+    invitationsError.value = toErrorMessage(exception)
   } finally {
-    isAddingMember.value = false
+    if (requestId === inviteSearchSequence) isSearchingInvites.value = false
+  }
+}
+
+const toggleCandidate = (candidate: InviteCandidate): void => {
+  if (candidate.isMember) return
+  const index = selectedCandidateIds.value.indexOf(candidate.userId)
+  if (index >= 0) selectedCandidateIds.value.splice(index, 1)
+  else selectedCandidateIds.value.push(candidate.userId)
+}
+
+const sendInvitations = async (): Promise<void> => {
+  if (!detail.value || !selectedCandidateIds.value.length || isSendingInvites.value) return
+  invitationsError.value = ''
+  invitationsMessage.value = ''
+  isSendingInvites.value = true
+  try {
+    const result = await sendClassInvitations(detail.value.id, [...selectedCandidateIds.value])
+    const successMessage = result.skipped.length
+      ? `${result.message}；${result.skipped
+          .map((item) => `${item.username}：${item.reason}`)
+          .join('，')}`
+      : result.message
+    selectedCandidateIds.value = []
+    await Promise.all([loadInvitations(), classStore.refreshCurrent()])
+    if (inviteQuery.value.trim()) await searchCandidates()
+    invitationsMessage.value = successMessage
+  } catch (exception: unknown) {
+    invitationsError.value = toErrorMessage(exception)
+  } finally {
+    isSendingInvites.value = false
+  }
+}
+
+const toggleNotifyMember = (userId: number): void => {
+  const index = selectedNotifyIds.value.indexOf(userId)
+  if (index >= 0) selectedNotifyIds.value.splice(index, 1)
+  else selectedNotifyIds.value.push(userId)
+}
+
+const sendClassNotice = async (): Promise<void> => {
+  if (!detail.value || !notifyForm.title.trim() || isSendingNotice.value) return
+  notifyError.value = ''
+  notifyMessage.value = ''
+  if (notifyForm.audience === 'selected' && !selectedNotifyIds.value.length) {
+    notifyError.value = '请至少选择一位接收学生'
+    return
+  }
+  isSendingNotice.value = true
+  try {
+    const result = await sendNotification({
+      classId: detail.value.id,
+      title: notifyForm.title.trim(),
+      body: notifyForm.body.trim() || undefined,
+      link: notifyForm.link.trim() || undefined,
+      userIds:
+        notifyForm.audience === 'selected' ? [...selectedNotifyIds.value] : undefined,
+    })
+    notifyMessage.value = result.message
+    notifyForm.title = ''
+    notifyForm.body = ''
+    notifyForm.link = ''
+    selectedNotifyIds.value = []
+    showNotifyPreview.value = false
+  } catch (exception: unknown) {
+    notifyError.value = toErrorMessage(exception)
+  } finally {
+    isSendingNotice.value = false
   }
 }
 
@@ -143,11 +262,34 @@ const leaveClass = async (): Promise<void> => {
   }
 }
 
+const resetInvitationState = (): void => {
+  inviteSearchSequence += 1
+  inviteQuery.value = ''
+  inviteCandidates.value = []
+  selectedCandidateIds.value = []
+  hasSearchedInvites.value = false
+  pendingInvitations.value = []
+  invitationsError.value = ''
+  invitationsMessage.value = ''
+  isSearchingInvites.value = false
+  isSendingInvites.value = false
+  notifyForm.audience = 'all'
+  notifyForm.title = ''
+  notifyForm.body = ''
+  notifyForm.link = ''
+  selectedNotifyIds.value = []
+  showNotifyPreview.value = false
+  notifyError.value = ''
+  notifyMessage.value = ''
+}
+
 const load = async (): Promise<void> => {
   if (!Number.isInteger(classId.value) || classId.value <= 0) return
   clearActionState()
+  resetInvitationState()
   await classStore.loadClass(classId.value)
   inviteCode.value = classStore.current?.inviteCode ?? ''
+  await loadInvitations()
 }
 onMounted(load)
 watch(classId, load)
@@ -216,15 +358,6 @@ watch(classId, load)
 
       <section v-if="isOwner" class="teaching-panel">
         <div class="section-heading"><h2>成员</h2><span class="teaching-subtle">{{ activeMembers.length }} 人</span></div>
-        <form class="teaching-inline-form" @submit.prevent="addMember">
-          <label>
-            <span>用户名或邮箱</span>
-            <input v-model="memberIdentifier" :disabled="isArchived" required />
-          </label>
-          <button class="primary-button" type="submit" :disabled="isArchived || isAddingMember || !memberIdentifier.trim()">
-            {{ isAddingMember ? '添加中' : '添加成员' }}
-          </button>
-        </form>
         <div v-if="activeMembers.length" class="teaching-member-list">
           <article v-for="member in activeMembers" :key="member.userId">
             <div><strong>{{ member.username }}</strong><span>{{ member.email }}</span></div>
@@ -250,6 +383,161 @@ watch(classId, load)
             </article>
           </div>
         </details>
+      </section>
+
+      <section v-if="isOwner && !isArchived" class="teaching-panel">
+        <div class="section-heading">
+          <h2>邀请学生</h2>
+          <span class="teaching-subtle">学生确认后加入班级</span>
+        </div>
+        <form class="teaching-inline-form" @submit.prevent="searchCandidates">
+          <label>
+            <span>搜索学生</span>
+            <input
+              v-model="inviteQuery"
+              maxlength="100"
+              placeholder="输入用户名或邮箱"
+              required
+            />
+          </label>
+          <button
+            class="primary-button"
+            type="submit"
+            :disabled="isSearchingInvites || !inviteQuery.trim()"
+          >
+            {{ isSearchingInvites ? '搜索中' : '搜索' }}
+          </button>
+        </form>
+
+        <p v-if="invitationsError" class="form-error" role="alert">{{ invitationsError }}</p>
+        <p v-if="invitationsMessage" class="teaching-success" role="status">{{ invitationsMessage }}</p>
+
+        <template v-if="inviteCandidates.length">
+          <div class="teaching-candidate-list">
+            <label
+              v-for="candidate in inviteCandidates"
+              :key="candidate.userId"
+              :class="['teaching-candidate', { disabled: candidate.isMember }]"
+            >
+              <input
+                type="checkbox"
+                :checked="selectedCandidateIds.includes(candidate.userId)"
+                :disabled="candidate.isMember"
+                @change="toggleCandidate(candidate)"
+              />
+              <span class="teaching-candidate-main">
+                <strong>{{ candidate.username }}</strong>
+                <span>{{ candidate.email }}</span>
+              </span>
+              <span v-if="candidate.isMember" class="teaching-badge">已加入</span>
+              <span v-else-if="candidate.hasPendingInvitation" class="teaching-badge draft">已邀请 · 再次发送顺延有效期</span>
+            </label>
+          </div>
+          <div class="teaching-form-actions">
+            <button
+              class="primary-button"
+              type="button"
+              :disabled="isSendingInvites || !selectedCandidateIds.length"
+              @click="sendInvitations"
+            >
+              {{ isSendingInvites ? '发送中' : `发送邀请（${selectedCandidateIds.length}）` }}
+            </button>
+          </div>
+        </template>
+        <p v-else-if="hasSearchedInvites && !isSearchingInvites" class="empty-state">
+          <span>没有找到匹配的学生</span>
+        </p>
+
+        <div class="teaching-subsection">
+          <h3>待确认邀请 <span class="teaching-subtle">{{ pendingInvitations.length }} 人</span></h3>
+          <div v-if="pendingInvitations.length" class="teaching-member-list">
+            <article v-for="invitation in pendingInvitations" :key="invitation.id">
+              <div>
+                <strong>{{ invitation.inviteeUsername }}</strong>
+                <span>{{ invitation.inviteeEmail }}</span>
+              </div>
+              <time>{{ formatDateTime(invitation.expiresAt) }} 到期</time>
+            </article>
+          </div>
+          <p v-else class="teaching-subtle">暂无待确认邀请</p>
+        </div>
+      </section>
+
+      <section v-if="isOwner && !isArchived" class="teaching-panel">
+        <div class="section-heading">
+          <h2>给本班学生发通知</h2>
+          <span class="teaching-subtle">支持 Markdown</span>
+        </div>
+        <div class="teaching-audience">
+          <label>
+            <input v-model="notifyForm.audience" type="radio" value="all" />
+            <span>全班学生（{{ activeMembers.length }} 人）</span>
+          </label>
+          <label>
+            <input
+              v-model="notifyForm.audience"
+              type="radio"
+              value="selected"
+              :disabled="!activeMembers.length"
+            />
+            <span>指定学生</span>
+          </label>
+        </div>
+
+        <div v-if="notifyForm.audience === 'selected'" class="teaching-candidate-list compact">
+          <label
+            v-for="member in activeMembers"
+            :key="member.userId"
+            class="teaching-candidate"
+          >
+            <input
+              type="checkbox"
+              :checked="selectedNotifyIds.includes(member.userId)"
+              @change="toggleNotifyMember(member.userId)"
+            />
+            <span class="teaching-candidate-main">
+              <strong>{{ member.username }}</strong>
+              <span>{{ member.email }}</span>
+            </span>
+          </label>
+        </div>
+
+        <form class="teaching-form" @submit.prevent="sendClassNotice">
+          <label>
+            <span>标题</span>
+            <input v-model="notifyForm.title" maxlength="100" required />
+          </label>
+          <label>
+            <span>正文（Markdown）</span>
+            <textarea v-model="notifyForm.body" rows="6" maxlength="5000"></textarea>
+          </label>
+          <label>
+            <span>跳转链接（可选，站内路径）</span>
+            <input v-model="notifyForm.link" maxlength="500" placeholder="/assignments/12" />
+          </label>
+          <p v-if="notifyError" class="form-error" role="alert">{{ notifyError }}</p>
+          <p v-if="notifyMessage" class="teaching-success" role="status">{{ notifyMessage }}</p>
+          <div class="teaching-form-actions">
+            <button
+              class="teaching-secondary-button"
+              type="button"
+              :disabled="!notifyForm.body.trim()"
+              @click="showNotifyPreview = !showNotifyPreview"
+            >
+              {{ showNotifyPreview ? '收起预览' : '预览正文' }}
+            </button>
+            <button
+              class="primary-button"
+              type="submit"
+              :disabled="isSendingNotice || !notifyForm.title.trim()"
+            >
+              {{ isSendingNotice ? '发送中' : '发送通知' }}
+            </button>
+          </div>
+        </form>
+        <div v-if="showNotifyPreview && notifyForm.body.trim()" class="teaching-preview">
+          <MarkdownBody :content="notifyForm.body" />
+        </div>
       </section>
 
       <section class="teaching-section">

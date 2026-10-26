@@ -4,6 +4,7 @@ pub mod assignment_handler;
 pub mod auth_handler;
 pub mod class_handler;
 pub mod forum_handler;
+pub mod invitation_handler;
 pub mod notification_handler;
 pub mod problem_handler;
 pub mod ranking_handler;

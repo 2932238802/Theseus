@@ -1,4 +1,5 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::HeaderMap,
     response::IntoResponse,
@@ -7,10 +8,26 @@ use axum::{
 use crate::{
     AppState,
     common::{error::AppError, response::ok},
-    middleware::auth::authenticate,
-    models::notification::NotificationListQuery,
+    middleware::auth::{authenticate, require_verified_email},
+    models::notification::{NotificationListQuery, SendNotificationRequest},
     services::notification_service,
 };
+
+pub async fn send(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SendNotificationRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    if !user.is_teacher() && !user.is_admin() {
+        return Err(AppError::ForbiddenWith(
+            "只有教师或管理员可以发送通知".to_owned(),
+        ));
+    }
+    require_verified_email(&user)?;
+    let data = notification_service::send_custom(&state.pool, &user, &request).await?;
+    Ok(ok(data))
+}
 
 pub async fn list(
     State(state): State<AppState>,

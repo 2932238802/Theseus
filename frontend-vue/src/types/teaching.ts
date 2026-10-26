@@ -168,3 +168,56 @@ export interface ChangeRoleResult {
   message: string
   archivedClassCount: number
 }
+
+export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired'
+
+export interface InviteCandidate {
+  userId: number
+  username: string
+  email: string
+  isMember: boolean
+  hasPendingInvitation: boolean
+}
+
+export interface InvitationSkip {
+  userId: number
+  username: string
+  reason: string
+}
+
+export interface CreateInvitationsResult {
+  invitedCount: number
+  skipped: InvitationSkip[]
+  message: string
+}
+
+export interface OwnerInvitation {
+  id: number
+  inviteeId: number
+  inviteeUsername: string
+  inviteeEmail: string
+  status: InvitationStatus
+  expiresAt: string
+  respondedAt?: string
+  createdAt: string
+}
+
+export interface MyInvitation {
+  id: number
+  classId: number
+  className: string
+  courseName?: string
+  term?: string
+  inviterId: number
+  inviterUsername: string
+  status: InvitationStatus
+  expiresAt: string
+  createdAt: string
+}
+
+export interface InvitationMutationResult {
+  id: number
+  classId: number
+  status: InvitationStatus
+  message: string
+}

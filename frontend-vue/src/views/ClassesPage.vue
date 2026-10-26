@@ -5,12 +5,14 @@ import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { useClassStore } from '../store/classes'
-import type { ClassSummary } from '../types/teaching'
+import { useInvitationStore } from '../store/invitations'
+import type { ClassSummary, MyInvitation } from '../types/teaching'
 import { formatDateTime } from '../utils/teaching'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const classStore = useClassStore()
+const invitationStore = useInvitationStore()
 
 const isCreating = ref(false)
 const showCreateForm = ref(false)
@@ -25,6 +27,30 @@ const createForm = reactive({
 const inviteCode = ref('')
 const joinError = ref('')
 const isJoining = ref(false)
+
+const invitationError = ref('')
+const invitationMessage = ref('')
+
+const invitationMeta = (item: MyInvitation): string =>
+  [item.courseName, item.term].filter(Boolean).join(' · ')
+
+const respondToInvitation = async (
+  item: MyInvitation,
+  action: 'accept' | 'decline',
+): Promise<void> => {
+  invitationError.value = ''
+  invitationMessage.value = ''
+  try {
+    const result =
+      action === 'accept'
+        ? await invitationStore.accept(item.id)
+        : await invitationStore.decline(item.id)
+    invitationMessage.value = result.message
+    if (action === 'accept') await classStore.loadClasses()
+  } catch (exception: unknown) {
+    invitationError.value = toErrorMessage(exception)
+  }
+}
 
 const createClass = async (): Promise<void> => {
   if (!createForm.name.trim() || isCreating.value) return
@@ -65,6 +91,7 @@ const classMeta = (item: ClassSummary): string =>
 
 onMounted(() => {
   void classStore.loadClasses()
+  if (authStore.isStudent) void invitationStore.load()
 })
 </script>
 
@@ -74,6 +101,49 @@ onMounted(() => {
     <header class="page-title">
       <h1>{{ authStore.isTeacher ? '我教的班级' : '我加入的班级' }}</h1>
     </header>
+
+    <section
+      v-if="authStore.isStudent && (invitationStore.isLoading || invitationStore.invitations.length || invitationStore.error)"
+      class="teaching-panel"
+    >
+      <div class="section-heading">
+        <h2>班级邀请</h2>
+        <span class="teaching-subtle">{{ invitationStore.invitations.length }} 条待处理</span>
+      </div>
+      <p v-if="invitationStore.error" class="form-error" role="alert">{{ invitationStore.error }}</p>
+      <p v-if="invitationError" class="form-error" role="alert">{{ invitationError }}</p>
+      <p v-if="invitationMessage" class="teaching-success" role="status">{{ invitationMessage }}</p>
+      <div v-if="invitationStore.invitations.length" class="teaching-member-list">
+        <article v-for="item in invitationStore.invitations" :key="item.id">
+          <div>
+            <strong>{{ item.className }}</strong>
+            <span>
+              {{ invitationMeta(item) || '班级邀请' }} · {{ item.inviterUsername }} 邀请
+            </span>
+            <span>{{ formatDateTime(item.expiresAt) }} 前有效</span>
+          </div>
+          <div class="teaching-invitation-actions">
+            <button
+              class="primary-button"
+              type="button"
+              :disabled="invitationStore.actingId === item.id"
+              @click="respondToInvitation(item, 'accept')"
+            >
+              {{ invitationStore.actingId === item.id ? '处理中' : '接受' }}
+            </button>
+            <button
+              class="teaching-secondary-button"
+              type="button"
+              :disabled="invitationStore.actingId === item.id"
+              @click="respondToInvitation(item, 'decline')"
+            >
+              拒绝
+            </button>
+          </div>
+        </article>
+      </div>
+      <p v-else-if="invitationStore.isLoading" class="teaching-subtle">正在加载邀请</p>
+    </section>
 
     <section v-if="authStore.isTeacher" class="teaching-toolbar">
       <button class="primary-button" type="button" @click="showCreateForm = !showCreateForm">

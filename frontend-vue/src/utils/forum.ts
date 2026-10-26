@@ -45,6 +45,10 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   assignment_published: '作业',
   assignment_grades_published: '成绩',
   problem_review: '题目审核',
+  class_invite: '班级邀请',
+  class_invite_accepted: '邀请结果',
+  class_invite_declined: '邀请结果',
+  system_notice: '站内通知',
 }
 
 export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
@@ -56,6 +60,10 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
   assignment_published: '📘',
   assignment_grades_published: '📊',
   problem_review: '✓',
+  class_invite: '✉',
+  class_invite_accepted: '✅',
+  class_invite_declined: '↩',
+  system_notice: '📣',
 }
 
 export const notificationIcon = (type: NotificationType | string): string =>

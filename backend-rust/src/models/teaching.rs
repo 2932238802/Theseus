@@ -370,3 +370,90 @@ pub struct AssignmentMutationResponse {
     pub id: i32,
     pub message: String,
 }
+
+// ---------------------------------------------------------------------------
+// Class invitations
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct InviteCandidateQuery {
+    pub q: Option<String>,
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InviteCandidate {
+    pub user_id: i32,
+    pub username: String,
+    pub email: String,
+    pub is_member: bool,
+    pub has_pending_invitation: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InviteCandidateListResponse {
+    pub candidates: Vec<InviteCandidate>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateClassInvitationsRequest {
+    pub user_ids: Vec<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InvitationSkip {
+    pub user_id: i32,
+    pub username: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateClassInvitationsResponse {
+    pub invited_count: usize,
+    pub skipped: Vec<InvitationSkip>,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct OwnerInvitationItem {
+    pub id: i64,
+    pub invitee_id: i32,
+    pub invitee_username: String,
+    pub invitee_email: String,
+    pub status: String,
+    pub expires_at: DateTime<Utc>,
+    pub responded_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ClassInvitationListResponse {
+    pub invitations: Vec<OwnerInvitationItem>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct MyInvitationItem {
+    pub id: i64,
+    pub class_id: i32,
+    pub class_name: String,
+    pub course_name: Option<String>,
+    pub term: Option<String>,
+    pub inviter_id: i32,
+    pub inviter_username: String,
+    pub status: String,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MyInvitationListResponse {
+    pub invitations: Vec<MyInvitationItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InvitationMutationResponse {
+    pub id: i64,
+    pub class_id: i32,
+    pub status: String,
+    pub message: String,
+}

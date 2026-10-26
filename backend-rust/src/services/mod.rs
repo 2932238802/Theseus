@@ -5,6 +5,7 @@ pub mod class_service;
 pub mod email_service;
 pub mod forum_service;
 pub mod grade_service;
+pub mod invitation_service;
 pub mod notification_service;
 pub mod ranking_service;
 pub mod run_service;

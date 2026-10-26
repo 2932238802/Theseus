@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../store/auth'
 import AdminForumPage from '../views/AdminForumPage.vue'
+import AdminNotifyPage from '../views/AdminNotifyPage.vue'
 import AdminProblemsPage from '../views/AdminProblemsPage.vue'
 import AdminUsersPage from '../views/AdminUsersPage.vue'
 import AssignmentComposePage from '../views/AssignmentComposePage.vue'
@@ -112,6 +113,12 @@ const router = createRouter({
       path: '/admin/users',
       name: 'admin-users',
       component: AdminUsersPage,
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: '/admin/notifications',
+      name: 'admin-notifications',
+      component: AdminNotifyPage,
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },

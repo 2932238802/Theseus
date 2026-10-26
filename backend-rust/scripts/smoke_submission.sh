@@ -398,6 +398,9 @@ register_and_login() {
     REG_USER_ID=$(jq -r '.data.user.id // empty' <<<"$API_BODY")
     REG_TOKEN=$(jq -r '.data.token // empty' <<<"$API_BODY")
     [[ -n "$REG_USER_ID" && -n "$REG_TOKEN" ]] || fatal_preflight "登录响应缺少 user.id 或 token"
+    # 提交作业要求邮箱已验证；本冒烟不测邮箱链路，直接标记测试账号。
+    db_scalar "UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = $REG_USER_ID" >/dev/null ||
+        fatal_preflight "无法标记测试账号邮箱已验证"
 }
 
 # ---------------------------------------------------------------------------
@@ -780,11 +783,12 @@ check_privacy() {
     USER_B=$REG_USER_ID
     TOKEN_B=$REG_TOKEN
 
+    # 他人提交按设计返回 404 而非 403，避免泄露提交 ID 是否存在。
     api_request GET "/api/submissions/$ac_id" "$TOKEN_B"
-    assert_eq "他人详情 HTTP" "403" "$API_STATUS"
+    assert_eq "他人详情 HTTP" "404" "$API_STATUS"
 
     api_request GET "/api/submissions/$ac_id/status" "$TOKEN_B"
-    assert_eq "他人状态 HTTP" "403" "$API_STATUS"
+    assert_eq "他人状态 HTTP" "404" "$API_STATUS"
 
     api_request GET "/api/submissions/2147483000" "$TOKEN_A"
     assert_eq "不存在详情 HTTP" "404" "$API_STATUS"

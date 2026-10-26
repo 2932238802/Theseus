@@ -8,8 +8,8 @@ use crate::{
     AppState,
     handlers::{
         admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, class_handler,
-        forum_handler, notification_handler, problem_handler, ranking_handler, run_handler,
-        submission_handler,
+        forum_handler, invitation_handler, notification_handler, problem_handler, ranking_handler,
+        run_handler, submission_handler,
     },
 };
 
@@ -46,6 +46,23 @@ pub fn router(state: AppState) -> Router {
             get(class_handler::get).put(class_handler::update),
         )
         .route("/api/classes/{id}/members", post(class_handler::add_member))
+        .route(
+            "/api/classes/{id}/invite-candidates",
+            get(invitation_handler::search_candidates),
+        )
+        .route(
+            "/api/classes/{id}/invitations",
+            get(invitation_handler::list_for_class).post(invitation_handler::create),
+        )
+        .route("/api/invitations", get(invitation_handler::mine))
+        .route(
+            "/api/invitations/{id}/accept",
+            post(invitation_handler::accept),
+        )
+        .route(
+            "/api/invitations/{id}/decline",
+            post(invitation_handler::decline),
+        )
         .route("/api/classes/{id}/members/me", delete(class_handler::leave))
         .route(
             "/api/classes/{id}/members/{user_id}",
@@ -174,6 +191,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/forum/reports", post(forum_handler::create_report))
         .route("/api/notifications", get(notification_handler::list))
+        .route("/api/notifications/send", post(notification_handler::send))
         .route(
             "/api/notifications/unread-count",
             get(notification_handler::unread_count),

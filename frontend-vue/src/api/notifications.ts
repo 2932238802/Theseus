@@ -1,6 +1,13 @@
 import { type ApiEnvelope, unwrap } from './client'
 import { http } from './http'
-import { number, record, text, type UnknownRecord } from './parse'
+import {
+  nullableNumber,
+  nullableText,
+  number,
+  record,
+  text,
+  type UnknownRecord,
+} from './parse'
 import type {
   ForumNotification,
   NotificationListQuery,
@@ -17,6 +24,9 @@ const mapNotification = (value: unknown): ForumNotification => {
     link: typeof item.link === 'string' ? item.link : null,
     read: item.read === true,
     createdAt: text(item.created_at),
+    relatedType: nullableText(item.related_type),
+    relatedId: nullableNumber(item.related_id),
+    invitationStatus: nullableText(item.invitation_status),
   }
 }
 
@@ -55,4 +65,39 @@ export const markNotificationRead = async (id: number): Promise<void> => {
 
 export const markAllNotificationsRead = async (): Promise<void> => {
   await unwrap(http.put<ApiEnvelope<unknown>>('/notifications/read-all'))
+}
+
+export interface SendNotificationPayload {
+  title: string
+  body?: string
+  link?: string
+  classId?: number
+  userIds?: number[]
+  role?: 'student' | 'teacher'
+  all?: boolean
+}
+
+export interface SendNotificationResult {
+  recipientCount: number
+  message: string
+}
+
+export const sendNotification = async (
+  payload: SendNotificationPayload,
+): Promise<SendNotificationResult> => {
+  const data = await unwrap(
+    http.post<ApiEnvelope<UnknownRecord>>('/notifications/send', {
+      title: payload.title,
+      body: payload.body || undefined,
+      link: payload.link || undefined,
+      class_id: payload.classId,
+      user_ids: payload.userIds,
+      role: payload.role,
+      all: payload.all,
+    }),
+  )
+  return {
+    recipientCount: number(data.recipient_count),
+    message: text(data.message),
+  }
 }

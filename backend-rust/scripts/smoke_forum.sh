@@ -320,6 +320,9 @@ register_and_login() {
     [[ "$API_STATUS" == "201" ]] || fatal_preflight "注册失败（HTTP $API_STATUS：$(api_error)）"
 
     login_only "$username" "$password"
+    # 论坛写入要求邮箱已验证；本冒烟不测邮箱链路，直接标记测试账号。
+    db_scalar "UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = $REG_USER_ID" >/dev/null ||
+        fatal_preflight "无法标记测试账号邮箱已验证"
 }
 
 login_only() {

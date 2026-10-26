@@ -295,6 +295,10 @@ export type NotificationType =
   | 'assignment_published'
   | 'assignment_grades_published'
   | 'problem_review'
+  | 'class_invite'
+  | 'class_invite_accepted'
+  | 'class_invite_declined'
+  | 'system_notice'
 
 export interface ForumNotification {
   id: number
@@ -304,6 +308,9 @@ export interface ForumNotification {
   link: string | null
   read: boolean
   createdAt: string
+  relatedType?: string | null
+  relatedId?: number | null
+  invitationStatus?: string | null
 }
 
 export interface NotificationListResult {
