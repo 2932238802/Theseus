@@ -54,7 +54,7 @@ export const useSubmissionStore = defineStore('submissions', () => {
       await wait(POLL_INTERVAL)
     }
     if (token !== pollToken) return current
-    throw new Error('评测超时，请稍后在个人中心查看结果。')
+    throw new Error('评测超时 请稍后在个人中心查看结果')
   }
 
   const submit = async (

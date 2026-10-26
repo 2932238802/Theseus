@@ -53,7 +53,7 @@ export const useRunStore = defineStore('runs', () => {
       await wait(POLL_INTERVAL)
     }
     if (token === pollToken) {
-      throw new Error('运行仍未结束，请稍后刷新运行记录查看结果。')
+      throw new Error('运行仍未结束 请稍后刷新运行记录查看结果')
     }
   }
 

@@ -8,7 +8,8 @@ use crate::{
     AppState,
     handlers::{
         admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, class_handler,
-        forum_handler, notification_handler, problem_handler, run_handler, submission_handler,
+        forum_handler, notification_handler, problem_handler, ranking_handler, run_handler,
+        submission_handler,
     },
 };
 
@@ -97,6 +98,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/problems/tags", get(problem_handler::tags))
         .route("/api/problems/{id}", get(problem_handler::get))
         .route("/api/stats", get(problem_handler::stats))
+        .route("/api/rankings", get(ranking_handler::list))
         .route("/api/problems/custom", post(problem_handler::submit_custom))
         .route("/api/admin/problems", post(problem_handler::create))
         .route("/api/admin/problems/pending", get(problem_handler::pending))

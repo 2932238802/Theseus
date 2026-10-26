@@ -87,8 +87,8 @@ const resetFilters = (): void => {
 }
 
 const successMessage = (message: string, archivedCount: number): string => {
-  const base = message || '角色已更新，立即生效'
-  return archivedCount > 0 ? `${base}，已归档 ${archivedCount} 个班级` : base
+  const base = message || '角色已更新 立即生效'
+  return archivedCount > 0 ? `${base} 已归档 ${archivedCount} 个班级` : base
 }
 
 const applyRole = async (user: AdminUser, role: Role, archive: boolean): Promise<void> => {
@@ -118,7 +118,7 @@ const requestRole = (user: AdminUser, event: Event): void => {
   if (nextRole === user.role || busyUserId.value !== null) return
 
   if (user.role === 'student' && user.activeMembershipCount > 0) {
-    actionError.value = `该学生仍有 ${user.activeMembershipCount} 个班级，请先退出班级`
+    actionError.value = `该学生仍有 ${user.activeMembershipCount} 个班级 请先退出班级`
     return
   }
 
@@ -201,7 +201,7 @@ onMounted(() => {
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
       <p v-if="notice" class="teaching-success" role="status">{{ notice }}</p>
       <p v-if="listError" class="form-error" role="alert">{{ listError }}</p>
-      <p v-if="isLoading" class="teaching-subtle">正在加载用户…</p>
+      <p v-if="isLoading" class="teaching-subtle">正在加载用户</p>
 
       <div v-else-if="users.length" class="admin-table-scroll">
         <table class="admin-users-table">
@@ -247,7 +247,7 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
-      <p v-else-if="!listError" class="empty-state"><span>没有匹配的用户。</span></p>
+      <p v-else-if="!listError" class="empty-state"><span>没有匹配的用户</span></p>
 
       <div v-if="total > 0" class="pagination">
         <button type="button" :disabled="page <= 1 || isLoading" @click="load(page - 1)">← 上一页</button>
@@ -262,12 +262,12 @@ onMounted(() => {
       <header>
         <div>
           <h2 id="demote-title">变更教师「{{ demoteTarget.user.username }}」的角色</h2>
-          <p>该教师仍有 {{ demoteTarget.user.ownedActiveClassCount }} 个未归档班级。</p>
+          <p>该教师仍有 {{ demoteTarget.user.ownedActiveClassCount }} 个未归档班级</p>
         </div>
         <button type="button" aria-label="关闭" @click="closeDemote">×</button>
       </header>
       <div class="run-dialog-body">
-        <p class="teaching-subtle">变更为{{ ROLE_LABELS[demoteTarget.nextRole] }}会先归档这些班级。</p>
+        <p class="teaching-subtle">变更为{{ ROLE_LABELS[demoteTarget.nextRole] }}会先归档这些班级</p>
         <label class="teaching-switch">
           <input v-model="archiveOwnedClasses" type="checkbox" />
           <span>归档这些班级后降级</span>
@@ -283,7 +283,7 @@ onMounted(() => {
             :disabled="!archiveOwnedClasses || demoteSubmitting"
             @click="confirmDemote"
           >
-            {{ demoteSubmitting ? '降级中…' : '确认降级' }}
+            {{ demoteSubmitting ? '降级中' : '确认降级' }}
           </button>
         </div>
       </div>

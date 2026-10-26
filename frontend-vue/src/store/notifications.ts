@@ -31,7 +31,7 @@ export const useNotificationStore = defineStore('notifications', () => {
       const value = await fetchUnreadCount()
       if (requestId === unreadSequence) unread.value = value
     } catch {
-      // 未读数轮询失败不打断页面；下一次轮询会重试。
+      // 未读数轮询失败不打断页面；下一次轮询会重试
     }
   }
 

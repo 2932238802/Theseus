@@ -2,6 +2,7 @@ import type { User } from '../types/oj'
 
 export const TOKEN_KEY = 'theseus-token'
 export const USER_KEY = 'theseus-user'
+export const REMEMBERED_USERNAME_KEY = 'theseus-remembered-username'
 
 const getSessionStorage = (): Storage | null => {
   try {
@@ -29,6 +30,32 @@ export const getStoredUser = (): User | null => {
   } catch {
     clearSession()
     return null
+  }
+}
+
+export const getRememberedUsername = (): string => {
+  try {
+    return getLocalStorage()?.getItem(REMEMBERED_USERNAME_KEY)?.trim() ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export const rememberUsername = (username: string): void => {
+  const value = username.trim()
+  if (!value) return
+  try {
+    getLocalStorage()?.setItem(REMEMBERED_USERNAME_KEY, value)
+  } catch {
+    // Storage may be blocked or full; remembering the account is optional.
+  }
+}
+
+export const forgetUsername = (): void => {
+  try {
+    getLocalStorage()?.removeItem(REMEMBERED_USERNAME_KEY)
+  } catch {
+    // Ignore blocked storage.
   }
 }
 

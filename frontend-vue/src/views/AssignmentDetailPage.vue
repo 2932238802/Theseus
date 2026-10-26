@@ -62,7 +62,7 @@ const publish = (): void => {
 
 const archive = (): void => {
   if (!detail.value) return
-  if (!window.confirm('归档后学生不能再提交，确定归档吗？')) return
+  if (!window.confirm('归档后学生不能再提交 确定归档吗？')) return
   void runAction(async () => {
     await assignmentStore.archive(detail.value!.id)
   }, '作业已归档')
@@ -70,7 +70,7 @@ const archive = (): void => {
 
 const remove = (): void => {
   if (!detail.value) return
-  if (!window.confirm('确定删除这份草稿吗？删除后无法恢复。')) return
+  if (!window.confirm('确定删除这份草稿吗？删除后无法恢复')) return
   const classId = detail.value.classId
   void runAction(async () => {
     await assignmentStore.remove(detail.value!.id)
@@ -88,7 +88,7 @@ watch(assignmentId, load)
 <template>
   <NavBar />
   <main class="teaching-page page-shell">
-    <p v-if="assignmentStore.isLoading" class="empty-state"><span>正在加载作业…</span></p>
+    <p v-if="assignmentStore.isLoading" class="empty-state"><span>正在加载作业</span></p>
     <div v-else-if="assignmentStore.error" class="empty-state">
       <p>{{ assignmentStore.error }}</p>
       <RouterLink class="primary-button" to="/classes">返回班级</RouterLink>
@@ -159,7 +159,7 @@ watch(assignmentId, load)
 
       <section class="teaching-panel">
         <MarkdownBody v-if="detail.description" :content="detail.description" />
-        <p v-else class="teaching-subtle">没有描述。</p>
+        <p v-else class="teaching-subtle">没有描述</p>
       </section>
 
       <section v-if="detail.isOwner" class="teaching-stats">
@@ -202,15 +202,15 @@ watch(assignmentId, load)
               </template>
             </div>
           </article>
-          <p v-if="!detail.problems.length" class="empty-state"><span>还没有题目。</span></p>
+          <p v-if="!detail.problems.length" class="empty-state"><span>还没有题目</span></p>
         </div>
       </section>
 
       <section v-if="!detail.isOwner" class="teaching-panel">
-        <p v-if="isArchived" class="teaching-subtle">作业已归档，不能提交。</p>
-        <p v-else-if="isClosed" class="teaching-subtle">已截止，不能提交。</p>
-        <p v-else-if="!detail.canSubmit" class="teaching-subtle">当前不能提交。</p>
-        <p v-else class="teaching-subtle">点击题目进入作答。</p>
+        <p v-if="isArchived" class="teaching-subtle">作业已归档 不能提交</p>
+        <p v-else-if="isClosed" class="teaching-subtle">已截止 不能提交</p>
+        <p v-else-if="!detail.canSubmit" class="teaching-subtle">当前不能提交</p>
+        <p v-else class="teaching-subtle">点击题目进入作答</p>
         <div v-if="canShowScores && detail.overallFeedback" class="teaching-overall-feedback">
           <span>整体评语</span>
           <p>{{ detail.overallFeedback }}</p>

@@ -46,7 +46,7 @@ const html = computed(() => {
     ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
   })
 
-  // 统一外链行为；在清洗后再设置属性，避免信任 Markdown 中的 target/rel。
+  // 统一外链行为；在清洗后再设置属性，避免信任 Markdown 中的 target/rel
   const template = document.createElement('template')
   template.innerHTML = String(clean)
   template.content.querySelectorAll('a').forEach((link) => {

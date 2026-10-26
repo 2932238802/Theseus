@@ -44,7 +44,7 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     scope: 'oj',
     defaultKey: 'Mod+Enter',
     customizable: true,
-    note: '有公开用例时直接运行，否则打开自定义输入',
+    note: '有公开用例时直接运行 否则打开自定义输入',
   },
   {
     id: 'oj.submit',

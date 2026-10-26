@@ -48,7 +48,7 @@ onMounted(() => {
     <p v-if="notificationStore.error" class="form-error" role="alert">{{ notificationStore.error }}</p>
 
     <div v-if="notificationStore.isLoading && !notificationStore.notifications.length" class="run-note">
-      正在加载通知…
+      正在加载通知
     </div>
     <div v-else-if="notificationStore.notifications.length" class="notification-list">
       <button
@@ -78,11 +78,11 @@ onMounted(() => {
         :disabled="notificationStore.isLoading"
         @click="load(notificationStore.page + 1, true)"
       >
-        {{ notificationStore.isLoading ? '加载中…' : '加载更多通知' }}
+        {{ notificationStore.isLoading ? '加载中' : '加载更多通知' }}
       </button>
     </div>
     <div v-else-if="!notificationStore.isLoading" class="empty-state">
-      <p>暂时没有通知。</p>
+      <p>暂时没有通知</p>
     </div>
   </main>
 </template>

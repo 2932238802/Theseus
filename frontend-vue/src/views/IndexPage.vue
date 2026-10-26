@@ -41,7 +41,7 @@ const search = (): void => { void router.push({ path: '/problems', query: { keyw
     <section class="search-card" aria-label="题目搜索">
       <form class="search-form" @submit.prevent="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
-        <input v-model.trim="searchKeyword" placeholder="搜索题目、标签或关键词" aria-label="搜索题目" />
+        <input v-model.trim="searchKeyword" placeholder="搜索题目 标签或关键词" aria-label="搜索题目" />
         <button class="primary-button" type="submit">搜索</button>
       </form>
     </section>
@@ -56,7 +56,7 @@ const search = (): void => { void router.push({ path: '/problems', query: { keyw
         </div>
         <div class="daily-stat"><strong>{{ featuredProblem.acceptance.toFixed(1) }}<small>%</small></strong><span>通过率</span></div>
       </article>
-      <div v-else class="empty-state"><p>题库暂时没有题目。</p></div>
+      <div v-else class="empty-state"><p>题库暂时没有题目</p></div>
     </section>
 
     <section v-if="categories.length" class="categories-section" aria-labelledby="categories-title">

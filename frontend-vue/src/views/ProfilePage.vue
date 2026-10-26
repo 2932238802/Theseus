@@ -70,7 +70,7 @@ const closeSubmissionDetail = (): void => {
 }
 
 const deleteRecord = async (record: RunSummary): Promise<void> => {
-  if (!window.confirm(`确定删除「${record.problemTitle}」的这条运行记录吗？删除后无法恢复。`)) return
+  if (!window.confirm(`确定删除「${record.problemTitle}」的这条运行记录吗？删除后无法恢复`)) return
   deletingId.value = record.id
   runStore.recordsError = ''
   try {
@@ -112,16 +112,16 @@ onMounted(() => {
 
     <section v-if="activeTab === 'submissions'" class="recent-section"><div class="section-heading"><h2>最近提交</h2></div>
       <p v-if="submissionStore.error" class="form-error" role="alert">{{ submissionStore.error }}</p>
-      <div v-if="submissionStore.isLoading" class="empty-state"><p>正在加载提交记录…</p></div>
+      <div v-if="submissionStore.isLoading" class="empty-state"><p>正在加载提交记录</p></div>
       <div v-else-if="submissionStore.submissions.length" class="submission-list run-record-list"><article v-for="submission in submissionStore.submissions" :key="submission.id"><RouterLink :to="`/problem/${submission.problemId}`">{{ submission.problemTitle }}</RouterLink><span>{{ submission.language }}</span><span :class="['result-status', submission.status === 'Accepted' ? 'accepted' : 'failed']">{{ submission.status }}<template v-if="submission.totalTestCases > 0"> · {{ submission.testCasesPassed }}/{{ submission.totalTestCases }}</template></span><time>{{ formatTime(submission.createdAt) }}</time><div class="run-record-actions"><button type="button" :disabled="submissionDetailLoading" @click="openSubmissionDetail(submission)">查看</button></div></article></div>
-      <p v-if="submissionDetailLoading" class="run-note">正在加载提交详情…</p>
+      <p v-if="submissionDetailLoading" class="run-note">正在加载提交详情</p>
       <p v-if="submissionDetailError" class="form-error" role="alert">{{ submissionDetailError }}</p>
-      <div v-else class="empty-state"><p>还没有提交记录。</p><RouterLink class="primary-button" to="/problems">去开始第一题 <span>→</span></RouterLink></div>
+      <div v-else class="empty-state"><p>还没有提交记录</p><RouterLink class="primary-button" to="/problems">去开始第一题 <span>→</span></RouterLink></div>
     </section>
 
-    <section v-else class="recent-section"><div class="section-heading"><h2>运行记录</h2><span class="run-note">共 {{ runStore.recordsTotal }} 条，仅保留你的最近运行结果。</span></div>
+    <section v-else class="recent-section"><div class="section-heading"><h2>运行记录</h2><span class="run-note">共 {{ runStore.recordsTotal }} 条 仅保留最近运行结果</span></div>
       <p v-if="runStore.recordsError" class="form-error" role="alert">{{ runStore.recordsError }}</p>
-      <div v-if="runStore.recordsLoading" class="empty-state"><p>正在加载运行记录…</p></div>
+      <div v-if="runStore.recordsLoading" class="empty-state"><p>正在加载运行记录</p></div>
       <div v-else-if="runStore.records.length" class="submission-list run-record-list">
         <article v-for="record in runStore.records" :key="record.id">
           <RouterLink v-if="record.problemId" :to="`/problem/${record.problemId}`">{{ record.problemTitle }}</RouterLink>
@@ -131,12 +131,12 @@ onMounted(() => {
           <time>{{ formatTime(record.createdAt) }}</time>
           <div class="run-record-actions">
             <button type="button" :disabled="runDetailLoading" @click="openRunDetail(record)">查看</button>
-            <button type="button" class="danger" :disabled="deletingId === record.id" @click="deleteRecord(record)">{{ deletingId === record.id ? '删除中…' : '删除' }}</button>
+            <button type="button" class="danger" :disabled="deletingId === record.id" @click="deleteRecord(record)">{{ deletingId === record.id ? '删除中' : '删除' }}</button>
           </div>
         </article>
       </div>
-      <div v-else class="empty-state"><p>还没有运行记录，去题目页试试运行代码吧。</p><RouterLink class="primary-button" to="/problems">去题库看看 <span>→</span></RouterLink></div>
-      <p v-if="runDetailLoading" class="run-note">正在加载运行详情…</p>
+      <div v-else class="empty-state"><p>还没有运行记录 去题目页运行代码试试</p><RouterLink class="primary-button" to="/problems">去题库看看 <span>→</span></RouterLink></div>
+      <p v-if="runDetailLoading" class="run-note">正在加载运行详情</p>
       <p v-if="runDetailError" class="form-error" role="alert">{{ runDetailError }}</p>
     </section>
   </main>
@@ -189,7 +189,7 @@ onMounted(() => {
           <div v-if="item.actual !== undefined" class="run-block"><span>实际</span><pre>{{ formatInline(item.actual) }}</pre></div>
           <div v-if="item.stdout" class="run-block"><span>stdout</span><pre>{{ item.stdout }}</pre></div>
           <div v-if="item.stderr" class="run-block"><span>stderr</span><pre>{{ item.stderr }}</pre></div>
-          <p v-if="item.truncated" class="run-note">输出超过 64 KB，已截断。</p>
+          <p v-if="item.truncated" class="run-note">输出超过 64 KB 已截断</p>
         </div>
         <details class="run-code"><summary>查看代码</summary><pre>{{ selectedRun.code }}</pre></details>
       </div>

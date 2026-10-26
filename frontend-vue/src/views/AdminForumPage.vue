@@ -188,7 +188,7 @@ const askReason = (message: string): string | null => {
   if (value === null) return null
   const reason = value.trim()
   if (!reason) {
-    actionError.value = '隐藏内容时必须填写原因。'
+    actionError.value = '隐藏内容时必须填写原因'
     return null
   }
   return reason
@@ -245,11 +245,11 @@ const changePostStatus = async (
   if (busyKey.value) return
   let reason: string | undefined
   if (next === 'hidden') {
-    const value = askReason(`隐藏帖子 #${post.id}，请填写原因`)
+    const value = askReason(`隐藏帖子 #${post.id} 请填写原因`)
     if (value === null) return
     reason = value
   }
-  if (next === 'deleted' && !window.confirm(`确定删除帖子「${post.title}」吗？删除后不可恢复。`)) return
+  if (next === 'deleted' && !window.confirm(`确定删除帖子「${post.title}」吗？删除后不可恢复`)) return
   actionError.value = ''
   busyKey.value = `post-${post.id}`
   try {
@@ -288,11 +288,11 @@ const changeCommentStatus = async (
   if (busyKey.value) return
   let reason: string | undefined
   if (next === 'hidden') {
-    const value = askReason(`隐藏评论 #${commentId}，请填写原因`)
+    const value = askReason(`隐藏评论 #${commentId} 请填写原因`)
     if (value === null) return
     reason = value
   }
-  if (next === 'deleted' && !window.confirm(`确定删除评论 #${commentId} 吗？删除后不可恢复。`)) return
+  if (next === 'deleted' && !window.confirm(`确定删除评论 #${commentId} 吗？删除后不可恢复`)) return
   actionError.value = ''
   busyKey.value = `comment-${commentId}`
   try {
@@ -337,7 +337,7 @@ const locateReportTarget = async (report: AdminReport): Promise<void> => {
     await openDetail(report.targetPreview.postId, report.targetId)
     return
   }
-  // 评论所属帖子已被彻底删除时后端拿不到 post_id，退化为按标题筛选。
+  // 评论所属帖子已被彻底删除时后端拿不到 post_id，退化为按标题筛选
   contentFilter.value = 'all'
   contentQuery.value = report.targetPreview.title ?? ''
   await loadContent(1)
@@ -361,7 +361,7 @@ const submitMute = async (): Promise<void> => {
   if (!muteTarget.value) return
   const reason = muteReason.value.trim()
   if (!reason) {
-    muteError.value = '请填写禁言原因。'
+    muteError.value = '请填写禁言原因'
     return
   }
   muteSubmitting.value = true
@@ -450,7 +450,7 @@ onMounted(() => {
       </div>
 
       <p v-if="reportsError" class="form-error" role="alert">{{ reportsError }}</p>
-      <div v-if="reportsLoading" class="run-note">正在加载举报…</div>
+      <div v-if="reportsLoading" class="run-note">正在加载举报</div>
       <div v-else-if="reports.length" class="admin-report-list">
         <article v-for="report in reports" :key="report.id" class="admin-report-card">
           <header>
@@ -510,7 +510,7 @@ onMounted(() => {
           </p>
         </article>
       </div>
-      <div v-else class="empty-state"><p>当前筛选下没有举报。</p></div>
+      <div v-else class="empty-state"><p>当前筛选下没有举报</p></div>
 
       <div v-if="reportTotal > 0" class="pagination">
         <span>第 {{ reportPage }} / {{ reportPageCount }} 页</span>
@@ -542,7 +542,7 @@ onMounted(() => {
       </form>
 
       <p v-if="contentError" class="form-error" role="alert">{{ contentError }}</p>
-      <div v-if="contentLoading" class="run-note">正在加载内容…</div>
+      <div v-if="contentLoading" class="run-note">正在加载内容</div>
       <div v-else-if="posts.length" class="admin-content-list">
         <article v-for="post in posts" :key="post.id" class="admin-content-card">
           <header>
@@ -613,7 +613,7 @@ onMounted(() => {
           </div>
         </article>
       </div>
-      <div v-else class="empty-state"><p>没有匹配的内容。</p></div>
+      <div v-else class="empty-state"><p>没有匹配的内容</p></div>
 
       <div v-if="contentTotal > 0" class="pagination">
         <span>共 {{ contentTotal }} 条 · 第 {{ contentPage }} / {{ contentPageCount }} 页</span>
@@ -637,7 +637,7 @@ onMounted(() => {
         </header>
 
         <div class="forum-dialog-body">
-          <p v-if="detailLoading" class="run-note">正在加载详情…</p>
+          <p v-if="detailLoading" class="run-note">正在加载详情</p>
           <p v-else-if="detailError" class="form-error" role="alert">{{ detailError }}</p>
           <template v-else-if="detail">
             <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
@@ -743,7 +743,7 @@ onMounted(() => {
                 </div>
               </article>
             </div>
-            <p v-else class="run-note">还没有评论。</p>
+            <p v-else class="run-note">还没有评论</p>
           </template>
         </div>
       </section>
@@ -754,7 +754,7 @@ onMounted(() => {
         <header>
           <div>
             <h2 id="mute-dialog-title">禁言用户</h2>
-            <p>{{ muteTarget.username }}（ID {{ muteTarget.id }}）将无法发帖和评论。</p>
+            <p>{{ muteTarget.username }}（ID {{ muteTarget.id }}）将无法发帖和评论</p>
           </div>
           <button type="button" aria-label="关闭" @click="closeMute">×</button>
         </header>
@@ -767,14 +767,14 @@ onMounted(() => {
           </label>
           <label class="forum-field">
             <span>禁言原因</span>
-            <textarea v-model="muteReason" rows="3" maxlength="500" placeholder="必填，用户会收到通知"></textarea>
+            <textarea v-model="muteReason" rows="3" maxlength="500" placeholder="必填 用户会收到通知"></textarea>
           </label>
           <p v-if="muteError" class="form-error" role="alert">{{ muteError }}</p>
         </div>
         <footer>
           <button type="button" class="forum-secondary-button" @click="closeMute">取消</button>
           <button type="button" class="forum-danger-button" :disabled="muteSubmitting" @click="submitMute">
-            {{ muteSubmitting ? '提交中…' : '确认禁言' }}
+            {{ muteSubmitting ? '提交中' : '确认禁言' }}
           </button>
         </footer>
       </section>

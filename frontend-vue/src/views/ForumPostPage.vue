@@ -93,11 +93,11 @@ const submitComment = async (): Promise<void> => {
   const body = commentBody.value.trim()
   commentError.value = ''
   if (!body) {
-    commentError.value = '评论不能为空。'
+    commentError.value = '评论不能为空'
     return
   }
   if (body.length > 5000) {
-    commentError.value = '评论不能超过 5000 个字符。'
+    commentError.value = '评论不能超过 5000 个字符'
     return
   }
   commentSubmitting.value = true
@@ -121,11 +121,11 @@ const submitReply = async (): Promise<void> => {
   const body = replyBody.value.trim()
   replyError.value = ''
   if (!body) {
-    replyError.value = '回复不能为空。'
+    replyError.value = '回复不能为空'
     return
   }
   if (body.length > 5000) {
-    replyError.value = '回复不能超过 5000 个字符。'
+    replyError.value = '回复不能超过 5000 个字符'
     return
   }
   replySubmitting.value = true
@@ -162,7 +162,7 @@ const saveEdit = async (): Promise<void> => {
   const body = editingBody.value.trim()
   editError.value = ''
   if (!body) {
-    editError.value = '评论不能为空。'
+    editError.value = '评论不能为空'
     return
   }
   try {
@@ -174,7 +174,7 @@ const saveEdit = async (): Promise<void> => {
 }
 
 const removeComment = async (id: number): Promise<void> => {
-  if (!window.confirm('确定删除这条评论吗？删除后无法恢复。')) return
+  if (!window.confirm('确定删除这条评论吗？删除后无法恢复')) return
   actionError.value = ''
   try {
     await forumStore.removeComment(id)
@@ -223,7 +223,7 @@ const onReportSubmitted = async (message: string): Promise<void> => {
 }
 
 const deletePost = async (): Promise<void> => {
-  if (!post.value || !window.confirm('确定删除这个帖子吗？删除后无法恢复。')) return
+  if (!post.value || !window.confirm('确定删除这个帖子吗？删除后无法恢复')) return
   actionError.value = ''
   try {
     await forumStore.removePost(post.value.id)
@@ -238,7 +238,7 @@ const adminHidePost = async (): Promise<void> => {
   const reason = window.prompt('请输入隐藏原因（必填）')
   if (reason === null) return
   if (!reason.trim()) {
-    actionError.value = '隐藏帖子时必须填写原因。'
+    actionError.value = '隐藏帖子时必须填写原因'
     return
   }
   actionBusy.value = true
@@ -267,7 +267,7 @@ const adminRestorePost = async (): Promise<void> => {
 }
 
 const adminDeletePost = async (): Promise<void> => {
-  if (!post.value || !window.confirm('管理员删除帖子后不可恢复，确定继续吗？')) return
+  if (!post.value || !window.confirm('管理员删除帖子后不可恢复 确定继续吗？')) return
   actionBusy.value = true
   try {
     await changeAdminPostStatus(post.value.id, 'deleted', '管理员删除')
@@ -342,17 +342,17 @@ onMounted(() => {
 <template>
   <NavBar />
   <main class="forum-page forum-detail-page page-shell">
-    <p v-if="forumStore.postLoading" class="run-note">正在加载帖子…</p>
+    <p v-if="forumStore.postLoading" class="run-note">正在加载帖子</p>
     <section v-else-if="!postId || forumStore.postError" class="forum-not-found">
       <h1>帖子不存在或已被删除</h1>
-      <p>{{ forumStore.postError || '请检查链接是否正确。' }}</p>
+      <p>{{ forumStore.postError || '请检查链接是否正确' }}</p>
       <RouterLink class="primary-button" to="/forum">返回校园墙</RouterLink>
     </section>
 
     <template v-else-if="post">
       <article class="forum-detail">
         <div v-if="post.status === 'hidden'" class="forum-hidden-warning" role="status">
-          该帖子已被隐藏，仅你和管理员可见。{{ post.hiddenReason === 'report_threshold' ? '原因：举报达到阈值。' : '原因：管理员操作。' }}
+          该帖子已被隐藏 仅你和管理员可见 {{ post.hiddenReason === 'report_threshold' ? '原因：举报达到阈值' : '原因：管理员操作' }}
         </div>
 
         <header class="forum-detail-heading">
@@ -411,24 +411,24 @@ onMounted(() => {
         </div>
 
         <form v-if="authStore.isAuthenticated && post.status === 'published'" class="forum-comment-form" @submit.prevent="submitComment">
-          <textarea v-model="commentBody" maxlength="5000" rows="3" placeholder="写下你的评论，支持 Markdown"></textarea>
+          <textarea v-model="commentBody" maxlength="5000" rows="3" placeholder="写下你的评论 支持 Markdown"></textarea>
           <div class="forum-comment-form-actions">
             <label class="forum-checkbox"><input v-model="commentAnonymous" type="checkbox" /> 匿名评论</label>
             <button type="submit" class="primary-button" :disabled="commentSubmitting">
-              {{ commentSubmitting ? '发送中…' : '发表评论' }}
+              {{ commentSubmitting ? '发送中' : '发表评论' }}
             </button>
           </div>
           <p v-if="commentError" class="form-error" role="alert">{{ commentError }}</p>
         </form>
         <p v-else-if="post.status !== 'published'" class="forum-login-hint">
-          帖子已被隐藏，暂时不能评论。
+          帖子已被隐藏 暂时不能评论
         </p>
         <p v-else class="forum-login-hint">
-          <RouterLink :to="{ name: 'login', query: { redirect: route.fullPath } }">登录</RouterLink> 后可以评论。
+          <RouterLink :to="{ name: 'login', query: { redirect: route.fullPath } }">登录</RouterLink> 后可以评论
         </p>
 
         <p v-if="forumStore.commentsError" class="form-error" role="alert">{{ forumStore.commentsError }}</p>
-        <div v-if="forumStore.commentsLoading && !forumStore.comments.length" class="run-note">正在加载评论…</div>
+        <div v-if="forumStore.commentsLoading && !forumStore.comments.length" class="run-note">正在加载评论</div>
         <div v-else-if="forumStore.comments.length" class="forum-comment-list">
           <article v-for="comment in forumStore.comments" :id="`comment-${comment.id}`" :key="comment.id" class="forum-comment">
             <div class="forum-comment-main">
@@ -450,7 +450,7 @@ onMounted(() => {
                 </div>
                 <MarkdownBody v-else :content="comment.bodyMd" />
               </template>
-              <p v-else class="forum-tombstone-text">评论内容已不可见，仅保留楼层结构。</p>
+              <p v-else class="forum-tombstone-text">评论内容已不可见 仅保留楼层结构</p>
 
               <div class="forum-comment-actions">
                 <button v-if="!comment.isTombstone && authStore.isAuthenticated && post.status === 'published'" type="button" @click="openReply(comment.id, comment.id, comment.author.displayName)">回复</button>
@@ -467,7 +467,7 @@ onMounted(() => {
                   <label class="forum-checkbox"><input v-model="replyAnonymous" type="checkbox" /> 匿名回复</label>
                   <button type="button" class="forum-secondary-button" @click="cancelReply">取消</button>
                   <button type="button" class="primary-button" :disabled="replySubmitting" @click="submitReply">
-                    {{ replySubmitting ? '发送中…' : '回复' }}
+                    {{ replySubmitting ? '发送中' : '回复' }}
                   </button>
                 </div>
                 <p v-if="replyError" class="form-error" role="alert">{{ replyError }}</p>
@@ -521,13 +521,13 @@ onMounted(() => {
           :disabled="forumStore.commentsLoading"
           @click="loadMoreComments"
         >
-          {{ forumStore.commentsLoading ? '加载中…' : `加载更多评论（${forumStore.comments.length} / ${forumStore.commentsTotal}）` }}
+          {{ forumStore.commentsLoading ? '加载中' : `加载更多评论（${forumStore.comments.length} / ${forumStore.commentsTotal}）` }}
         </button>
         <div
           v-else-if="!forumStore.commentsLoading && forumStore.comments.length === 0"
           class="empty-state"
         >
-          <p>还没有评论，来坐第一个沙发。</p>
+          <p>还没有评论 来坐第一个沙发</p>
         </div>
       </section>
     </template>

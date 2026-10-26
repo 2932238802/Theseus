@@ -5,9 +5,11 @@ import { toErrorMessage } from '../api/client'
 import type { User } from '../types/oj'
 import {
   clearSession,
+  forgetUsername,
   getStoredUser,
   getToken,
   persistSession,
+  rememberUsername,
   updateSessionUser,
 } from '../utils/session'
 
@@ -34,6 +36,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const session = await loginRequest(identifier, password)
       applySession(session.token, session.user, remember)
+      if (remember) rememberUsername(identifier)
+      else forgetUsername()
     } catch (exception: unknown) {
       error.value = toErrorMessage(exception)
       throw exception
@@ -49,6 +53,7 @@ export const useAuthStore = defineStore('auth', () => {
       await registerRequest(username, email, password)
       const session = await loginRequest(username, password)
       applySession(session.token, session.user, true)
+      rememberUsername(username)
     } catch (exception: unknown) {
       error.value = toErrorMessage(exception)
       throw exception

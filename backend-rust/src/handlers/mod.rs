@@ -6,5 +6,6 @@ pub mod class_handler;
 pub mod forum_handler;
 pub mod notification_handler;
 pub mod problem_handler;
+pub mod ranking_handler;
 pub mod run_handler;
 pub mod submission_handler;

@@ -206,7 +206,7 @@ onBeforeUnmount(() => {
 
       <div class="run-dialog-body shortcut-body">
         <template v-if="activeTab === 'settings'">
-          <p class="shortcut-hint">修改后立即生效，仅保存在当前浏览器。</p>
+          <p class="shortcut-hint">修改后立即生效 仅保存在当前浏览器</p>
           <p v-if="panelError" class="shortcut-error" role="alert">{{ panelError }}</p>
           <section v-for="group in settingsGroups" :key="group.key" class="shortcut-group">
             <h3>{{ group.label }}</h3>
@@ -227,7 +227,7 @@ onBeforeUnmount(() => {
                 :aria-label="`修改${action.label}快捷键`"
                 @click="startCapture(action.id)"
               >
-                {{ capturingId === action.id ? '按下新的组合键…' : display(bindingOf(action)) }}
+                {{ capturingId === action.id ? '按下新的组合键' : display(bindingOf(action)) }}
               </button>
               <button
                 v-if="shortcutStore.isCustomized(action.id)"
@@ -242,7 +242,7 @@ onBeforeUnmount(() => {
                 {{ captureError }}
               </p>
               <p v-else-if="capturingId === action.id" class="shortcut-capture-hint">
-                Esc 取消，Backspace 解除绑定
+                Esc 取消 Backspace 解除绑定
               </p>
             </div>
           </section>

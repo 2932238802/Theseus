@@ -169,7 +169,7 @@ const saveOverall = async (): Promise<void> => {
 
 const publish = async (): Promise<void> => {
   if (isPublishing.value || !duePassed.value || gradesPublished.value) return
-  if (!window.confirm('发布后学生可以查看成绩，确定发布吗？')) return
+  if (!window.confirm('发布后学生可以查看成绩 确定发布吗？')) return
   actionError.value = ''
   actionMessage.value = ''
   isPublishing.value = true
@@ -196,7 +196,7 @@ watch(includeRemoved, load)
 <template>
   <NavBar />
   <main class="teaching-page teaching-wide page-shell">
-    <p v-if="assignmentStore.isGradebookLoading && !gradebook" class="empty-state"><span>正在加载批改台…</span></p>
+    <p v-if="assignmentStore.isGradebookLoading && !gradebook" class="empty-state"><span>正在加载批改台</span></p>
     <div v-else-if="assignmentStore.gradebookError" class="empty-state">
       <p>{{ assignmentStore.gradebookError }}</p>
       <RouterLink class="primary-button" :to="`/assignments/${assignmentId}`">返回作业</RouterLink>
@@ -226,14 +226,14 @@ watch(includeRemoved, load)
             :title="gradesPublished ? '成绩已发布' : duePassed ? '' : '作业尚未截止'"
             @click="publish"
           >
-            {{ gradesPublished ? '成绩已发布' : isPublishing ? '发布中…' : '发布成绩' }}
+            {{ gradesPublished ? '成绩已发布' : isPublishing ? '发布中' : '发布成绩' }}
           </button>
         </div>
       </header>
 
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
       <p v-if="actionMessage" class="teaching-success" role="status">{{ actionMessage }}</p>
-      <p v-if="!duePassed && !gradesPublished" class="teaching-subtle">作业尚未截止，暂不能发布成绩。</p>
+      <p v-if="!duePassed && !gradesPublished" class="teaching-subtle">作业尚未截止 暂不能发布成绩</p>
 
       <div class="gradebook-scroll">
         <table class="gradebook-table">
@@ -279,7 +279,7 @@ watch(includeRemoved, load)
             </tr>
           </tbody>
         </table>
-        <p v-if="!gradebook.students.length" class="empty-state"><span>还没有学生。</span></p>
+        <p v-if="!gradebook.students.length" class="empty-state"><span>还没有学生</span></p>
       </div>
     </template>
   </main>
@@ -294,7 +294,7 @@ watch(includeRemoved, load)
         <button type="button" aria-label="关闭" @click="closeCell">×</button>
       </header>
       <div class="run-dialog-body">
-        <p v-if="cellSubmissionsLoading" class="teaching-subtle">正在加载提交…</p>
+        <p v-if="cellSubmissionsLoading" class="teaching-subtle">正在加载提交</p>
         <p v-else-if="cellSubmissionsError" class="form-error" role="alert">{{ cellSubmissionsError }}</p>
         <template v-else-if="cellSubmissions.length">
           <div class="teaching-submission-list">
@@ -311,9 +311,9 @@ watch(includeRemoved, load)
             </article>
           </div>
         </template>
-        <p v-else class="teaching-subtle">还没有提交。</p>
+        <p v-else class="teaching-subtle">还没有提交</p>
 
-        <p v-if="submissionDetailLoading" class="teaching-subtle">正在加载提交详情…</p>
+        <p v-if="submissionDetailLoading" class="teaching-subtle">正在加载提交详情</p>
         <div v-else-if="selectedSubmission" class="teaching-submission-detail">
           <dl>
             <div><dt>状态</dt><dd>{{ selectedSubmission.status }}</dd></div>
@@ -333,10 +333,10 @@ watch(includeRemoved, load)
             <span>评语</span>
             <textarea v-model="feedbackInput" rows="4" maxlength="2000" :disabled="cellTarget.student.status === 'removed'"></textarea>
           </label>
-          <p v-if="cellTarget.student.status === 'removed'" class="teaching-subtle">已移除成员只读。</p>
+          <p v-if="cellTarget.student.status === 'removed'" class="teaching-subtle">已移除成员只读</p>
           <div class="teaching-form-actions">
             <button class="primary-button" type="submit" :disabled="isSavingCell || cellTarget.student.status === 'removed'">
-              {{ isSavingCell ? '保存中…' : '保存' }}
+              {{ isSavingCell ? '保存中' : '保存' }}
             </button>
           </div>
         </form>
@@ -356,10 +356,10 @@ watch(includeRemoved, load)
             <span>整体评语</span>
             <textarea v-model="overallInput" rows="6" maxlength="5000" :disabled="overallTarget.status === 'removed'"></textarea>
           </label>
-          <p v-if="overallTarget.status === 'removed'" class="teaching-subtle">已移除成员只读。</p>
+          <p v-if="overallTarget.status === 'removed'" class="teaching-subtle">已移除成员只读</p>
           <div class="teaching-form-actions">
             <button class="primary-button" type="submit" :disabled="isSavingOverall || overallTarget.status === 'removed'">
-              {{ isSavingOverall ? '保存中…' : '保存' }}
+              {{ isSavingOverall ? '保存中' : '保存' }}
             </button>
           </div>
         </form>

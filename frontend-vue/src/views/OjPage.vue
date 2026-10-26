@@ -59,7 +59,7 @@ const assignmentStateLabel = computed(() => {
   if (authStore.isTeacher) return '教师预览不可提交'
   if (authStore.isAdmin) return '管理员不可提交'
   const detail = assignment.value
-  if (!detail) return assignmentLoading.value ? '正在加载作业…' : assignmentError.value
+  if (!detail) return assignmentLoading.value ? '正在加载作业' : assignmentError.value
   if (detail.status === 'archived') return '作业已归档'
   if (detail.status === 'draft') return '作业尚未发布'
   if (detail.dueAt && new Date(detail.dueAt).getTime() < Date.now()) return '作业已截止'
@@ -86,9 +86,9 @@ const hasPublicCases = computed(() => (runConfig.value?.publicCases.length ?? 0)
 const runButtonLabel = computed(() => {
   if (!runStore.isRunning) return '运行'
   const current = runStore.status?.status
-  if (current === 'running') return '运行中…'
-  if (current === 'compiling') return '编译中…'
-  return '排队中…'
+  if (current === 'running') return '运行中'
+  if (current === 'compiling') return '编译中'
+  return '排队中'
 })
 const runCase = computed(() => runStore.detail?.cases[0])
 const runStatusLabel = computed(() =>
@@ -231,7 +231,7 @@ const validateRunInput = (): unknown => {
   }
   if (!Array.isArray(parsed)) throw new Error('输入必须是 JSON 参数数组')
   if (parsed.length !== config.params.length) {
-    throw new Error(`参数个数不匹配：需要 ${config.params.length} 个，收到 ${parsed.length} 个`)
+    throw new Error(`参数个数不匹配：需要 ${config.params.length} 个 收到 ${parsed.length} 个`)
   }
   config.params.forEach((param, index) => {
     if (!typeMatches(param.type, parsed[index])) {
@@ -560,7 +560,7 @@ onBeforeUnmount(() => {
 <template>
   <NavBar />
   <main ref="pageRef" class="oj-page">
-    <div v-if="problemStore.isLoading || assignmentLoading" class="oj-loading">正在准备题目…</div>
+    <div v-if="problemStore.isLoading || assignmentLoading" class="oj-loading">正在准备题目</div>
     <div v-else-if="assignmentError" class="oj-error"><h1>无法打开作业</h1><p>{{ assignmentError }}</p><RouterLink class="primary-button" to="/classes">返回班级</RouterLink></div>
     <div v-else-if="problemStore.error" class="oj-error"><h1>无法打开题目</h1><p>{{ problemStore.error }}</p><RouterLink class="primary-button" to="/problems">返回题库</RouterLink></div>
     <template v-else-if="problemStore.currentProblem">
@@ -576,7 +576,7 @@ onBeforeUnmount(() => {
           <header class="problem-heading"><h1>{{ problemStore.currentProblem.title }}</h1><span :class="['difficulty', problemStore.currentProblem.difficulty]">{{ DIFFICULTY_LABELS[problemStore.currentProblem.difficulty] }}</span></header>
           <div class="problem-tags"><span v-for="tag in problemStore.currentProblem.tags" :key="tag" class="tag">{{ tag }}</span><span class="acceptance-stat">通过率 {{ problemStore.currentProblem.acceptance.toFixed(1) }}%</span></div>
           <article class="problem-content"><p v-for="paragraph in problemStore.currentProblem.description.split('\n\n')" :key="paragraph">{{ paragraph.replaceAll('**', '').replaceAll('*', '') }}</p><h2>示例</h2><div v-for="(example, index) in problemStore.currentProblem.examples" :key="`${example.input}-${index}`" class="example-block"><span>示例 {{ index + 1 }}</span><pre><b>输入：</b>{{ example.input }}
-<b>输出：</b>{{ example.output }}</pre><p v-if="example.explanation"><b>解释：</b>{{ example.explanation }}</p></div><p v-if="!problemStore.currentProblem.examples.length" class="output-placeholder">暂无示例。</p><h2>限制</h2><ul><li>时间限制：{{ problemStore.currentProblem.timeLimit }} ms</li><li>内存限制：{{ problemStore.currentProblem.memoryLimit }} MB</li></ul></article>
+<b>输出：</b>{{ example.output }}</pre><p v-if="example.explanation"><b>解释：</b>{{ example.explanation }}</p></div><p v-if="!problemStore.currentProblem.examples.length" class="output-placeholder">暂无示例</p><h2>限制</h2><ul><li>时间限制：{{ problemStore.currentProblem.timeLimit }} ms</li><li>内存限制：{{ problemStore.currentProblem.memoryLimit }} MB</li></ul></article>
         </div>
       </section>
       <div
@@ -624,7 +624,7 @@ onBeforeUnmount(() => {
           </header>
           <div v-if="isOutputOpen" class="output-body">
             <template v-if="activeOutputTab === 'run'">
-              <p class="run-note">运行结果不计入提交，也不影响通过率。</p>
+              <p class="run-note">运行结果不计入提交 也不影响通过率</p>
               <template v-if="runStore.detail">
                 <p v-if="runStore.detail.errorMessage" class="form-error" role="alert">{{ runStore.detail.errorMessage }}</p>
                 <div v-if="runStore.detail.compileOutput" class="run-block"><span>编译输出</span><pre>{{ runStore.detail.compileOutput }}</pre></div>
@@ -637,7 +637,7 @@ onBeforeUnmount(() => {
                     <div v-if="item.actual !== undefined" class="run-block"><span>实际</span><pre>{{ formatInline(item.actual) }}</pre></div>
                     <div v-if="item.stdout" class="run-block"><span>stdout</span><pre>{{ item.stdout }}</pre></div>
                     <div v-if="item.stderr" class="run-block"><span>stderr</span><pre>{{ item.stderr }}</pre></div>
-                    <p v-if="item.truncated" class="run-note">输出超过 64 KB，已截断。</p>
+                    <p v-if="item.truncated" class="run-note">输出超过 64 KB 已截断</p>
                   </div>
                 </template>
                 <template v-else>
@@ -648,11 +648,11 @@ onBeforeUnmount(() => {
                   <div v-if="runCase && runCase.status === 'passed'" class="run-block"><span>返回值</span><pre>{{ formatInline(runCase.actual) }}</pre></div>
                   <div v-if="runCase?.stdout" class="run-block"><span>stdout</span><pre>{{ runCase.stdout }}</pre></div>
                   <div v-if="runCase?.stderr" class="run-block"><span>stderr</span><pre>{{ runCase.stderr }}</pre></div>
-                  <p v-if="runCase?.truncated" class="run-note">输出超过 64 KB，已截断。</p>
+                  <p v-if="runCase?.truncated" class="run-note">输出超过 64 KB 已截断</p>
                 </template>
               </template>
               <p v-else-if="runStore.error" class="form-error" role="alert">{{ runStore.error }}</p>
-              <p v-else-if="!runStore.isRunning" class="output-placeholder">运行代码后将在这里显示结果。</p>
+              <p v-else-if="!runStore.isRunning" class="output-placeholder">运行代码后将在这里显示结果</p>
             </template>
             <template v-else>
               <template v-if="submissionStore.latest"><p>{{ submissionStore.latest.message }}</p><dl><div v-if="submissionStore.latest.totalTestCases"><dt>通过用例</dt><dd>{{ submissionStore.latest.testCasesPassed }} / {{ submissionStore.latest.totalTestCases }}</dd></div><div v-if="submissionStore.latest.runtime"><dt>执行用时</dt><dd>{{ submissionStore.latest.runtime }}</dd></div><div v-if="submissionStore.latest.memory"><dt>内存消耗</dt><dd>{{ submissionStore.latest.memory }}</dd></div></dl>
@@ -665,7 +665,7 @@ onBeforeUnmount(() => {
                   <div v-if="latestFailedCase.stderr" class="run-block"><span>stderr</span><pre>{{ latestFailedCase.stderr }}</pre></div>
                 </template>
               </template>
-              <p v-else class="output-placeholder">提交代码后将在这里显示评测结果。</p>
+              <p v-else class="output-placeholder">提交代码后将在这里显示评测结果</p>
               <p v-if="submissionStore.error" class="form-error" role="alert">{{ submissionStore.error }}</p>
             </template>
           </div>
@@ -674,7 +674,7 @@ onBeforeUnmount(() => {
           <button class="reset-button" type="button" @click="resetCode">↺ 重置代码</button>
           <div>
             <button v-if="runFeatureEnabled" class="run-button" type="button" :disabled="!canRun || runStore.isRunning || submissionStore.isSubmitting" :title="runDisabledReason || '运行自定义输入'" @click="openRunDialog">{{ runButtonLabel }}</button>
-            <button class="submit-button" type="button" :disabled="!submitFeatureEnabled || submissionStore.isSubmitting || runStore.isRunning || !code.trim() || (Boolean(assignmentId) && !canSubmitCode)" :title="assignmentStateLabel || (submitFeatureEnabled ? '' : '提交评测暂未开放')" @click="submitCode">{{ !submitFeatureEnabled ? '提交评测暂未开放' : submissionStore.isSubmitting ? '评测中…' : assignmentId && !canSubmitCode ? '不可提交' : '提交代码' }} <span v-if="submitFeatureEnabled">→</span></button>
+            <button class="submit-button" type="button" :disabled="!submitFeatureEnabled || submissionStore.isSubmitting || runStore.isRunning || !code.trim() || (Boolean(assignmentId) && !canSubmitCode)" :title="assignmentStateLabel || (submitFeatureEnabled ? '' : '提交评测暂未开放')" @click="submitCode">{{ !submitFeatureEnabled ? '提交评测暂未开放' : submissionStore.isSubmitting ? '评测中' : assignmentId && !canSubmitCode ? '不可提交' : '提交代码' }} <span v-if="submitFeatureEnabled">→</span></button>
           </div>
         </footer>
       </section>
@@ -690,7 +690,7 @@ onBeforeUnmount(() => {
           <button type="button" :class="{ active: runMode === 'custom' }" @click="runMode = 'custom'">自定义输入</button>
         </div>
         <template v-if="runMode === 'examples'">
-          <p class="run-note">共 {{ runConfig?.publicCases.length ?? 0 }} 条公开用例，运行结果不计入提交。</p>
+          <p class="run-note">共 {{ runConfig?.publicCases.length ?? 0 }} 条公开用例 运行结果不计入提交</p>
           <ol class="example-preview">
             <li v-for="(item, index) in runConfig?.publicCases ?? []" :key="index">
               <span>示例 {{ index + 1 }}</span>

@@ -10,7 +10,7 @@ export const unwrap = async <T>(request: Promise<AxiosResponse<ApiEnvelope<T>>>)
   const response = await request
   const body = response.data
   if (!body.success || body.data === null) {
-    throw new Error(body.error ?? '请求失败，请稍后重试。')
+    throw new Error(body.error ?? '请求失败 请稍后重试')
   }
   return body.data
 }
@@ -28,8 +28,10 @@ export const toErrorMessage = (error: unknown): string => {
       }
       return body.error
     }
-    if (error.code === 'ECONNABORTED') return '请求超时，请稍后重试。'
-    if (!error.response) return '无法连接服务器，请检查后端是否启动。'
+    if (error.code === 'ECONNABORTED') return '请求超时 请稍后重试'
+    if (!error.response) return '无法连接服务器 请检查后端是否启动'
+    if (error.response.status === 404) return '请求的接口不存在 请确认后端已更新并重启'
+    if (error.response.status >= 500) return '服务器错误 请稍后重试'
   }
-  return error instanceof Error ? error.message : '请求失败，请稍后重试。'
+  return error instanceof Error ? error.message : '请求失败 请稍后重试'
 }

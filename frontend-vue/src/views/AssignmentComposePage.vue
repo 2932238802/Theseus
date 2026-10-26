@@ -216,16 +216,16 @@ onMounted(load)
       </div>
     </header>
 
-    <p v-if="isLoading" class="empty-state"><span>正在加载…</span></p>
+    <p v-if="isLoading" class="empty-state"><span>正在加载</span></p>
     <div v-else-if="loadError" class="empty-state">
       <p>{{ loadError }}</p>
       <RouterLink class="primary-button" to="/classes">返回班级</RouterLink>
     </div>
 
     <template v-else>
-      <p v-if="isArchived" class="teaching-subtle">作业已归档，只能查看。</p>
+      <p v-if="isArchived" class="teaching-subtle">作业已归档 只能查看</p>
       <p v-else-if="isPublished" class="teaching-subtle">
-        已发布：可以修改标题、描述和延长截止时间，不能修改题目。
+        已发布：可以修改标题 描述和截止时间 不能修改题目
       </p>
 
       <form class="teaching-form" @submit.prevent="save">
@@ -284,7 +284,7 @@ onMounted(load)
               />
             </label>
             <button type="button" class="teaching-secondary-button" :disabled="problemLoading" @click="searchProblems">
-              {{ problemLoading ? '搜索中…' : '搜索' }}
+              {{ problemLoading ? '搜索中' : '搜索' }}
             </button>
           </div>
           <p v-if="problemError" class="form-error" role="alert">{{ problemError }}</p>
@@ -304,7 +304,7 @@ onMounted(load)
               </button>
             </article>
             <p v-if="!problemLoading && !problemResults.length" class="teaching-subtle">
-              没有可评测的题目。
+              没有可评测的题目
             </p>
           </div>
 
@@ -319,14 +319,14 @@ onMounted(load)
               </div>
             </article>
           </div>
-          <p v-else class="empty-state"><span>还没有题目。</span></p>
+          <p v-else class="empty-state"><span>还没有题目</span></p>
         </section>
 
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
         <div class="teaching-form-actions">
           <RouterLink class="teaching-secondary-button" to="/classes">取消</RouterLink>
           <button class="primary-button" type="submit" :disabled="isSaving || isArchived">
-            {{ isSaving ? '保存中…' : '保存' }}
+            {{ isSaving ? '保存中' : '保存' }}
           </button>
         </div>
       </form>

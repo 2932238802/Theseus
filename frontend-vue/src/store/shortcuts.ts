@@ -129,7 +129,7 @@ export const useShortcutStore = defineStore('shortcuts', () => {
         if (other.id === actionId) continue
         const binding = resolveBinding(other, resolved.value)
         if (binding && sameShortcut(binding, action.defaultKey)) {
-          return `默认键与「${other.label}」冲突，请先修改「${other.label}」`
+          return `默认键与「${other.label}」冲突 请先修改「${other.label}」`
         }
       }
     }

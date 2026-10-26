@@ -1,16 +1,33 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import NotificationBell from './NotificationBell.vue'
 import { useAuthStore } from '../store/auth'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const isMenuOpen = ref(false)
 const isDark = ref(document.documentElement.dataset.theme === 'dark')
 
 const userInitial = computed(() => authStore.user?.avatar ?? authStore.user?.username.slice(0, 1).toUpperCase() ?? 'T')
 const isManageOpen = ref(false)
+const manageRef = ref<HTMLElement | null>(null)
+const isAdminArea = computed(() => route.path.startsWith('/admin'))
+
+const closeManage = (): void => {
+  isManageOpen.value = false
+}
+
+const onDocumentPointerDown = (event: PointerEvent): void => {
+  if (!isManageOpen.value) return
+  if (event.target instanceof Node && manageRef.value?.contains(event.target)) return
+  closeManage()
+}
+
+const onWindowKeydown = (event: KeyboardEvent): void => {
+  if (event.key === 'Escape' && isManageOpen.value) closeManage()
+}
 
 const toggleTheme = (): void => {
   isDark.value = !isDark.value
@@ -22,6 +39,16 @@ const logout = (): void => {
   authStore.logout()
   void router.push('/login')
 }
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onDocumentPointerDown)
+  window.addEventListener('keydown', onWindowKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocumentPointerDown)
+  window.removeEventListener('keydown', onWindowKeydown)
+})
 </script>
 
 <template>
@@ -34,14 +61,29 @@ const logout = (): void => {
     <nav class="main-nav" aria-label="主导航">
       <RouterLink to="/problems">题库</RouterLink>
       <RouterLink to="/forum">校园墙</RouterLink>
-      <RouterLink v-if="authStore.isStudent || authStore.isTeacher" to="/classes">我的班级</RouterLink>
+      <RouterLink class="nav-rankings" to="/rankings">排行榜</RouterLink>
+      <RouterLink v-if="authStore.isStudent || authStore.isTeacher" class="nav-classes" to="/classes">我的班级</RouterLink>
       <RouterLink v-if="authStore.isAuthenticated" class="nav-profile" to="/profile">个人</RouterLink>
-      <RouterLink v-if="!authStore.isAuthenticated" class="nav-rankings" to="/rankings">排行榜</RouterLink>
-      <div v-if="authStore.isAdmin" class="nav-menu">
-        <button type="button" aria-haspopup="menu" :aria-expanded="isManageOpen" @click="isManageOpen = !isManageOpen">管理</button>
-        <div v-if="isManageOpen" class="nav-menu-panel" role="menu">
-          <RouterLink to="/admin/forum" @click="isManageOpen = false">论坛管理</RouterLink>
-          <RouterLink to="/admin/users" @click="isManageOpen = false">用户管理</RouterLink>
+      <div v-if="authStore.isAdmin" ref="manageRef" class="nav-menu" :class="{ 'is-active': isAdminArea }">
+        <button
+          id="admin-menu-button"
+          type="button"
+          aria-haspopup="menu"
+          aria-controls="admin-menu-panel"
+          :aria-expanded="isManageOpen"
+          @click="isManageOpen = !isManageOpen"
+        >
+          管理<span class="nav-caret" aria-hidden="true"></span>
+        </button>
+        <div
+          v-if="isManageOpen"
+          id="admin-menu-panel"
+          class="nav-menu-panel"
+          role="menu"
+          aria-labelledby="admin-menu-button"
+        >
+          <RouterLink role="menuitem" to="/admin/forum" @click="closeManage">论坛管理</RouterLink>
+          <RouterLink role="menuitem" to="/admin/users" @click="closeManage">用户管理</RouterLink>
         </div>
       </div>
     </nav>

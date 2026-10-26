@@ -41,7 +41,7 @@ const submit = async (): Promise<void> => {
       reason: reason.value,
       detail: detail.value.trim() || undefined,
     })
-    emit('submitted', result.hidden ? `${result.message}，内容已自动隐藏` : result.message)
+    emit('submitted', result.hidden ? `${result.message} 内容已自动隐藏` : result.message)
   } catch (exception: unknown) {
     error.value = toErrorMessage(exception)
   } finally {
@@ -56,7 +56,7 @@ const submit = async (): Promise<void> => {
       <header>
         <div>
           <h2 id="report-dialog-title">举报内容</h2>
-          <p>请选择原因，管理员会尽快复核。</p>
+          <p>请选择原因 管理员会尽快复核</p>
         </div>
         <button type="button" aria-label="关闭" @click="emit('close')">×</button>
       </header>
@@ -69,7 +69,7 @@ const submit = async (): Promise<void> => {
           </label>
         </fieldset>
         <label class="forum-field">
-          <span>补充说明（可选，最多 500 字）</span>
+          <span>补充说明（可选 最多 500 字）</span>
           <textarea v-model="detail" maxlength="500" rows="4" placeholder="请描述具体问题"></textarea>
         </label>
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
@@ -77,7 +77,7 @@ const submit = async (): Promise<void> => {
       <footer>
         <button type="button" class="forum-secondary-button" @click="emit('close')">取消</button>
         <button type="button" class="forum-danger-button" :disabled="loading" @click="submit">
-          {{ loading ? '提交中…' : '提交举报' }}
+          {{ loading ? '提交中' : '提交举报' }}
         </button>
       </footer>
     </section>

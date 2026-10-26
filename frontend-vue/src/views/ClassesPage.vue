@@ -104,7 +104,7 @@ onMounted(() => {
         <p v-if="createError" class="form-error" role="alert">{{ createError }}</p>
         <div class="teaching-form-actions">
           <button class="primary-button" type="submit" :disabled="isCreating || !createForm.name.trim()">
-            {{ isCreating ? '创建中…' : '创建班级' }}
+            {{ isCreating ? '创建中' : '创建班级' }}
           </button>
         </div>
       </form>
@@ -117,7 +117,7 @@ onMounted(() => {
           <input v-model="inviteCode" maxlength="8" placeholder="8 位邀请码" required />
         </label>
         <button class="primary-button" type="submit" :disabled="isJoining || !inviteCode.trim()">
-          {{ isJoining ? '加入中…' : '加入班级' }}
+          {{ isJoining ? '加入中' : '加入班级' }}
         </button>
       </form>
       <p v-if="joinError" class="form-error" role="alert">{{ joinError }}</p>
@@ -126,7 +126,7 @@ onMounted(() => {
     <p v-if="classStore.error" class="form-error" role="alert">{{ classStore.error }}</p>
 
     <section class="teaching-list" aria-live="polite">
-      <div v-if="classStore.isLoading" class="empty-state"><p>正在加载班级…</p></div>
+      <div v-if="classStore.isLoading" class="empty-state"><p>正在加载班级</p></div>
       <template v-else-if="classStore.classes.length">
         <RouterLink
           v-for="item in classStore.classes"
@@ -148,7 +148,7 @@ onMounted(() => {
         </RouterLink>
       </template>
       <div v-else-if="!classStore.error" class="empty-state">
-        <p>{{ authStore.isTeacher ? '还没有班级。' : '还没有加入班级。' }}</p>
+        <p>{{ authStore.isTeacher ? '还没有班级' : '还没有加入班级' }}</p>
       </div>
     </section>
   </main>

@@ -12,6 +12,7 @@ import type {
   User,
 } from '../types/oj'
 import type { RunConfig } from '../types/run'
+import type { RankingEntry, RankingResult } from '../types/ranking'
 
 export interface BackendUser {
   id: number
@@ -84,6 +85,23 @@ export interface BackendStats {
   accepted_submissions: number
 }
 
+export interface BackendRankingEntry {
+  rank: number
+  user_id: number
+  username: string
+  solved: number
+  submissions: number
+  acceptance_rate: number
+}
+
+export interface BackendRankingResult {
+  total: number
+  page: number
+  size: number
+  entries: BackendRankingEntry[]
+  me: BackendRankingEntry | null
+}
+
 const LANGUAGES: Language[] = ['cpp', 'java', 'python', 'javascript']
 
 const STATUS_LABELS: Record<BackendSubmissionStatus, SubmissionStatus> = {
@@ -99,15 +117,15 @@ const STATUS_LABELS: Record<BackendSubmissionStatus, SubmissionStatus> = {
 }
 
 const STATUS_MESSAGES: Record<BackendSubmissionStatus, string> = {
-  pending: '正在排队评测…',
-  judging: '正在评测中…',
-  accepted: '全部测试用例通过。',
-  wrong_answer: '输出与预期结果不一致。',
-  time_limit_exceeded: '运行时间超过题目限制。',
-  memory_limit_exceeded: '运行内存超过题目限制。',
-  runtime_error: '程序运行时发生错误。',
-  compile_error: '代码编译失败。',
-  internal_error: '评测服务出现异常，请稍后重试。',
+  pending: '正在排队评测',
+  judging: '正在评测中',
+  accepted: '全部测试用例通过',
+  wrong_answer: '输出与预期结果不一致',
+  time_limit_exceeded: '运行时间超过题目限制',
+  memory_limit_exceeded: '运行内存超过题目限制',
+  runtime_error: '程序运行时发生错误',
+  compile_error: '代码编译失败',
+  internal_error: '评测服务出现异常 请稍后重试',
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -257,4 +275,21 @@ export const mapStats = (stats: BackendStats): Stats => ({
   totalProblems: stats.total_problems,
   totalSubmissions: stats.total_submissions,
   acceptedSubmissions: stats.accepted_submissions,
+})
+
+export const mapRankingEntry = (entry: BackendRankingEntry): RankingEntry => ({
+  rank: entry.rank,
+  userId: entry.user_id,
+  username: entry.username,
+  solved: entry.solved,
+  submissions: entry.submissions,
+  acceptanceRate: Number(entry.acceptance_rate) || 0,
+})
+
+export const mapRankingResult = (result: BackendRankingResult): RankingResult => ({
+  total: result.total,
+  page: result.page,
+  size: result.size,
+  entries: Array.isArray(result.entries) ? result.entries.map(mapRankingEntry) : [],
+  me: result.me ? mapRankingEntry(result.me) : null,
 })

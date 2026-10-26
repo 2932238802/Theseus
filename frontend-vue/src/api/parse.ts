@@ -1,4 +1,4 @@
-/** 后端 JSON 字段解析的共享小工具，供各适配器复用。 */
+/** 后端 JSON 字段解析的共享小工具，供各适配器复用 */
 
 export type UnknownRecord = Record<string, unknown>
 

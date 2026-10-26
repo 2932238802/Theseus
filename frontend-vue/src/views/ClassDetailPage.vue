@@ -66,7 +66,7 @@ const copyInviteCode = async (): Promise<void> => {
     await navigator.clipboard.writeText(inviteCode.value)
     actionMessage.value = '邀请码已复制'
   } catch {
-    actionError.value = '复制失败，请手动选择邀请码'
+    actionError.value = '复制失败 请手动选择邀请码'
   }
 }
 
@@ -115,7 +115,7 @@ const removeMember = async (userId: number, username: string): Promise<void> => 
 
 const archiveClass = async (): Promise<void> => {
   if (!detail.value) return
-  if (!window.confirm('归档后不能再加入或发布作业，确定归档吗？')) return
+  if (!window.confirm('归档后不能再加入或发布作业 确定归档吗？')) return
   clearActionState()
   isArchiving.value = true
   try {
@@ -156,7 +156,7 @@ watch(classId, load)
 <template>
   <NavBar />
   <main class="teaching-page page-shell">
-    <p v-if="classStore.isDetailLoading" class="empty-state"><span>正在加载班级…</span></p>
+    <p v-if="classStore.isDetailLoading" class="empty-state"><span>正在加载班级</span></p>
     <div v-else-if="classStore.detailError" class="empty-state">
       <p>{{ classStore.detailError }}</p>
       <RouterLink class="primary-button" to="/classes">返回班级</RouterLink>
@@ -184,7 +184,7 @@ watch(classId, load)
             :disabled="isArchiving"
             @click="archiveClass"
           >
-            {{ isArchiving ? '归档中…' : '归档班级' }}
+            {{ isArchiving ? '归档中' : '归档班级' }}
           </button>
           <button
             v-if="detail.relation === 'student'"
@@ -193,7 +193,7 @@ watch(classId, load)
             :disabled="isLeaving"
             @click="leaveClass"
           >
-            {{ isLeaving ? '退出中…' : '退出班级' }}
+            {{ isLeaving ? '退出中' : '退出班级' }}
           </button>
         </div>
       </header>
@@ -209,7 +209,7 @@ watch(classId, load)
           <code>{{ inviteCode || '—' }}</code>
           <button type="button" :disabled="!inviteCode" @click="copyInviteCode">复制</button>
           <button type="button" :disabled="!inviteCode || isRotating || isArchived" @click="rotateCode">
-            {{ isRotating ? '更新中…' : '轮换' }}
+            {{ isRotating ? '更新中' : '轮换' }}
           </button>
         </div>
       </section>
@@ -222,7 +222,7 @@ watch(classId, load)
             <input v-model="memberIdentifier" :disabled="isArchived" required />
           </label>
           <button class="primary-button" type="submit" :disabled="isArchived || isAddingMember || !memberIdentifier.trim()">
-            {{ isAddingMember ? '添加中…' : '添加成员' }}
+            {{ isAddingMember ? '添加中' : '添加成员' }}
           </button>
         </form>
         <div v-if="activeMembers.length" class="teaching-member-list">
@@ -235,11 +235,11 @@ watch(classId, load)
               :disabled="isArchived || removingUserId === member.userId"
               @click="removeMember(member.userId, member.username)"
             >
-              {{ removingUserId === member.userId ? '移除中…' : '移除' }}
+              {{ removingUserId === member.userId ? '移除中' : '移除' }}
             </button>
           </article>
         </div>
-        <p v-else class="empty-state"><span>还没有成员。</span></p>
+        <p v-else class="empty-state"><span>还没有成员</span></p>
 
         <details v-if="removedMembers.length" class="teaching-removed">
           <summary>已移除成员 {{ removedMembers.length }} 人</summary>
@@ -273,7 +273,7 @@ watch(classId, load)
             </footer>
           </RouterLink>
         </div>
-        <p v-else class="empty-state"><span>还没有作业。</span></p>
+        <p v-else class="empty-state"><span>还没有作业</span></p>
       </section>
     </template>
   </main>

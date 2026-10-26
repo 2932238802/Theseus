@@ -182,8 +182,8 @@ const loadEditTarget = async (): Promise<void> => {
     if (!post.canEdit) {
       error.value =
         post.status === 'hidden'
-          ? '帖子已被隐藏，无法编辑。'
-          : '只有作者本人可以编辑已发布的帖子。'
+          ? '帖子已被隐藏 无法编辑'
+          : '只有作者本人可以编辑已发布的帖子'
       loadFailed.value = true
       return
     }
@@ -218,7 +218,7 @@ const loadEditTarget = async (): Promise<void> => {
 const submit = async (): Promise<void> => {
   error.value = ''
   if (!canSubmit.value) {
-    error.value = '请填写标题、正文，并选择 1–3 个标签。'
+    error.value = '请填写标题 正文 并选择 1–3 个标签'
     return
   }
   submitting.value = true
@@ -274,7 +274,7 @@ onBeforeUnmount(() => {
       <RouterLink class="forum-secondary-button" :to="isEdit ? `/forum/${editId}` : '/forum'">取消</RouterLink>
     </header>
 
-    <p v-if="loading" class="run-note">正在加载帖子…</p>
+    <p v-if="loading" class="run-note">正在加载帖子</p>
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
     <form v-if="!loading && !loadFailed" class="forum-compose-form" @submit.prevent="submit">
@@ -299,7 +299,7 @@ onBeforeUnmount(() => {
       </fieldset>
 
       <div class="forum-field">
-        <span>关联题目 <small>可选，最多 1 道</small></span>
+        <span>关联题目 <small>可选 最多 1 道</small></span>
         <div v-if="selectedProblem" class="forum-selected-problem">
           <span>#{{ selectedProblem.id }} {{ selectedProblem.title }}</span>
           <span :class="['difficulty', selectedProblem.difficulty]">{{ DIFFICULTY_LABELS[selectedProblem.difficulty] }}</span>
@@ -313,7 +313,7 @@ onBeforeUnmount(() => {
             placeholder="搜索已通过审核的题目"
             @input="onProblemInput"
           />
-          <p v-if="problemLoading" class="run-note">正在搜索题目…</p>
+          <p v-if="problemLoading" class="run-note">正在搜索题目</p>
           <p v-if="problemError" class="form-error" role="alert">{{ problemError }}</p>
           <div v-if="problemResults.length" class="forum-problem-results">
             <button
@@ -331,7 +331,7 @@ onBeforeUnmount(() => {
 
       <label v-if="!isEdit" class="forum-checkbox">
         <input v-model="anonymous" type="checkbox" />
-        匿名发布（前台显示“匿名同学”，管理员仍可看到真实作者）
+        匿名发布（前台显示“匿名同学” 管理员仍可看到真实作者）
       </label>
 
       <div class="forum-editor">
@@ -345,22 +345,22 @@ onBeforeUnmount(() => {
           v-model="bodyMd"
           rows="18"
           maxlength="20000"
-          placeholder="写下你的想法。支持标题、列表、引用、代码块和链接。"
+          placeholder="写下你的想法 支持标题 列表 引用 代码块和链接"
           required
         ></textarea>
         <div v-else class="forum-editor-preview">
           <MarkdownBody v-if="bodyMd.trim()" :content="bodyMd" />
-          <p v-else class="run-note">还没有正文可预览。</p>
+          <p v-else class="run-note">还没有正文可预览</p>
         </div>
       </div>
 
-      <p v-if="!isEdit && hasDraft" class="run-note">草稿会自动保存在本机。</p>
+      <p v-if="!isEdit && hasDraft" class="run-note">草稿会自动保存在本机</p>
       <div class="forum-compose-actions">
         <button type="button" class="forum-secondary-button" @click="preview = !preview">
           {{ preview ? '继续编辑' : '预览正文' }}
         </button>
         <button type="submit" class="primary-button" :disabled="submitting || !canSubmit">
-          {{ submitting ? '提交中…' : isEdit ? '保存修改' : '发布' }}
+          {{ submitting ? '提交中' : isEdit ? '保存修改' : '发布' }}
         </button>
       </div>
     </form>

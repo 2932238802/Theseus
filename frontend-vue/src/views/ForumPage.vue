@@ -132,7 +132,7 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
         <ForumPostCard v-for="post in forumStore.posts" :key="post.id" :post="post" />
       </div>
       <div v-else-if="!forumStore.error" class="empty-state">
-        <p>{{ hasFilters ? '没有匹配的帖子，试试调整筛选条件。' : '还没有帖子，来发第一帖吧。' }}</p>
+        <p>{{ hasFilters ? '没有匹配的帖子 试试调整筛选条件' : '还没有帖子 来发第一帖' }}</p>
         <RouterLink v-if="!hasFilters" class="primary-button" to="/forum/new">去发帖</RouterLink>
       </div>
 
