@@ -3,9 +3,11 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import CodeEditor from '../components/CodeEditor.vue'
+import ShortcutDialog from '../components/ShortcutDialog.vue'
 import { useAuthStore } from '../store/auth'
 import { useProblemStore } from '../store/problems'
 import { useRunStore } from '../store/runs'
+import { useShortcutStore } from '../store/shortcuts'
 import { useSubmissionStore } from '../store/submissions'
 import { fetchAssignment } from '../api/assignments'
 import type { AssignmentDetail } from '../types/teaching'
@@ -15,6 +17,7 @@ import {
   RUN_CASE_STATUS_LABELS,
   RUN_STATUS_LABELS,
 } from '../utils/constants'
+import { SHORTCUT_ACTIONS, matchesShortcut } from '../utils/shortcuts'
 import type { Language } from '../types/oj'
 import type { RunMode } from '../types/run'
 import { formatArgs, formatInline } from '../utils/format'
@@ -23,6 +26,7 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const problemStore = useProblemStore()
+const shortcutStore = useShortcutStore()
 const submissionStore = useSubmissionStore()
 const runStore = useRunStore()
 const problemId = computed(() => Number(route.params.id))
@@ -36,6 +40,7 @@ const isAccepted = computed(() => submissionStore.latest?.status === 'Accepted')
 const latestFailedCase = computed(() => submissionStore.latest?.failedCase ?? null)
 const activeOutputTab = ref<'run' | 'submit'>('submit')
 const isRunDialogOpen = ref(false)
+const isShortcutDialogOpen = ref(false)
 const runMode = ref<RunMode>('examples')
 const runInput = ref('')
 const runInputError = ref('')
@@ -138,7 +143,15 @@ const loadPage = async (): Promise<void> => {
   restoreDraft()
 }
 const submitCode = async (): Promise<void> => {
-  if (!problemStore.currentProblem || !code.value.trim() || submissionStore.isSubmitting) return
+  if (
+    !submitFeatureEnabled ||
+    runStore.isRunning ||
+    !problemStore.currentProblem ||
+    !code.value.trim() ||
+    submissionStore.isSubmitting
+  ) {
+    return
+  }
   if (!authStore.isAuthenticated) {
     await router.push({ name: 'login', query: { redirect: route.fullPath } })
     return
@@ -252,6 +265,71 @@ const startRun = (): void => {
     .run(problemStore.currentProblem.id, language.value, code.value, 'custom', parsed)
     .catch(() => undefined)
 }
+
+const quickRun = async (): Promise<void> => {
+  if (!authStore.isAuthenticated) {
+    await router.push({ name: 'login', query: { redirect: route.fullPath } })
+    return
+  }
+  const problem = problemStore.currentProblem
+  if (!problem || !canRun.value || runStore.isRunning || submissionStore.isSubmitting) return
+  saveDraft()
+  isOutputOpen.value = true
+  activeOutputTab.value = 'run'
+  if (hasPublicCases.value) {
+    isRunDialogOpen.value = false
+    runStore.run(problem.id, language.value, code.value, 'examples').catch(() => undefined)
+    return
+  }
+  await openRunDialog()
+}
+
+const handleShortcut = (actionId: string): void => {
+  if (!problemStore.currentProblem) return
+  switch (actionId) {
+    case 'oj.run':
+      void quickRun()
+      break
+    case 'oj.submit':
+      void submitCode()
+      break
+    case 'oj.toggle-output':
+      isOutputOpen.value = !isOutputOpen.value
+      break
+    case 'oj.reset-code':
+      resetCode()
+      break
+    case 'oj.open-shortcuts':
+      isShortcutDialogOpen.value = true
+      break
+    default:
+      break
+  }
+}
+
+const isTypingTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT'
+}
+
+const onShortcutKeydown = (event: KeyboardEvent): void => {
+  if (event.defaultPrevented || event.isComposing || event.repeat) return
+  if (isRunDialogOpen.value || isShortcutDialogOpen.value) return
+  if (isTypingTarget(event.target)) return
+  if (event.target instanceof HTMLElement && event.target.closest('.monaco-editor')) return
+  for (const action of SHORTCUT_ACTIONS) {
+    if (action.scope !== 'oj') continue
+    const binding =
+      action.id in shortcutStore.resolved ? shortcutStore.resolved[action.id] : action.defaultKey
+    if (binding && matchesShortcut(event, binding)) {
+      event.preventDefault()
+      handleShortcut(action.id)
+      return
+    }
+  }
+}
+
 const MIN_PROBLEM_WIDTH = 320
 const MIN_EDITOR_WIDTH = 420
 const RESIZER_WIDTH = 8
@@ -439,6 +517,7 @@ onMounted(() => {
   measurePaneHeight()
   applyOutputHeight()
   window.addEventListener('resize', onWindowResize)
+  window.addEventListener('keydown', onShortcutKeydown, true)
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', stopResize)
   window.addEventListener('pointercancel', stopResize)
@@ -464,6 +543,7 @@ onBeforeUnmount(() => {
   submissionStore.stopPolling()
   runStore.stopPolling()
   window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('keydown', onShortcutKeydown, true)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', stopResize)
   window.removeEventListener('pointercancel', stopResize)
@@ -515,8 +595,8 @@ onBeforeUnmount(() => {
         @keydown.right.prevent="nudgeSplit(24)"
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
-        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(12, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(20, fontSize + 1)">A+</button><button type="button" aria-label="切换编辑器主题" title="切换编辑器主题" @click="isDark = !isDark">◐</button></div></div>
-        <CodeEditor v-model="code" :language="language" :font-size="fontSize" :dark="isDark" />
+        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(12, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(20, fontSize + 1)">A+</button><button type="button" aria-label="切换编辑器主题" title="切换编辑器主题" @click="isDark = !isDark">◐</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
+        <CodeEditor v-model="code" :language="language" :font-size="fontSize" :dark="isDark" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" />
         <div
           ref="outputResizerRef"
           class="pane-resizer-h"
@@ -629,4 +709,6 @@ onBeforeUnmount(() => {
       <footer><button class="run-button" type="button" @click="closeRunDialog">取消</button><button class="primary-button" type="button" :disabled="runStore.isRunning" @click="startRun">运行</button></footer>
     </section>
   </div>
+
+  <ShortcutDialog v-if="isShortcutDialogOpen" @close="isShortcutDialogOpen = false" />
 </template>
