@@ -13,6 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let config = Config::from_env()?;
+    tokio::fs::create_dir_all(config.upload_dir.join("avatars")).await?;
     let pool = create_pool(&config.database_url).await?;
     db::migrate(&pool).await?;
     let judge_enabled = config.run_code_enabled || config.submit_judge_enabled;

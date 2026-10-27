@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
+import AvatarUploader from '../components/AvatarUploader.vue'
+import AccountSettingsDialog from '../components/AccountSettingsDialog.vue'
+import ProfileAnalytics from '../components/ProfileAnalytics.vue'
 import { toErrorMessage } from '../api/client'
+import { fetchAnalytics } from '../api/profile'
 import { fetchSubmission } from '../api/submissions'
 import { useAuthStore } from '../store/auth'
 import { useRunStore } from '../store/runs'
@@ -9,15 +14,13 @@ import { useSubmissionStore } from '../store/submissions'
 import { RUN_CASE_STATUS_LABELS, RUN_STATUS_LABELS } from '../utils/constants'
 import type { RunDetail, RunSummary } from '../types/run'
 import type { Submission } from '../types/oj'
+import type { ProfileAnalytics as ProfileAnalyticsData } from '../types/profile'
 import { formatInline } from '../utils/format'
 
 const authStore = useAuthStore()
 const submissionStore = useSubmissionStore()
 const runStore = useRunStore()
-const acceptedSubmissions = computed(() => submissionStore.submissions.filter((submission) => submission.status === 'Accepted'))
-const acceptedProblemCount = computed(() => new Set(acceptedSubmissions.value.map((submission) => submission.problemId)).size)
-const attemptedProblemCount = computed(() => new Set(submissionStore.submissions.map((submission) => submission.problemId)).size)
-const acceptanceRate = computed(() => submissionStore.submissions.length ? Math.round((acceptedSubmissions.value.length / submissionStore.submissions.length) * 100) : 0)
+const router = useRouter()
 const runFeatureEnabled = import.meta.env.VITE_RUN_CODE_ENABLED !== 'false'
 const activeTab = ref<'submissions' | 'runs'>('submissions')
 const selectedRun = ref<RunDetail | null>(null)
@@ -27,6 +30,46 @@ const deletingId = ref<number | null>(null)
 const selectedSubmission = ref<Submission | null>(null)
 const submissionDetailLoading = ref(false)
 const submissionDetailError = ref('')
+const analytics = ref<ProfileAnalyticsData | null>(null)
+const analyticsLoading = ref(true)
+const analyticsError = ref('')
+const showSettings = ref(false)
+const analyticsAnchor = ref<HTMLElement | null>(null)
+
+type Shortcut = {
+  label: string
+  hint: string
+  to?: string
+  action?: 'records' | 'runs' | 'analytics'
+}
+
+const roleLabel = computed(() => {
+  if (authStore.isTeacher) return '教师'
+  if (authStore.isAdmin) return '管理员'
+  return '学生'
+})
+
+const shortcuts = computed<Shortcut[]>(() => {
+  const items: Shortcut[] = [
+    { label: '题库', hint: '继续刷题', to: '/problems' },
+    { label: '提交记录', hint: '最近提交', action: 'records' },
+    ...(runFeatureEnabled
+      ? [{ label: '运行记录', hint: '最近运行', action: 'runs' as const }]
+      : []),
+    { label: '校园墙', hint: '讨论与题解', to: '/forum' },
+    { label: '我的收藏', hint: '收藏的帖子', to: '/profile/favorites' },
+    { label: '排行榜', hint: '学生榜单', to: '/rankings' },
+    { label: '通知中心', hint: '站内通知', to: '/notifications' },
+  ]
+  if (authStore.isStudent || authStore.isTeacher) {
+    items.push({ label: '我的班级', hint: '班级与作业', to: '/classes' })
+  }
+  if (authStore.isTeacher) {
+    items.push({ label: '出题', hint: '创建与审核', to: '/teacher/problems' })
+  }
+  items.push({ label: '学习分析', hint: '近 30 天', action: 'analytics' })
+  return items
+})
 
 const formatTime = (value: string): string => new Date(value).toLocaleString('zh-CN')
 const formatMemory = (value: number | null): string => {
@@ -34,6 +77,34 @@ const formatMemory = (value: number | null): string => {
   return value >= 1024 ? `${(value / 1024).toFixed(1)} MB` : `${value} KB`
 }
 const isAcceptedRun = (status: string): boolean => status === 'completed'
+
+const handleShortcut = (item: Shortcut): void => {
+  if (item.to) {
+    void router.push(item.to)
+    return
+  }
+  if (item.action === 'analytics') {
+    analyticsAnchor.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    return
+  }
+  activeTab.value = item.action === 'runs' ? 'runs' : 'submissions'
+  if (activeTab.value === 'runs' && !runStore.records.length && !runStore.recordsLoading) {
+    void runStore.loadRecords({ page: 1, size: 20 })
+  }
+  document.getElementById('profile-records')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+const loadAnalytics = async (): Promise<void> => {
+  analyticsLoading.value = true
+  analyticsError.value = ''
+  try {
+    analytics.value = await fetchAnalytics(30)
+  } catch (exception: unknown) {
+    analyticsError.value = toErrorMessage(exception)
+  } finally {
+    analyticsLoading.value = false
+  }
+}
 
 const openRunDetail = async (record: RunSummary): Promise<void> => {
   runDetailLoading.value = true
@@ -91,6 +162,7 @@ const selectTab = (tab: 'submissions' | 'runs'): void => {
 }
 
 onMounted(() => {
+  void loadAnalytics()
   void submissionStore.loadSubmissions({ page: 1, size: 50 })
   if (runFeatureEnabled) {
     void runStore.loadRecords({ page: 1, size: 20 })
@@ -101,25 +173,82 @@ onMounted(() => {
 <template>
   <NavBar />
   <main class="profile-page page-shell">
-    <header class="page-title"><h1>个人中心</h1></header>
-    <section class="profile-overview"><div class="large-avatar">{{ authStore.user?.avatar ?? authStore.user?.username.slice(0, 1).toUpperCase() ?? 'T' }}</div><div><h2>{{ authStore.user?.username ?? '游客' }}</h2><p>{{ authStore.user?.email ?? '登录后同步你的练习进度' }}</p></div></section>
-    <section class="profile-stats"><article><strong>{{ acceptedProblemCount }}</strong><span>通过题目</span></article><article><strong>{{ submissionStore.total }}</strong><span>总提交数</span></article><article><strong>{{ acceptanceRate }}<small>%</small></strong><span>通过率</span></article><article><strong>{{ attemptedProblemCount }}</strong><span>已尝试题目</span></article></section>
+    <section class="profile-hero">
+      <AvatarUploader />
+      <div class="profile-identity">
+        <h1>{{ authStore.user?.username ?? '游客' }}</h1>
+        <p>{{ authStore.user?.email ?? '登录后同步你的练习进度' }}</p>
+        <div class="profile-badges">
+          <span class="teaching-badge">{{ roleLabel }}</span>
+          <span v-if="authStore.user?.emailVerified" class="teaching-badge">邮箱已验证</span>
+          <span v-else class="teaching-badge">邮箱未验证</span>
+          <span v-if="authStore.user?.pendingEmail" class="teaching-badge">待验证 {{ authStore.user.pendingEmail }}</span>
+          <span v-if="authStore.user?.createdAt" class="teaching-subtle">
+            加入于 {{ new Date(authStore.user.createdAt).toLocaleDateString('zh-CN') }}
+          </span>
+        </div>
+      </div>
+      <button class="teaching-secondary-button" type="button" @click="showSettings = true">
+        账号设置
+      </button>
+    </section>
 
-    <div class="profile-tabs" role="tablist">
+    <section class="profile-stats">
+      <article><strong>{{ analytics?.summary.acceptedProblems ?? 0 }}</strong><span>通过题目</span></article>
+      <article><strong>{{ analytics?.summary.totalSubmissions ?? 0 }}</strong><span>总提交数</span></article>
+      <article><strong>{{ analytics?.summary.acceptanceRate ?? 0 }}<small>%</small></strong><span>通过率</span></article>
+      <article><strong>{{ analytics?.summary.attemptedProblems ?? 0 }}</strong><span>已尝试题目</span></article>
+      <article><strong>{{ analytics?.summary.activeClasses ?? 0 }}</strong><span>活跃班级</span></article>
+      <article><strong>{{ analytics?.summary.streakDays ?? 0 }}</strong><span>连续通过天数</span></article>
+    </section>
+
+    <section class="profile-shortcuts">
+      <button
+        v-for="item in shortcuts"
+        :key="item.label"
+        type="button"
+        class="profile-shortcut"
+        @click="handleShortcut(item)"
+      >
+        <strong>{{ item.label }}</strong>
+        <span>{{ item.hint }}</span>
+      </button>
+    </section>
+
+    <div ref="analyticsAnchor">
+      <ProfileAnalytics :analytics="analytics" :loading="analyticsLoading" :error="analyticsError" />
+    </div>
+
+    <div id="profile-records" class="profile-tabs" role="tablist">
       <button type="button" role="tab" :aria-selected="activeTab === 'submissions'" :class="{ active: activeTab === 'submissions' }" @click="selectTab('submissions')">提交记录</button>
       <button v-if="runFeatureEnabled" type="button" role="tab" :aria-selected="activeTab === 'runs'" :class="{ active: activeTab === 'runs' }" @click="selectTab('runs')">运行记录</button>
     </div>
 
-    <section v-if="activeTab === 'submissions'" class="recent-section"><div class="section-heading"><h2>最近提交</h2></div>
+    <section v-if="activeTab === 'submissions'" class="recent-section">
+      <div class="section-heading"><h2>最近提交</h2></div>
       <p v-if="submissionStore.error" class="form-error" role="alert">{{ submissionStore.error }}</p>
       <div v-if="submissionStore.isLoading" class="empty-state"><p>正在加载提交记录</p></div>
-      <div v-else-if="submissionStore.submissions.length" class="submission-list run-record-list"><article v-for="submission in submissionStore.submissions" :key="submission.id"><RouterLink :to="`/problem/${submission.problemId}`">{{ submission.problemTitle }}</RouterLink><span>{{ submission.language }}</span><span :class="['result-status', submission.status === 'Accepted' ? 'accepted' : 'failed']">{{ submission.status }}<template v-if="submission.totalTestCases > 0"> · {{ submission.testCasesPassed }}/{{ submission.totalTestCases }}</template></span><time>{{ formatTime(submission.createdAt) }}</time><div class="run-record-actions"><button type="button" :disabled="submissionDetailLoading" @click="openSubmissionDetail(submission)">查看</button></div></article></div>
+      <div v-else-if="submissionStore.submissions.length" class="submission-list run-record-list">
+        <article v-for="submission in submissionStore.submissions" :key="submission.id">
+          <RouterLink :to="`/problem/${submission.problemId}`">{{ submission.problemTitle }}</RouterLink>
+          <span>{{ submission.language }}</span>
+          <span :class="['result-status', submission.status === 'Accepted' ? 'accepted' : 'failed']">{{ submission.status }}<template v-if="submission.totalTestCases > 0"> · {{ submission.testCasesPassed }}/{{ submission.totalTestCases }}</template></span>
+          <time>{{ formatTime(submission.createdAt) }}</time>
+          <div class="run-record-actions">
+            <button type="button" :disabled="submissionDetailLoading" @click="openSubmissionDetail(submission)">查看</button>
+          </div>
+        </article>
+      </div>
       <p v-if="submissionDetailLoading" class="run-note">正在加载提交详情</p>
       <p v-if="submissionDetailError" class="form-error" role="alert">{{ submissionDetailError }}</p>
-      <div v-else class="empty-state"><p>还没有提交记录</p><RouterLink class="primary-button" to="/problems">去开始第一题 <span>→</span></RouterLink></div>
+      <div v-else-if="!submissionStore.submissions.length" class="empty-state">
+        <p>还没有提交记录</p>
+        <RouterLink class="primary-button" to="/problems">去开始第一题 <span>→</span></RouterLink>
+      </div>
     </section>
 
-    <section v-else class="recent-section"><div class="section-heading"><h2>运行记录</h2><span class="run-note">共 {{ runStore.recordsTotal }} 条 仅保留最近运行结果</span></div>
+    <section v-else class="recent-section">
+      <div class="section-heading"><h2>运行记录</h2><span class="run-note">共 {{ runStore.recordsTotal }} 条 仅保留最近运行结果</span></div>
       <p v-if="runStore.recordsError" class="form-error" role="alert">{{ runStore.recordsError }}</p>
       <div v-if="runStore.recordsLoading" class="empty-state"><p>正在加载运行记录</p></div>
       <div v-else-if="runStore.records.length" class="submission-list run-record-list">
@@ -140,6 +269,8 @@ onMounted(() => {
       <p v-if="runDetailError" class="form-error" role="alert">{{ runDetailError }}</p>
     </section>
   </main>
+
+  <AccountSettingsDialog v-if="showSettings" @close="showSettings = false" />
 
   <div v-if="selectedSubmission" class="modal-backdrop" @click.self="closeSubmissionDetail">
     <section class="run-dialog run-record-dialog" role="dialog" aria-modal="true" aria-labelledby="submission-record-title">

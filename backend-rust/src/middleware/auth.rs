@@ -38,15 +38,16 @@ pub async fn authenticate(
 ) -> Result<AuthUser, AppError> {
     let token = bearer_token(headers).ok_or(AppError::Unauthorized)?;
     let Claims { sub, ver, .. } = decode_token(token, &config.jwt_secret)?;
-    let row: Option<(String, bool, i32)> = sqlx::query_as(
-        "SELECT role, email_verified_at IS NOT NULL, token_version FROM users WHERE id = $1",
+    let row: Option<(String, bool, i32, String)> = sqlx::query_as(
+        "SELECT role, email_verified_at IS NOT NULL, token_version, status \
+         FROM users WHERE id = $1",
     )
     .bind(sub)
     .fetch_optional(pool)
     .await
     .map_err(AppError::Database)?;
-    let (role, email_verified, token_version) = row.ok_or(AppError::Unauthorized)?;
-    if ver != token_version {
+    let (role, email_verified, token_version, status) = row.ok_or(AppError::Unauthorized)?;
+    if status != "active" || ver != token_version {
         return Err(AppError::Unauthorized);
     }
     Ok(AuthUser {

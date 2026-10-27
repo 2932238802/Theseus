@@ -1,23 +1,50 @@
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     routing::{delete, get, post, put},
 };
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 
 use crate::{
     AppState,
     handlers::{
         admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, class_handler,
-        forum_handler, invitation_handler, notification_handler, problem_handler, ranking_handler,
-        run_handler, submission_handler,
+        forum_handler, invitation_handler, notification_handler, problem_handler, profile_handler,
+        ranking_handler, run_handler, submission_handler,
     },
 };
 
 pub fn router(state: AppState) -> Router {
+    let upload_dir = state.config.upload_dir.clone();
     Router::new()
         .route("/api/auth/register", post(auth_handler::register))
         .route("/api/auth/login", post(auth_handler::login))
         .route("/api/auth/me", get(auth_handler::me))
+        .route("/api/auth/logout-all", post(profile_handler::logout_all))
+        .route(
+            "/api/profile/username",
+            put(profile_handler::update_username),
+        )
+        .route(
+            "/api/profile/email",
+            post(profile_handler::request_email_change),
+        )
+        .route(
+            "/api/profile/email/pending",
+            delete(profile_handler::cancel_email_change),
+        )
+        .route(
+            "/api/profile/password",
+            put(profile_handler::change_password),
+        )
+        .route("/api/profile", delete(profile_handler::delete_account))
+        .route(
+            "/api/profile/avatar",
+            post(profile_handler::upload_avatar)
+                .delete(profile_handler::delete_avatar)
+                .layer(DefaultBodyLimit::max(3 * 1024 * 1024)),
+        )
+        .route("/api/profile/analytics", get(profile_handler::analytics))
         .route("/api/auth/verify-email", post(auth_handler::verify_email))
         .route(
             "/api/auth/verify-email/resend",
@@ -187,6 +214,7 @@ pub fn router(state: AppState) -> Router {
             "/api/forum/posts",
             get(forum_handler::list_posts).post(forum_handler::create_post),
         )
+        .route("/api/forum/favorites", get(forum_handler::favorites))
         .route(
             "/api/forum/posts/{id}",
             get(forum_handler::get_post)
@@ -264,6 +292,7 @@ pub fn router(state: AppState) -> Router {
             "/api/admin/forum/actions",
             get(admin_forum_handler::list_actions),
         )
+        .nest_service("/uploads", ServeDir::new(upload_dir))
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())

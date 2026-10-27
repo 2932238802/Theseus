@@ -81,3 +81,7 @@ frontend-vue/.env.local
 
 # Local dev logs (dev.sh)
 .dev-logs/
+
+# 用户上传文件
+uploads/
+backend-rust/uploads/

@@ -2894,6 +2894,74 @@ async fn write_action(
     Ok(())
 }
 
+pub async fn list_favorites(
+    pool: &PgPool,
+    config: &Config,
+    user_id: i32,
+    query: &crate::models::profile::ForumFavoriteQuery,
+) -> Result<crate::models::profile::ForumFavoriteListResponse, AppError> {
+    ensure_enabled(config)?;
+    let (page, size) = page_and_size(query.page, query.size, MAX_PUBLIC_PAGE_SIZE);
+    let offset = i64::from(page - 1) * i64::from(size);
+
+    let total: i64 =
+        sqlx::query_scalar("SELECT COUNT(*)::bigint FROM forum_post_favorites WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::Database)?;
+
+    #[derive(FromRow)]
+    struct FavoriteRow {
+        post_id: i64,
+        title: String,
+        status: String,
+        favorite_count: i32,
+        comment_count: i32,
+        favorited_at: DateTime<Utc>,
+        author_id: i32,
+        author_username: String,
+    }
+
+    let rows: Vec<FavoriteRow> = sqlx::query_as(
+        "SELECT fp.id AS post_id, fp.title, fp.status, fp.favorite_count, fp.comment_count,
+                f.created_at AS favorited_at, u.id AS author_id, u.username AS author_username
+         FROM forum_post_favorites f
+         JOIN forum_posts fp ON fp.id = f.post_id
+         JOIN users u ON u.id = fp.author_id
+         WHERE f.user_id = $1
+         ORDER BY f.created_at DESC, fp.id DESC
+         LIMIT $2 OFFSET $3",
+    )
+    .bind(user_id)
+    .bind(i64::from(size))
+    .bind(offset)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    Ok(crate::models::profile::ForumFavoriteListResponse {
+        total,
+        page,
+        size,
+        favorites: rows
+            .into_iter()
+            .map(|row| crate::models::profile::ForumFavoriteItem {
+                post_id: row.post_id,
+                title: row.title,
+                status: row.status,
+                favorite_count: row.favorite_count,
+                comment_count: row.comment_count,
+                favorited_at: row.favorited_at,
+                author: crate::models::profile::ForumFavoriteAuthor {
+                    id: row.author_id,
+                    username: row.author_username,
+                },
+            })
+            .collect(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{TimeDelta, Utc};

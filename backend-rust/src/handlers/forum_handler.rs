@@ -181,3 +181,13 @@ pub async fn create_report(
     let data = forum_service::create_report(&state.pool, &state.config, &user, &request).await?;
     Ok(created(data))
 }
+
+pub async fn favorites(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<crate::models::profile::ForumFavoriteQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data = forum_service::list_favorites(&state.pool, &state.config, user.id, &query).await?;
+    Ok(ok(data))
+}

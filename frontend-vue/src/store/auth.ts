@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { fetchCurrentUser, login as loginRequest, register as registerRequest } from '../api/auth'
+import { logoutAllDevices } from '../api/profile'
 import { toErrorMessage } from '../api/client'
 import type { User } from '../types/oj'
 import {
@@ -10,6 +11,7 @@ import {
   getToken,
   persistSession,
   rememberUsername,
+  updateSessionToken,
   updateSessionUser,
 } from '../utils/session'
 
@@ -70,6 +72,26 @@ export const useAuthStore = defineStore('auth', () => {
     clearSession()
   }
 
+  const logoutAll = async (): Promise<void> => {
+    try {
+      await logoutAllDevices()
+    } finally {
+      logout()
+    }
+  }
+
+  const updateUser = (nextUser: User): void => {
+    user.value = nextUser
+    updateSessionUser(nextUser)
+  }
+
+  const replaceSession = (nextToken: string, nextUser: User): void => {
+    token.value = nextToken
+    user.value = nextUser
+    updateSessionToken(nextToken)
+    updateSessionUser(nextUser)
+  }
+
   const refreshMe = async (): Promise<boolean> => {
     if (!token.value) return false
     try {
@@ -96,6 +118,9 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     register,
     logout,
+    logoutAll,
+    updateUser,
+    replaceSession,
     refreshMe,
   }
 })

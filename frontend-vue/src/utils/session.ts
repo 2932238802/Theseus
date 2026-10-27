@@ -66,6 +66,12 @@ export const persistSession = (token: string, user: User, remember: boolean): vo
   storage?.setItem(USER_KEY, JSON.stringify(user))
 }
 
+export const updateSessionToken = (token: string): void => {
+  for (const storage of [getLocalStorage(), getSessionStorage()]) {
+    if (storage?.getItem(TOKEN_KEY)) storage.setItem(TOKEN_KEY, token)
+  }
+}
+
 export const updateSessionUser = (user: User): void => {
   for (const storage of [getLocalStorage(), getSessionStorage()]) {
     if (storage?.getItem(TOKEN_KEY)) storage.setItem(USER_KEY, JSON.stringify(user))

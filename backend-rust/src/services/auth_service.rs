@@ -18,6 +18,7 @@ use crate::{
 
 const RESEND_COOLDOWN_SECS: u64 = 60;
 const EMAIL_VERIFY_PURPOSE: &str = "email_verify";
+const EMAIL_CHANGE_PURPOSE: &str = "email_change";
 const PASSWORD_RESET_PURPOSE: &str = "password_reset";
 
 pub async fn register(
@@ -33,7 +34,7 @@ pub async fn register(
     let user = sqlx::query_as::<_, User>(
         "INSERT INTO users (username, email, password_hash)
          VALUES ($1, $2, $3)
-         RETURNING id, username, email, password_hash, role, email_verified_at, token_version, created_at, updated_at",
+         RETURNING id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at",
     )
     .bind(request.username.trim())
     .bind(&email)
@@ -61,7 +62,7 @@ pub async fn login(
 ) -> Result<(User, String), AppError> {
     validate_login(request)?;
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, role, email_verified_at, token_version, created_at, updated_at
+        "SELECT id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at
          FROM users WHERE username = $1 OR LOWER(email) = LOWER($1)",
     )
     .bind(request.username.trim())
@@ -69,6 +70,9 @@ pub async fn login(
     .await
     .map_err(AppError::Database)?
     .ok_or(AppError::InvalidCredentials)?;
+    if user.status != "active" {
+        return Err(AppError::InvalidCredentials);
+    }
     if !verify_password(&request.password, &user.password_hash) {
         return Err(AppError::InvalidCredentials);
     }
@@ -84,7 +88,7 @@ pub async fn login(
 
 pub async fn current_user(pool: &PgPool, id: i32) -> Result<PublicUser, AppError> {
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, role, email_verified_at, token_version, created_at, updated_at
+        "SELECT id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at
          FROM users WHERE id = $1",
     )
     .bind(id)
@@ -101,17 +105,70 @@ pub async fn verify_email(pool: &PgPool, raw_token: &str) -> Result<AuthMessageR
         return Err(AppError::BadRequest("验证令牌不能为空".to_owned()));
     }
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
-    let user_id = consume_token(&mut transaction, raw_token, EMAIL_VERIFY_PURPOSE).await?;
-    sqlx::query(
-        "UPDATE users
-         SET email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP),
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1",
+    let token_hash = hash_token(raw_token);
+    let row: Option<(i32, String)> = sqlx::query_as(
+        "UPDATE auth_tokens
+         SET used_at = CURRENT_TIMESTAMP
+         WHERE token_hash = $1
+           AND used_at IS NULL
+           AND expires_at > CURRENT_TIMESTAMP
+         RETURNING user_id, purpose",
     )
-    .bind(user_id)
-    .execute(&mut *transaction)
+    .bind(token_hash)
+    .fetch_optional(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
+    let (user_id, purpose) =
+        row.ok_or_else(|| AppError::BadRequest("链接无效或已过期".to_owned()))?;
+
+    match purpose.as_str() {
+        EMAIL_VERIFY_PURPOSE => {
+            sqlx::query(
+                "UPDATE users
+                 SET email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP),
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE id = $1 AND status = 'active'",
+            )
+            .bind(user_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?;
+        }
+        EMAIL_CHANGE_PURPOSE => {
+            let pending: Option<String> = sqlx::query_scalar(
+                "SELECT pending_email FROM users WHERE id = $1 AND status = 'active' FOR UPDATE",
+            )
+            .bind(user_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?
+            .flatten();
+            let new_email =
+                pending.ok_or_else(|| AppError::BadRequest("没有待验证的新邮箱".to_owned()))?;
+            sqlx::query(
+                "UPDATE users
+                 SET email = $1,
+                     pending_email = NULL,
+                     email_verified_at = CURRENT_TIMESTAMP,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE id = $2 AND status = 'active'",
+            )
+            .bind(&new_email)
+            .bind(user_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error: sqlx::Error| {
+                if is_unique_violation(&error) {
+                    AppError::Conflict("该邮箱已被其他账号使用".to_owned())
+                } else {
+                    AppError::Database(error)
+                }
+            })?;
+        }
+        _ => {
+            return Err(AppError::BadRequest("链接类型无效".to_owned()));
+        }
+    }
     transaction.commit().await.map_err(AppError::Database)?;
     Ok(AuthMessageResponse {
         message: "邮箱验证成功".to_owned(),
@@ -124,7 +181,7 @@ pub async fn resend_verification(
     user_id: i32,
 ) -> Result<ResendVerificationResponse, AppError> {
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, role, email_verified_at, token_version, created_at, updated_at
+        "SELECT id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at
          FROM users WHERE id = $1",
     )
     .bind(user_id)
@@ -179,7 +236,7 @@ pub async fn forgot_password(
         return Err(AppError::BadRequest("邮箱格式无效".to_owned()));
     }
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, role, email_verified_at, token_version, created_at, updated_at
+        "SELECT id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at
          FROM users WHERE LOWER(email) = $1",
     )
     .bind(&email)
@@ -247,6 +304,193 @@ pub async fn reset_password(
     Ok(AuthMessageResponse {
         message: "密码已重置，请重新登录".to_owned(),
     })
+}
+
+pub async fn request_email_change(
+    pool: &PgPool,
+    config: &Config,
+    user_id: i32,
+    email: &str,
+) -> Result<crate::models::profile::EmailChangeResponse, AppError> {
+    let email = email.trim().to_lowercase();
+    if email.is_empty() || email.len() > 100 || !email.contains('@') {
+        return Err(AppError::BadRequest("邮箱格式无效".to_owned()));
+    }
+    let user = load_user(pool, user_id).await?;
+    if user.status != "active" {
+        return Err(AppError::Unauthorized);
+    }
+    if user.email.eq_ignore_ascii_case(&email) {
+        return Err(AppError::BadRequest("新邮箱不能与当前邮箱相同".to_owned()));
+    }
+    let conflict: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+             SELECT 1 FROM users
+             WHERE id <> $1 AND (LOWER(email) = $2 OR LOWER(pending_email) = $2)
+         )",
+    )
+    .bind(user_id)
+    .bind(&email)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::Database)?;
+    if conflict {
+        return Err(AppError::Conflict("该邮箱已被其他账号使用".to_owned()));
+    }
+
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    sqlx::query(
+        "UPDATE users SET pending_email = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2 AND status = 'active'",
+    )
+    .bind(&email)
+    .bind(user_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|error: sqlx::Error| {
+        if is_unique_violation(&error) {
+            AppError::Conflict("该邮箱已被其他账号使用".to_owned())
+        } else {
+            AppError::Database(error)
+        }
+    })?;
+    let token = issue_token(
+        &mut transaction,
+        user_id,
+        EMAIL_CHANGE_PURPOSE,
+        config.email_verify_ttl_hours * 3600,
+    )
+    .await?;
+    let link = verification_link(&config.frontend_base_url, &token);
+    let body = format!(
+        "你好 {}：\n\n你正在把 Theseus 账号邮箱修改为 {}。请打开以下链接完成验证：\n{}\n\n链接 {} 小时内有效。如果这不是你的操作，请忽略这封邮件。\n",
+        user.username, email, link, config.email_verify_ttl_hours
+    );
+    email_service::enqueue(&mut transaction, &email, "确认你的 Theseus 新邮箱", &body).await?;
+    let notice = format!(
+        "你好 {}：\n\n你的 Theseus 账号刚刚申请将邮箱修改为 {}。如果这不是你的操作，请立即登录并修改密码。\n",
+        user.username, email
+    );
+    email_service::enqueue(
+        &mut transaction,
+        &user.email,
+        "Theseus 邮箱变更提醒",
+        &notice,
+    )
+    .await?;
+    transaction.commit().await.map_err(AppError::Database)?;
+    Ok(crate::models::profile::EmailChangeResponse {
+        message: "验证邮件已发送到新邮箱".to_owned(),
+        pending_email: email,
+    })
+}
+
+pub async fn cancel_email_change(pool: &PgPool, user_id: i32) -> Result<PublicUser, AppError> {
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    sqlx::query(
+        "UPDATE users SET pending_email = NULL, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND status = 'active'",
+    )
+    .bind(user_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    sqlx::query(
+        "UPDATE auth_tokens SET used_at = CURRENT_TIMESTAMP
+         WHERE user_id = $1 AND purpose = $2 AND used_at IS NULL",
+    )
+    .bind(user_id)
+    .bind(EMAIL_CHANGE_PURPOSE)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    transaction.commit().await.map_err(AppError::Database)?;
+    current_user(pool, user_id).await
+}
+
+pub async fn change_password(
+    pool: &PgPool,
+    config: &Config,
+    user_id: i32,
+    current_password: &str,
+    new_password: &str,
+) -> Result<crate::models::profile::PasswordChangeResponse, AppError> {
+    if !(8..=128).contains(&new_password.len()) {
+        return Err(AppError::BadRequest(
+            "新密码长度必须在 8 到 128 个字符之间".to_owned(),
+        ));
+    }
+    if current_password == new_password {
+        return Err(AppError::BadRequest("新密码不能与当前密码相同".to_owned()));
+    }
+    let user = load_user(pool, user_id).await?;
+    if user.status != "active" {
+        return Err(AppError::Unauthorized);
+    }
+    if !verify_password(current_password, &user.password_hash) {
+        return Err(AppError::Unauthorized);
+    }
+    let password_hash = hash_password(new_password)?;
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let (token_version, role): (i32, String) = sqlx::query_as(
+        "UPDATE users
+         SET password_hash = $1, token_version = token_version + 1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2 AND status = 'active'
+         RETURNING token_version, role",
+    )
+    .bind(password_hash)
+    .bind(user_id)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    let notice = format!(
+        "你好 {}：\n\n你的 Theseus 账号密码刚刚被修改，其他设备已退出登录。如果这不是你的操作，请立即使用找回密码功能。\n",
+        user.username
+    );
+    email_service::enqueue(
+        &mut transaction,
+        &user.email,
+        "Theseus 密码变更提醒",
+        &notice,
+    )
+    .await?;
+    transaction.commit().await.map_err(AppError::Database)?;
+    let token = create_token(
+        user_id,
+        &role,
+        token_version,
+        &config.jwt_secret,
+        config.jwt_expiration_hours,
+    )?;
+    let user = current_user(pool, user_id).await?;
+    Ok(crate::models::profile::PasswordChangeResponse { token, user })
+}
+
+pub async fn logout_all(pool: &PgPool, user_id: i32) -> Result<AuthMessageResponse, AppError> {
+    sqlx::query(
+        "UPDATE users SET token_version = token_version + 1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(AuthMessageResponse {
+        message: "已退出所有设备".to_owned(),
+    })
+}
+
+async fn load_user(pool: &PgPool, user_id: i32) -> Result<User, AppError> {
+    sqlx::query_as::<_, User>(
+        "SELECT id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at
+         FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or(AppError::Unauthorized)
 }
 
 async fn queue_verification_email(

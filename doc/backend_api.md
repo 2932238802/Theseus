@@ -143,7 +143,7 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 
 ## 个人中心接口
 
-完整设计见 `doc/2610272_个人界面的完善.md`。
+完整设计见 `doc/2610272_个人界面的完善.md`。头像文件默认写入 `UPLOAD_DIR=./uploads`，通过 `/uploads` 静态访问；生产环境需设置持久化目录。
 
 - `GET /api/auth/me` 增加 `avatar_url`、`pending_email`、`created_at`。
 - `PUT /api/profile/username` 请求 `{"username":"..."}`，唯一性冲突返回 409。

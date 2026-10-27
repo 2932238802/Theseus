@@ -3,8 +3,8 @@ import { createPinia } from 'pinia'
 import './style.css'
 import App from './App.vue'
 import router from './router'
+import { initTheme } from './utils/theme'
 
-const savedTheme = localStorage.getItem('theseus-theme')
-document.documentElement.dataset.theme = savedTheme ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+initTheme()
 
 createApp(App).use(createPinia()).use(router).mount('#app')

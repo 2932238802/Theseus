@@ -3,12 +3,13 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import NotificationBell from './NotificationBell.vue'
 import { useAuthStore } from '../store/auth'
+import { isDarkTheme, toggleTheme as applyThemeToggle } from '../utils/theme'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const isMenuOpen = ref(false)
-const isDark = ref(document.documentElement.dataset.theme === 'dark')
+const isDark = ref(isDarkTheme())
 
 const userInitial = computed(() => authStore.user?.avatar ?? authStore.user?.username.slice(0, 1).toUpperCase() ?? 'T')
 const isManageOpen = ref(false)
@@ -30,9 +31,7 @@ const onWindowKeydown = (event: KeyboardEvent): void => {
 }
 
 const toggleTheme = (): void => {
-  isDark.value = !isDark.value
-  document.documentElement.dataset.theme = isDark.value ? 'dark' : 'light'
-  localStorage.setItem('theseus-theme', isDark.value ? 'dark' : 'light')
+  isDark.value = applyThemeToggle() === 'dark'
 }
 
 const logout = (): void => {
@@ -98,13 +97,16 @@ onBeforeUnmount(() => {
         <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M20.1 15.1A8.5 8.5 0 0 1 8.9 3.9 8.5 8.5 0 1 0 20.1 15.1Z" /></svg>
       </button>
       <template v-if="authStore.isAuthenticated">
-        <button class="avatar-button" type="button" :aria-label="`用户菜单：${authStore.user?.username ?? ''}`" aria-haspopup="menu" :aria-expanded="isMenuOpen" @click="isMenuOpen = !isMenuOpen">{{ userInitial }}</button>
+        <button class="avatar-button" type="button" :aria-label="`用户菜单：${authStore.user?.username ?? ''}`" aria-haspopup="menu" :aria-expanded="isMenuOpen" @click="isMenuOpen = !isMenuOpen">
+          <img v-if="authStore.user?.avatarUrl" :src="authStore.user.avatarUrl" :alt="authStore.user.username" />
+          <template v-else>{{ userInitial }}</template>
+        </button>
         <div v-if="isMenuOpen" class="user-menu">
           <strong>{{ authStore.user?.username }}</strong>
           <span>{{ authStore.user?.email }}</span>
           <hr />
           <RouterLink v-if="authStore.isTeacher" to="/teacher/problems" @click="isMenuOpen = false">我的题目</RouterLink>
-          <RouterLink to="/profile" @click="isMenuOpen = false">个人中心</RouterLink>
+          <RouterLink to="/profile" @click="isMenuOpen = false">个人</RouterLink>
           <button type="button" @click="logout">退出登录</button>
         </div>
       </template>

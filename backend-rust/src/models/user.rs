@@ -11,6 +11,9 @@ pub struct User {
     pub password_hash: String,
     pub role: String,
     pub email_verified_at: Option<DateTime<Utc>>,
+    pub avatar_path: Option<String>,
+    pub pending_email: Option<String>,
+    pub status: String,
     #[serde(skip_serializing)]
     pub token_version: i32,
     pub created_at: DateTime<Utc>,
@@ -24,6 +27,9 @@ pub struct PublicUser {
     pub email: String,
     pub role: String,
     pub email_verified: bool,
+    pub avatar_url: Option<String>,
+    pub pending_email: Option<String>,
+    pub created_at: DateTime<Utc>,
 }
 
 impl From<&User> for PublicUser {
@@ -34,6 +40,12 @@ impl From<&User> for PublicUser {
             email: user.email.clone(),
             role: user.role.clone(),
             email_verified: user.email_verified_at.is_some(),
+            avatar_url: user
+                .avatar_path
+                .as_ref()
+                .map(|path| format!("/uploads/{path}")),
+            pending_email: user.pending_email.clone(),
+            created_at: user.created_at,
         }
     }
 }

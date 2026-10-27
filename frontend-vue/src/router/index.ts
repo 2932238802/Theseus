@@ -20,6 +20,7 @@ import NotificationsPage from '../views/NotificationsPage.vue'
 import OjPage from '../views/OjPage.vue'
 import ProblemsPage from '../views/ProblemsPage.vue'
 import ProfilePage from '../views/ProfilePage.vue'
+import ProfileFavoritesPage from '../views/ProfileFavoritesPage.vue'
 import RankingsPage from '../views/RankingsPage.vue'
 import ResetPasswordPage from '../views/ResetPasswordPage.vue'
 import TeacherProblemComposePage from '../views/TeacherProblemComposePage.vue'
@@ -38,6 +39,7 @@ const router = createRouter({
     { path: '/problems', name: 'problems', component: ProblemsPage },
     { path: '/problem/:id', name: 'problem', component: OjPage, props: true },
     { path: '/profile', name: 'profile', component: ProfilePage, meta: { requiresAuth: true } },
+    { path: '/profile/favorites', name: 'profile-favorites', component: ProfileFavoritesPage, meta: { requiresAuth: true } },
     { path: '/rankings', name: 'rankings', component: RankingsPage },
     { path: '/forum', name: 'forum', component: ForumPage },
     { path: '/forum/new', name: 'forum-compose', component: ForumComposePage, meta: { requiresAuth: true } },

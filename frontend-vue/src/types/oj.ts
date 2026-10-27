@@ -32,6 +32,9 @@ export interface User {
   email: string
   role?: string
   avatar?: string
+  avatarUrl?: string
+  pendingEmail?: string
+  createdAt?: string
   emailVerified: boolean
 }
 

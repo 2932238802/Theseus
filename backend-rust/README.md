@@ -106,6 +106,7 @@ cargo run
 | `EMAIL_VERIFY_TTL_HOURS` | `24` | 验证链接有效期 |
 | `PASSWORD_RESET_TTL_MINUTES` | `30` | 重置链接有效期 |
 | `EMAIL_DISPATCH_INTERVAL_SECS` | `5` | dispatcher 轮询间隔 |
+| `UPLOAD_DIR` | `./uploads` | 头像等上传文件目录；生产必须使用持久化目录 |
 
 投递失败会按 30 秒递增退避重试，最多 5 次，之后标记为 `failed` 并保留 `last_error`。
 
@@ -315,4 +316,4 @@ cargo clippy --all-targets --all-features -- -D warnings
 cd ../frontend-vue && npm run build
 ```
 
-数据库迁移和真实 API 链路用 `scripts/` 下的冒烟脚本验证。
+数据库迁移和真实 API 链路用 `scripts/` 下的冒烟脚本验证：`smoke_profile.sh` 覆盖个人中心、账号安全、头像、学习分析和收藏。

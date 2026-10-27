@@ -1,6 +1,7 @@
 pub mod forum;
 pub mod notification;
 pub mod problem;
+pub mod profile;
 pub mod ranking;
 pub mod run;
 pub mod submission;

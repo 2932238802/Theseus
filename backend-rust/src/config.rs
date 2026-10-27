@@ -1,4 +1,4 @@
-use std::{env, net::SocketAddr};
+use std::{env, net::SocketAddr, path::PathBuf};
 
 use crate::common::error::AppError;
 
@@ -18,6 +18,7 @@ pub struct Config {
     pub email_verify_ttl_hours: i64,
     pub password_reset_ttl_minutes: i64,
     pub email_dispatch_interval_secs: u64,
+    pub upload_dir: PathBuf,
     pub bind_address: SocketAddr,
     pub redis_url: String,
     pub run_code_enabled: bool,
@@ -132,6 +133,14 @@ impl Config {
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(5)
             .max(1);
+        let upload_dir = env::var("UPLOAD_DIR")
+            .unwrap_or_else(|_| "./uploads".to_owned())
+            .trim()
+            .to_owned();
+        if upload_dir.is_empty() {
+            return Err(AppError::Internal("UPLOAD_DIR 不能为空".to_owned()));
+        }
+        let upload_dir = PathBuf::from(upload_dir);
         let bind_address = env::var("BIND_ADDRESS")
             .unwrap_or_else(|_| "127.0.0.1:3000".to_owned())
             .parse()
@@ -283,6 +292,7 @@ impl Config {
             email_verify_ttl_hours,
             password_reset_ttl_minutes,
             email_dispatch_interval_secs,
+            upload_dir,
             bind_address,
             redis_url,
             run_code_enabled,

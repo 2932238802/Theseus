@@ -19,6 +19,9 @@ export interface BackendUser {
   username: string
   email: string
   role: string
+  avatar_url: string | null
+  pending_email: string | null
+  created_at: string
   email_verified: boolean
 }
 
@@ -218,6 +221,9 @@ export const mapUser = (user: BackendUser): User => ({
   email: user.email,
   role: user.role,
   avatar: user.username.slice(0, 1).toUpperCase(),
+  avatarUrl: user.avatar_url ?? undefined,
+  pendingEmail: user.pending_email ?? undefined,
+  createdAt: user.created_at,
   emailVerified: user.email_verified === true,
 })
 
