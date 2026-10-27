@@ -71,8 +71,8 @@ pub async fn forgot_password(
     State(state): State<AppState>,
     Json(request): Json<ForgotPasswordRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let data = auth_service::forgot_password(&state.pool, &state.config, &request.email).await?;
-    Ok(ok(data))
+    let data1 = auth_service::forgot_password(&state.pool, &state.config, &request.email).await?;
+    Ok(ok(data1))
 }
 
 pub async fn reset_password(

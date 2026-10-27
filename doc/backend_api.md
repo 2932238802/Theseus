@@ -8,7 +8,7 @@
 
 认证接口返回的 JWT 通过 `Authorization: Bearer <token>` 访问受保护资源。管理员接口还要求 token 中的用户角色是 `admin`。
 
-> **角色模型迁移说明：** 目标模型为 `student` / `teacher` / `admin` 三个互斥角色，详见 `doc/总体设计.md` v1.1 和 `doc/2610259_班级与作业设计方案.md`。当前代码仍只有 `user` / `admin`，且授权读取 JWT 中的角色；迁移后改为每次从 `users.role` 读取，角色变更立即生效。迁移后管理员不能查看其他人的提交（包括练习提交），`GET /api/submissions?user_id=` 的管理员分支会被移除；教师创建题目、班级/作业和角色管理接口尚未实现。
+> **角色模型：** 当前使用 `student` / `teacher` / `admin` 三个互斥角色，认证每次从 `users.role` 读取；管理员不能查看其他人的提交，教师只能访问自己的班级。详见 `doc/总体设计.md` 与 `doc/2610259_班级与作业设计方案.md`。
 
 ## 运行环境
 
@@ -38,7 +38,15 @@ cargo run
 | DELETE | `/api/admin/problems/{id}` | 管理员 | 删除题目 |
 | GET | `/api/submissions` | 用户 | 当前用户提交列表；管理员当前可传 `user_id`，角色迁移后该分支移除 |
 | POST | `/api/submissions` | 用户 | 创建提交，返回 `{submission_id,status,message}` |
-| GET | `/api/submissions/{id}` | 用户/管理员 | 提交详情；当前仅本人或管理员可读，角色迁移后管理员不能读他人提交 |
+| GET | `/api/submissions/{id}` | 用户 | 提交详情；本人或作业 owner 教师可读 |
+| PUT | `/api/assignments/{id}` | 教师 | 修改作业；发布后仅允许延长截止时间 |
+| POST | `/api/assignments/{id}/solutions/publish` | 教师 | 发布答案解析，要求作业已截止 |
+| GET | `/api/assignments/{id}/overrides` | 教师 | 查询学生补交/免修例外 |
+| PUT | `/api/assignments/{id}/overrides/{user_id}/problems/{problem_id}` | 教师 | 设置补交/免修 |
+| DELETE | `/api/assignments/{id}/overrides/{user_id}/problems/{problem_id}` | 教师 | 撤销补交/免修 |
+| GET | `/api/assignments/{id}/statistics` | 学生/教师 | 匿名班级统计；学生需作业开启统计 |
+| GET | `/api/assignments/{id}/policy-audits` | 教师 | 策略、例外和解析发布审计 |
+| GET | `/api/assignments/{id}/problems/{problem_id}/peer-submissions` | 学生/教师 | 同学 AC 代码；需作业开启开关 |
 
 ### `GET /api/problems` 查询参数
 
@@ -54,3 +62,69 @@ cargo run
 | `order` | `asc \| desc` | 排序方向，默认 `asc` |
 
 非法 `sort`/`order` 返回 400。登录失败（用户不存在或密码错误）返回 401 与 `用户名或密码错误`。
+
+
+## 作业策略接口
+
+完整语义见 `doc/2610271_作业策略的实现.md`。
+
+### 创建/修改作业
+
+`POST /api/classes/{id}/assignments` 与 `PUT /api/assignments/{id}` 支持策略字段：
+
+```json
+{
+  "late_policy": "allow",
+  "late_grace_hours": 24,
+  "late_penalty_per_day": 10,
+  "late_penalty_cap": 50,
+  "max_attempts": 5,
+  "scoring_policy": "highest",
+  "score_visibility": "after_publish",
+  "allow_peer_code": false,
+  "show_class_stats": true,
+  "problems": [
+    {
+      "problem_id": 1101,
+      "points": 100,
+      "max_attempts": 3,
+      "solution_md": "解析文本"
+    }
+  ]
+}
+```
+
+- `late_policy`：`forbid` / `allow`。
+- `scoring_policy`：`highest` / `last` / `first_ac`。
+- `score_visibility`：`after_publish` / `after_due` / `during`。
+- 发布后策略字段锁定，只允许延长 `due_at`；补交/免修和解析发布不受影响。
+
+### 补交/免修
+
+```http
+PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
+```
+
+```json
+{
+  "makeup_due_at": "2026-11-05T15:59:00Z",
+  "waive_late_penalty": true,
+  "exempt": false,
+  "exemption_mode": null,
+  "reason": "病假补交"
+}
+```
+
+- `exempt = true` 时，`exemption_mode` 必须是 `full_score` 或 `excluded`。
+- 删除同一路径的 `DELETE` 请求可撤销例外。
+- 每次写入都记录 `assignment_policy_audits` 并通知学生。
+
+### 提交策略错误
+
+| 场景 | 状态码 | 文案 |
+|---|---:|---|
+| 超过迟交窗口 | 409 | 作业已截止 |
+| 该题免修 | 409 | 该题已免修 |
+| 次数用尽 | 409 | 该题提交次数已用完 |
+| 发布后修改锁定策略 | 409 | 作业已发布，计分、次数、迟交和可见性策略不可修改 |
+| 未截止发布解析 | 409 | 作业尚未截止，不能发布解析 |

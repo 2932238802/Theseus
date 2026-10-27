@@ -5,6 +5,11 @@ import type {
   AssignmentSummary,
   Gradebook,
 } from '../types/teaching'
+import type {
+  LatePolicy,
+  ScoreVisibility,
+  ScoringPolicy,
+} from '../types/policy'
 import { type ApiEnvelope, unwrap } from './client'
 import {
   type BackendAssignmentDetail,
@@ -22,6 +27,15 @@ export interface AssignmentPayload {
   description?: string
   startAt?: string
   dueAt?: string
+  latePolicy?: LatePolicy
+  lateGraceHours?: number
+  latePenaltyPerDay?: number
+  latePenaltyCap?: number
+  maxAttempts?: number | null
+  scoringPolicy?: ScoringPolicy
+  scoreVisibility?: ScoreVisibility
+  allowPeerCode?: boolean
+  showClassStats?: boolean
   problems?: AssignmentProblemInput[]
 }
 
@@ -30,22 +44,47 @@ interface BackendAssignmentPayload {
   description?: string
   start_at?: string
   due_at?: string
-  problems?: Array<{ problem_id: number; points: number }>
+  late_policy?: LatePolicy
+  late_grace_hours?: number
+  late_penalty_per_day?: number
+  late_penalty_cap?: number
+  max_attempts?: number | null
+  scoring_policy?: ScoringPolicy
+  score_visibility?: ScoreVisibility
+  allow_peer_code?: boolean
+  show_class_stats?: boolean
+  problems?: BackendProblemInput[]
 }
 
 interface BackendProblemInput {
   problem_id: number
   points: number
+  max_attempts?: number | null
+  solution_md?: string
 }
 
 const mapProblemInputs = (problems: AssignmentProblemInput[]): BackendProblemInput[] =>
-  problems.map((problem) => ({ problem_id: problem.problemId, points: problem.points }))
+  problems.map((problem) => ({
+    problem_id: problem.problemId,
+    points: problem.points,
+    max_attempts: problem.maxAttempts,
+    solution_md: problem.solutionMd,
+  }))
 
 const toBackendPayload = (payload: AssignmentPayload): BackendAssignmentPayload => ({
   title: payload.title,
   description: payload.description,
   start_at: payload.startAt,
   due_at: payload.dueAt,
+  late_policy: payload.latePolicy,
+  late_grace_hours: payload.lateGraceHours,
+  late_penalty_per_day: payload.latePenaltyPerDay,
+  late_penalty_cap: payload.latePenaltyCap,
+  max_attempts: payload.maxAttempts,
+  scoring_policy: payload.scoringPolicy,
+  score_visibility: payload.scoreVisibility,
+  allow_peer_code: payload.allowPeerCode,
+  show_class_stats: payload.showClassStats,
   problems: payload.problems ? mapProblemInputs(payload.problems) : undefined,
 })
 

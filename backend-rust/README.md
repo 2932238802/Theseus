@@ -204,13 +204,16 @@ redis-cli --scan --pattern 'theseus:submit:worker:*'
 
 ## 开发种子数据
 
-仅用于本地/测试环境。`seed_dev.sql` 写入固定 ID 1001-1003 的三道题；`seed_problems_15.sql` 写入固定 ID 1101-1115 的 15 道题（6 道简单、6 道中等、3 道困难），每题都带 `run_config`、公开用例、隐藏 `judge_cases` 和四种语言的代码模板，可直接用于运行与提交评测：
+仅用于本地/测试环境。`seed_dev.sql` 写入固定 ID 1001-1003 的三道题；`seed_problems_15.sql` 写入固定 ID 1101-1115 的 15 道题（6 道简单、6 道中等、3 道困难），每题都带 `run_config`、公开用例、隐藏 `judge_cases` 和四种语言的代码模板，可直接用于运行与提交评测。`seed_admin.sql` 创建管理员账号 `admin`（密码 `admin`，邮箱 `admin@theseus.local`，邮箱已验证）；脚本幂等，已存在的账号不会被覆盖：
 
 ```bash
+psql "$DATABASE_URL" -f scripts/seed_admin.sql
 psql "$DATABASE_URL" -f scripts/seed_dev.sql
 psql "$DATABASE_URL" -f scripts/seed_problems_15.sql
 psql "$DATABASE_URL" -f scripts/clean_dev.sql  # 清理全部固定 ID 种子题
 ```
+
+管理员账号仅用于本地开发/测试，部署到公网前必须修改密码或删除该账号。日常角色调整请使用 `/admin/users`，由接口执行“学生退出班级、教师归档自有班级、最后一个管理员保护”等校验。
 
 自定义题目使用 `POST /api/problems/custom` 提交，仅 `teacher` 可调用，初始状态为 `pending`。管理员可通过 `GET /api/admin/problems/pending` 查看待审题目，并用 `PUT /api/admin/problems/:id/review` 携带 `{ "status": "approved" }` 或 `{ "status": "rejected" }` 完成审核。
 

@@ -164,10 +164,14 @@ pub struct ClassMutationResponse {
 // Assignments
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct AssignmentProblemInput {
     pub problem_id: i32,
     pub points: i32,
+    #[serde(default)]
+    pub max_attempts: Option<i32>,
+    #[serde(default)]
+    pub solution_md: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -179,6 +183,24 @@ pub struct CreateAssignmentRequest {
     pub start_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub due_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub late_policy: Option<String>,
+    #[serde(default)]
+    pub late_grace_hours: Option<i32>,
+    #[serde(default)]
+    pub late_penalty_per_day: Option<i32>,
+    #[serde(default)]
+    pub late_penalty_cap: Option<i32>,
+    #[serde(default)]
+    pub max_attempts: Option<i32>,
+    #[serde(default)]
+    pub scoring_policy: Option<String>,
+    #[serde(default)]
+    pub score_visibility: Option<String>,
+    #[serde(default)]
+    pub allow_peer_code: Option<bool>,
+    #[serde(default)]
+    pub show_class_stats: Option<bool>,
     #[serde(default)]
     pub problems: Vec<AssignmentProblemInput>,
 }
@@ -198,6 +220,24 @@ pub struct UpdateAssignmentRequest {
     pub start_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub due_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub late_policy: Option<String>,
+    #[serde(default)]
+    pub late_grace_hours: Option<i32>,
+    #[serde(default)]
+    pub late_penalty_per_day: Option<i32>,
+    #[serde(default)]
+    pub late_penalty_cap: Option<i32>,
+    #[serde(default)]
+    pub max_attempts: Option<i32>,
+    #[serde(default)]
+    pub scoring_policy: Option<String>,
+    #[serde(default)]
+    pub score_visibility: Option<String>,
+    #[serde(default)]
+    pub allow_peer_code: Option<bool>,
+    #[serde(default)]
+    pub show_class_stats: Option<bool>,
     #[serde(default)]
     pub problems: Option<Vec<AssignmentProblemInput>>,
 }
@@ -236,8 +276,17 @@ pub struct AssignmentProblemView {
     pub points: i32,
     pub position: i32,
     pub attempts: i64,
+    pub attempts_limit: Option<i32>,
+    pub attempts_left: Option<i32>,
     pub accepted: bool,
     pub last_status: Option<String>,
+    pub is_late: bool,
+    pub late_days: i32,
+    pub late_deduction: i32,
+    pub exempt: bool,
+    pub exemption_mode: Option<String>,
+    pub solutions_visible: bool,
+    pub solution_md: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_score: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -263,6 +312,17 @@ pub struct AssignmentDetail {
     pub published_at: Option<DateTime<Utc>>,
     pub grades_published_at: Option<DateTime<Utc>>,
     pub grades_published: bool,
+    pub late_policy: String,
+    pub late_grace_hours: i32,
+    pub late_penalty_per_day: i32,
+    pub late_penalty_cap: i32,
+    pub scoring_policy: String,
+    pub score_visibility: String,
+    pub allow_peer_code: bool,
+    pub show_class_stats: bool,
+    pub solutions_published: bool,
+    pub solutions_published_at: Option<DateTime<Utc>>,
+    pub my_deadline: Option<DateTime<Utc>>,
     pub now: DateTime<Utc>,
     pub is_owner: bool,
     pub can_submit: bool,
@@ -275,6 +335,10 @@ pub struct AssignmentDetail {
     pub student_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub submitted_student_count: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub late_student_count: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exempt_count: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -301,6 +365,8 @@ pub struct GradebookAssignment {
     pub title: String,
     pub due_at: Option<DateTime<Utc>>,
     pub grades_published_at: Option<DateTime<Utc>>,
+    pub late_policy: String,
+    pub scoring_policy: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -314,7 +380,14 @@ pub struct GradebookProblem {
 pub struct GradebookCell {
     pub problem_id: i32,
     pub attempts: i64,
+    pub attempts_limit: Option<i32>,
     pub accepted: bool,
+    pub is_late: bool,
+    pub late_days: i32,
+    pub late_deduction: i32,
+    pub exempt: bool,
+    pub exemption_mode: Option<String>,
+    pub included_in_total: bool,
     pub auto_score: i32,
     pub manual_score: Option<i32>,
     pub final_score: i32,
@@ -369,6 +442,106 @@ pub struct PublishGradesResponse {
 pub struct AssignmentMutationResponse {
     pub id: i32,
     pub message: String,
+}
+
+// ---------------------------------------------------------------------------
+// Assignment policies, overrides, solutions, statistics and audits
+// ---------------------------------------------------------------------------
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateOverrideRequest {
+    #[serde(default)]
+    pub makeup_due_at: Option<DateTime<Utc>>,
+    #[serde(default = "default_true")]
+    pub waive_late_penalty: bool,
+    #[serde(default)]
+    pub exempt: bool,
+    #[serde(default)]
+    pub exemption_mode: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct OverrideItem {
+    pub user_id: i32,
+    pub username: String,
+    pub problem_id: i32,
+    pub makeup_due_at: Option<DateTime<Utc>>,
+    pub waive_late_penalty: bool,
+    pub exempt: bool,
+    pub exemption_mode: Option<String>,
+    pub reason: Option<String>,
+    pub created_by: Option<i32>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OverrideListResponse {
+    pub overrides: Vec<OverrideItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublishSolutionsResponse {
+    pub message: String,
+    pub solutions_published_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct PolicyAuditItem {
+    pub id: i32,
+    pub actor_id: Option<i32>,
+    pub actor_username: Option<String>,
+    pub action: String,
+    pub before_data: Option<serde_json::Value>,
+    pub after_data: Option<serde_json::Value>,
+    pub reason: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PolicyAuditListResponse {
+    pub audits: Vec<PolicyAuditItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AssignmentStatsProblem {
+    pub problem_id: i32,
+    pub points: i32,
+    pub accepted_student_count: i64,
+    pub pass_rate: f64,
+    pub average_score: f64,
+    pub exempt_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AssignmentStatsResponse {
+    pub student_count: i64,
+    pub submitted_student_count: i64,
+    pub average_score: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub my_total_score: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub my_position_bucket: Option<String>,
+    pub problems: Vec<AssignmentStatsProblem>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct PeerSubmissionItem {
+    pub username: String,
+    pub language: String,
+    pub submitted_at: DateTime<Utc>,
+    pub code: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PeerSubmissionListResponse {
+    pub submissions: Vec<PeerSubmissionItem>,
 }
 
 // ---------------------------------------------------------------------------

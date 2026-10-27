@@ -104,6 +104,30 @@ pub fn router(state: AppState) -> Router {
             get(assignment_handler::gradebook),
         )
         .route(
+            "/api/assignments/{id}/solutions/publish",
+            post(assignment_handler::publish_solutions),
+        )
+        .route(
+            "/api/assignments/{id}/overrides",
+            get(assignment_handler::list_overrides),
+        )
+        .route(
+            "/api/assignments/{id}/overrides/{user_id}/problems/{problem_id}",
+            put(assignment_handler::set_override).delete(assignment_handler::delete_override),
+        )
+        .route(
+            "/api/assignments/{id}/policy-audits",
+            get(assignment_handler::policy_audits),
+        )
+        .route(
+            "/api/assignments/{id}/statistics",
+            get(assignment_handler::statistics),
+        )
+        .route(
+            "/api/assignments/{id}/problems/{problem_id}/peer-submissions",
+            get(assignment_handler::peer_submissions),
+        )
+        .route(
             "/api/assignments/{id}/grades/publish",
             post(assignment_handler::publish_grades),
         )

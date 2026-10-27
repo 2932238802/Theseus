@@ -10,10 +10,18 @@ import {
   updateProblemGrade,
 } from '../api/assignments'
 import { fetchSubmission } from '../api/submissions'
+import {
+  deleteOverride,
+  fetchOverrides,
+  fetchPolicyAudits,
+  publishSolutions,
+  setOverride,
+} from '../api/policies'
 import { useAssignmentStore } from '../store/assignments'
 import type { Submission } from '../types/oj'
 import type { GradebookCell, GradebookStudent } from '../types/teaching'
-import { formatDateTime, isPast } from '../utils/teaching'
+import type { ExemptionMode, OverrideItem, PolicyAudit } from '../types/policy'
+import { formatDateTime, isPast, toIsoString } from '../utils/teaching'
 
 const route = useRoute()
 const assignmentStore = useAssignmentStore()
@@ -23,6 +31,16 @@ const includeRemoved = ref(false)
 const actionError = ref('')
 const actionMessage = ref('')
 const isPublishing = ref(false)
+const overrides = ref<OverrideItem[]>([])
+const overrideMakeup = ref('')
+const overrideWaive = ref(true)
+const overrideExempt = ref(false)
+const overrideMode = ref<ExemptionMode>('full_score')
+const overrideReason = ref('')
+const isSavingOverride = ref(false)
+const audits = ref<PolicyAudit[]>([])
+const showAudits = ref(false)
+const auditsLoading = ref(false)
 
 const cellTarget = ref<{ student: GradebookStudent; cell: GradebookCell } | null>(null)
 const cellSubmissions = ref<Submission[]>([])
@@ -45,10 +63,20 @@ const load = async (): Promise<void> => {
   if (!Number.isInteger(assignmentId.value) || assignmentId.value <= 0) return
   actionError.value = ''
   await assignmentStore.loadGradebook(assignmentId.value, includeRemoved.value)
+  try {
+    overrides.value = await fetchOverrides(assignmentId.value)
+  } catch {
+    overrides.value = []
+  }
 }
 
 const cellFor = (student: GradebookStudent, problemId: number): GradebookCell | null =>
   student.problems.find((cell) => cell.problemId === problemId) ?? null
+
+const overrideFor = (student: GradebookStudent, problemId: number): OverrideItem | undefined =>
+  overrides.value.find(
+    (item) => item.userId === student.userId && item.problemId === problemId,
+  )
 
 const openCell = async (student: GradebookStudent, problemId: number): Promise<void> => {
   const cell = cellFor(student, problemId)
@@ -57,6 +85,12 @@ const openCell = async (student: GradebookStudent, problemId: number): Promise<v
   cellTarget.value = { student, cell }
   manualScoreInput.value = cell.manualScore === null ? '' : String(cell.manualScore)
   feedbackInput.value = cell.feedback ?? ''
+  const existing = overrideFor(student, problemId)
+  overrideMakeup.value = existing?.makeupDueAt ? existing.makeupDueAt.slice(0, 16) : ''
+  overrideWaive.value = existing?.waiveLatePenalty ?? true
+  overrideExempt.value = existing?.exempt ?? false
+  overrideMode.value = existing?.exemptionMode ?? 'full_score'
+  overrideReason.value = existing?.reason ?? ''
   selectedSubmission.value = null
   cellSubmissionsError.value = ''
   cellSubmissions.value = []
@@ -185,8 +219,78 @@ const publish = async (): Promise<void> => {
 }
 
 const cellLabel = (cell: GradebookCell): string => {
+  if (cell.exempt) return '免修'
   if (cell.accepted) return '已通过'
   return cell.attempts > 0 ? `尝试 ${cell.attempts} 次` : '未提交'
+}
+
+const saveOverride = async (): Promise<void> => {
+  if (!cellTarget.value || isSavingOverride.value) return
+  const { student, cell } = cellTarget.value
+  if (!overrideExempt.value && !overrideMakeup.value) {
+    actionError.value = '补交截止和免修至少设置一项'
+    return
+  }
+  actionError.value = ''
+  actionMessage.value = ''
+  isSavingOverride.value = true
+  try {
+    await setOverride(assignmentId.value, student.userId, cell.problemId, {
+      makeupDueAt: overrideMakeup.value ? toIsoString(overrideMakeup.value) : undefined,
+      waiveLatePenalty: overrideWaive.value,
+      exempt: overrideExempt.value,
+      exemptionMode: overrideExempt.value ? overrideMode.value : undefined,
+      reason: overrideReason.value.trim() || undefined,
+    })
+    actionMessage.value = '补交/免修已保存'
+    await load()
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    isSavingOverride.value = false
+  }
+}
+
+const removeOverride = async (): Promise<void> => {
+  if (!cellTarget.value || isSavingOverride.value) return
+  const { student, cell } = cellTarget.value
+  actionError.value = ''
+  isSavingOverride.value = true
+  try {
+    await deleteOverride(assignmentId.value, student.userId, cell.problemId)
+    actionMessage.value = '例外已撤销'
+    overrideMakeup.value = ''
+    overrideExempt.value = false
+    overrideReason.value = ''
+    await load()
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    isSavingOverride.value = false
+  }
+}
+
+const publishSolutionsNow = async (): Promise<void> => {
+  actionError.value = ''
+  actionMessage.value = ''
+  try {
+    await publishSolutions(assignmentId.value)
+    actionMessage.value = '解析已发布'
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  }
+}
+
+const openAudits = async (): Promise<void> => {
+  showAudits.value = true
+  auditsLoading.value = true
+  try {
+    audits.value = await fetchPolicyAudits(assignmentId.value)
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    auditsLoading.value = false
+  }
 }
 
 onMounted(load)
@@ -219,6 +323,12 @@ watch(includeRemoved, load)
             <input v-model="includeRemoved" type="checkbox" />
             <span>包含已移除成员</span>
           </label>
+          <button class="teaching-secondary-button" type="button" :disabled="!duePassed" @click="publishSolutionsNow">
+            发布解析
+          </button>
+          <button class="teaching-secondary-button" type="button" @click="openAudits">
+            策略审计
+          </button>
           <button
             class="primary-button"
             type="button"
@@ -263,6 +373,12 @@ watch(includeRemoved, load)
                   @click="openCell(student, problem.problemId)"
                 >
                   <span>{{ cellLabel(cellFor(student, problem.problemId)!) }}</span>
+                  <span v-if="cellFor(student, problem.problemId)!.isLate">
+                    迟交 {{ cellFor(student, problem.problemId)!.lateDays }} 天
+                  </span>
+                  <span v-if="cellFor(student, problem.problemId)!.attemptsLimit">
+                    次数 {{ cellFor(student, problem.problemId)!.attempts }} / {{ cellFor(student, problem.problemId)!.attemptsLimit }}
+                  </span>
                   <span>自动 {{ cellFor(student, problem.problemId)!.autoScore }}</span>
                   <span v-if="cellFor(student, problem.problemId)!.manualScore !== null">
                     手动 {{ cellFor(student, problem.problemId)!.manualScore }}
@@ -324,6 +440,41 @@ watch(includeRemoved, load)
           <div v-if="selectedSubmission.code" class="run-block"><span>代码</span><pre>{{ selectedSubmission.code }}</pre></div>
         </div>
 
+        <form class="teaching-grade-form" @submit.prevent="saveOverride">
+          <h3>补交 / 免修</h3>
+          <label>
+            <span>补交截止（留空表示不补交）</span>
+            <input v-model="overrideMakeup" type="datetime-local" :disabled="cellTarget.student.status === 'removed'" />
+          </label>
+          <label class="teaching-checkbox">
+            <input v-model="overrideWaive" type="checkbox" :disabled="cellTarget.student.status === 'removed'" />
+            <span>补交免迟交扣分</span>
+          </label>
+          <label class="teaching-checkbox">
+            <input v-model="overrideExempt" type="checkbox" :disabled="cellTarget.student.status === 'removed'" />
+            <span>该题免修</span>
+          </label>
+          <label v-if="overrideExempt">
+            <span>免修计分</span>
+            <select v-model="overrideMode" :disabled="cellTarget.student.status === 'removed'">
+              <option value="full_score">计满分</option>
+              <option value="excluded">从总分排除</option>
+            </select>
+          </label>
+          <label>
+            <span>原因</span>
+            <textarea v-model="overrideReason" rows="2" maxlength="2000" :disabled="cellTarget.student.status === 'removed'"></textarea>
+          </label>
+          <div class="teaching-form-actions">
+            <button class="teaching-secondary-button" type="button" :disabled="isSavingOverride" @click="removeOverride">
+              撤销例外
+            </button>
+            <button class="primary-button" type="submit" :disabled="isSavingOverride || cellTarget.student.status === 'removed'">
+              {{ isSavingOverride ? '保存中' : '保存补交/免修' }}
+            </button>
+          </div>
+        </form>
+
         <form class="teaching-grade-form" @submit.prevent="saveCell">
           <label>
             <span>手动分</span>
@@ -340,6 +491,24 @@ watch(includeRemoved, load)
             </button>
           </div>
         </form>
+      </div>
+    </section>
+  </div>
+
+  <div v-if="showAudits" class="modal-backdrop" @click.self="showAudits = false">
+    <section class="run-dialog gradebook-dialog" role="dialog" aria-modal="true">
+      <header>
+        <div><h2>策略审计</h2><p>最近 200 条</p></div>
+        <button type="button" aria-label="关闭" @click="showAudits = false">×</button>
+      </header>
+      <div class="run-dialog-body">
+        <p v-if="auditsLoading" class="teaching-subtle">加载中</p>
+        <p v-else-if="!audits.length" class="teaching-subtle">还没有审计记录</p>
+        <article v-for="audit in audits" v-else :key="audit.id">
+          <p><strong>{{ audit.action }}</strong> · {{ audit.actorUsername || '系统' }} · {{ formatDateTime(audit.createdAt) }}</p>
+          <p v-if="audit.reason" class="teaching-subtle">{{ audit.reason }}</p>
+          <pre class="teaching-code-block">{{ JSON.stringify(audit.afterData, null, 2) }}</pre>
+        </article>
       </div>
     </section>
   </div>

@@ -1,3 +1,8 @@
+import type {
+  AssignmentPolicy,
+  ExemptionMode,
+} from './policy'
+
 export type Role = 'student' | 'teacher' | 'admin'
 
 export type AssignmentStatus = 'draft' | 'published' | 'archived'
@@ -63,8 +68,17 @@ export interface AssignmentProblem {
   points: number
   position: number
   attempts: number
+  attemptsLimit?: number | null
+  attemptsLeft?: number | null
   accepted: boolean
   lastStatus?: string
+  isLate: boolean
+  lateDays: number
+  lateDeduction: number
+  exempt: boolean
+  exemptionMode?: ExemptionMode
+  solutionsVisible: boolean
+  solutionMd?: string
   autoScore?: number
   manualScore?: number
   finalScore?: number
@@ -84,6 +98,17 @@ export interface AssignmentDetail {
   publishedAt?: string
   gradesPublishedAt?: string
   gradesPublished: boolean
+  latePolicy: AssignmentPolicy['latePolicy']
+  lateGraceHours: number
+  latePenaltyPerDay: number
+  latePenaltyCap: number
+  scoringPolicy: AssignmentPolicy['scoringPolicy']
+  scoreVisibility: AssignmentPolicy['scoreVisibility']
+  allowPeerCode: boolean
+  showClassStats: boolean
+  solutionsPublished: boolean
+  solutionsPublishedAt?: string
+  myDeadline?: string
   now: string
   isOwner: boolean
   canSubmit: boolean
@@ -92,17 +117,28 @@ export interface AssignmentDetail {
   overallFeedback?: string
   studentCount?: number
   submittedStudentCount?: number
+  lateStudentCount?: number
+  exemptCount?: number
 }
 
 export interface AssignmentProblemInput {
   problemId: number
   points: number
+  maxAttempts?: number | null
+  solutionMd?: string
 }
 
 export interface GradebookCell {
   problemId: number
   attempts: number
+  attemptsLimit?: number | null
   accepted: boolean
+  isLate: boolean
+  lateDays: number
+  lateDeduction: number
+  exempt: boolean
+  exemptionMode?: ExemptionMode
+  includedInTotal: boolean
   autoScore: number
   manualScore: number | null
   finalScore: number
@@ -133,6 +169,8 @@ export interface Gradebook {
     title: string
     dueAt?: string
     gradesPublishedAt?: string
+    latePolicy: AssignmentPolicy['latePolicy']
+    scoringPolicy: AssignmentPolicy['scoringPolicy']
   }
   problems: GradebookProblem[]
   students: GradebookStudent[]

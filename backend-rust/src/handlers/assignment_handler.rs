@@ -15,6 +15,7 @@ use crate::{
     models::teaching::{
         AssignmentProblemsRequest, AssignmentSubmissionListQuery, CreateAssignmentRequest,
         GradebookQuery, OverallGradeRequest, ProblemGradeRequest, UpdateAssignmentRequest,
+        UpdateOverrideRequest,
     },
     services::{assignment_service, grade_service},
 };
@@ -162,5 +163,79 @@ pub async fn publish_grades(
 ) -> Result<impl IntoResponse, AppError> {
     let user = require_teacher(&state.pool, &headers, &state.config).await?;
     let data = grade_service::publish_grades(&state.pool, &user, id).await?;
+    Ok(ok(data))
+}
+
+pub async fn publish_solutions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let data = assignment_service::publish_solutions(&state.pool, &user, id).await?;
+    Ok(ok(data))
+}
+
+pub async fn list_overrides(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let data = assignment_service::list_overrides(&state.pool, &user, id).await?;
+    Ok(ok(data))
+}
+
+pub async fn set_override(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((id, student_id, problem_id)): Path<(i32, i32, i32)>,
+    Json(request): Json<UpdateOverrideRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let data =
+        assignment_service::set_override(&state.pool, &user, id, student_id, problem_id, &request)
+            .await?;
+    Ok(ok(data))
+}
+
+pub async fn delete_override(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((id, student_id, problem_id)): Path<(i32, i32, i32)>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let data =
+        assignment_service::delete_override(&state.pool, &user, id, student_id, problem_id).await?;
+    Ok(ok(data))
+}
+
+pub async fn policy_audits(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let data = assignment_service::list_policy_audits(&state.pool, &user, id).await?;
+    Ok(ok(data))
+}
+
+pub async fn statistics(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data = assignment_service::statistics(&state.pool, &user, id).await?;
+    Ok(ok(data))
+}
+
+pub async fn peer_submissions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((id, problem_id)): Path<(i32, i32)>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data = assignment_service::peer_submissions(&state.pool, &user, id, problem_id).await?;
     Ok(ok(data))
 }

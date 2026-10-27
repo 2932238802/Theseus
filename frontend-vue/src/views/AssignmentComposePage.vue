@@ -9,6 +9,11 @@ import { fetchProblems } from '../api/problems'
 import { useAssignmentStore } from '../store/assignments'
 import type { Problem } from '../types/oj'
 import type { AssignmentProblemInput } from '../types/teaching'
+import type {
+  LatePolicy,
+  ScoreVisibility,
+  ScoringPolicy,
+} from '../types/policy'
 import {
   DIFFICULTY_LABELS,
 } from '../utils/constants'
@@ -30,6 +35,17 @@ const form = reactive({
   description: '',
   startAt: '',
   dueAt: '',
+})
+const policy = reactive({
+  latePolicy: 'forbid' as LatePolicy,
+  lateGraceHours: 0,
+  latePenaltyPerDay: 10,
+  latePenaltyCap: 50,
+  maxAttempts: undefined as number | undefined,
+  scoringPolicy: 'highest' as ScoringPolicy,
+  scoreVisibility: 'after_publish' as ScoreVisibility,
+  allowPeerCode: false,
+  showClassStats: false,
 })
 const selected = ref<AssignmentProblemInput[]>([])
 const className = ref('')
@@ -59,16 +75,44 @@ const fillForm = (detail: {
   dueAt?: string
   status: 'draft' | 'published' | 'archived'
   className: string
-  problems: Array<{ problemId: number; points: number }>
+  latePolicy: LatePolicy
+  lateGraceHours: number
+  latePenaltyPerDay: number
+  latePenaltyCap: number
+  maxAttempts?: number | null
+  scoringPolicy: ScoringPolicy
+  scoreVisibility: ScoreVisibility
+  allowPeerCode: boolean
+  showClassStats: boolean
+  problems: Array<{
+    problemId: number
+    points: number
+    attemptsLimit?: number | null
+    solutionMd?: string
+  }>
 }): void => {
   form.title = detail.title
   form.description = detail.description ?? ''
   form.startAt = formatDateInput(detail.startAt)
   form.dueAt = formatDateInput(detail.dueAt)
+  policy.latePolicy = detail.latePolicy
+  policy.lateGraceHours = detail.lateGraceHours
+  policy.latePenaltyPerDay = detail.latePenaltyPerDay
+  policy.latePenaltyCap = detail.latePenaltyCap
+  policy.maxAttempts = detail.maxAttempts ?? undefined
+  policy.scoringPolicy = detail.scoringPolicy
+  policy.scoreVisibility = detail.scoreVisibility
+  policy.allowPeerCode = detail.allowPeerCode
+  policy.showClassStats = detail.showClassStats
   status.value = detail.status
   className.value = detail.className
   selected.value = isEdit.value
-    ? detail.problems.map((problem) => ({ problemId: problem.problemId, points: problem.points }))
+    ? detail.problems.map((problem) => ({
+        problemId: problem.problemId,
+        points: problem.points,
+        maxAttempts: problem.attemptsLimit ?? undefined,
+        solutionMd: problem.solutionMd ?? '',
+      }))
     : []
 }
 
@@ -159,6 +203,17 @@ const save = async (): Promise<void> => {
   }
   normalizePoints()
   isSaving.value = true
+  const policyPayload = {
+    latePolicy: policy.latePolicy,
+    lateGraceHours: Number(policy.lateGraceHours) || 0,
+    latePenaltyPerDay: Number(policy.latePenaltyPerDay) || 0,
+    latePenaltyCap: Number(policy.latePenaltyCap) || 0,
+    maxAttempts: policy.maxAttempts ? Number(policy.maxAttempts) : undefined,
+    scoringPolicy: policy.scoringPolicy,
+    scoreVisibility: policy.scoreVisibility,
+    allowPeerCode: policy.allowPeerCode,
+    showClassStats: policy.showClassStats,
+  }
   try {
     if (!isEdit.value) {
       const created = await assignmentStore.create(classId.value, {
@@ -166,6 +221,7 @@ const save = async (): Promise<void> => {
         description: form.description.trim(),
         startAt: toIsoString(form.startAt),
         dueAt: toIsoString(form.dueAt),
+        ...policyPayload,
         problems: selected.value,
       })
       await router.push(`/assignments/${created.id}`)
@@ -183,6 +239,7 @@ const save = async (): Promise<void> => {
         description: form.description.trim(),
         startAt: toIsoString(form.startAt),
         dueAt: toIsoString(form.dueAt),
+        ...policyPayload,
         problems: selected.value,
       })
     }
@@ -270,6 +327,67 @@ onMounted(load)
 
         <section v-if="!isPublished && !isArchived" class="teaching-panel">
           <div class="section-heading">
+            <h2>作业策略</h2>
+            <span class="teaching-subtle">发布后计分、次数和可见性将锁定</span>
+          </div>
+          <div class="teaching-form-grid">
+            <label>
+              <span>迟交</span>
+              <select v-model="policy.latePolicy">
+                <option value="forbid">禁止迟交</option>
+                <option value="allow">允许迟交</option>
+              </select>
+            </label>
+            <label>
+              <span>计分策略</span>
+              <select v-model="policy.scoringPolicy">
+                <option value="highest">取最高分</option>
+                <option value="last">取最后一次</option>
+                <option value="first_ac">取首次通过</option>
+              </select>
+            </label>
+            <label>
+              <span>成绩可见时机</span>
+              <select v-model="policy.scoreVisibility">
+                <option value="after_publish">教师发布成绩后</option>
+                <option value="after_due">截止后自动可见</option>
+                <option value="during">进行中即可见</option>
+              </select>
+            </label>
+            <label>
+              <span>每题默认提交次数（留空不限）</span>
+              <input v-model.number="policy.maxAttempts" type="number" min="1" max="1000" />
+            </label>
+            <label v-if="policy.latePolicy === 'allow'">
+              <span>迟交宽限小时</span>
+              <input v-model.number="policy.lateGraceHours" type="number" min="0" max="720" />
+            </label>
+            <label v-if="policy.latePolicy === 'allow'">
+              <span>每日迟交扣分 %</span>
+              <input v-model.number="policy.latePenaltyPerDay" type="number" min="0" max="100" />
+            </label>
+            <label v-if="policy.latePolicy === 'allow'">
+              <span>迟交扣分封顶 %</span>
+              <input v-model.number="policy.latePenaltyCap" type="number" min="0" max="100" />
+            </label>
+          </div>
+          <div class="teaching-form-actions">
+            <label class="teaching-checkbox">
+              <input v-model="policy.showClassStats" type="checkbox" />
+              <span>允许学生查看匿名班级统计</span>
+            </label>
+            <label class="teaching-checkbox">
+              <input v-model="policy.allowPeerCode" type="checkbox" />
+              <span>允许学生查看同学 AC 代码</span>
+            </label>
+          </div>
+          <p v-if="policy.latePolicy === 'allow'" class="teaching-subtle">
+            迟交从截止时间起算，不足一天按一天计；补交例外由教师在批改台单独设置。
+          </p>
+        </section>
+
+        <section v-if="!isPublished && !isArchived" class="teaching-panel">
+          <div class="section-heading">
             <h2>题目</h2>
             <span class="teaching-subtle">{{ selected.length }} / 50 · {{ totalPoints }} 分</span>
           </div>
@@ -310,12 +428,24 @@ onMounted(load)
 
           <div v-if="selected.length" class="teaching-selected-problems">
             <article v-for="(problem, index) in selected" :key="problem.problemId">
-              <span>#{{ problem.problemId }}</span>
-              <input v-model.number="problem.points" type="number" min="1" max="1000" aria-label="分值" />
-              <div class="teaching-order-actions">
-                <button type="button" :disabled="index === 0" aria-label="上移" @click="moveProblem(index, -1)">↑</button>
-                <button type="button" :disabled="index === selected.length - 1" aria-label="下移" @click="moveProblem(index, 1)">↓</button>
-                <button type="button" @click="removeProblem(problem.problemId)">移除</button>
+              <div class="teaching-selected-problem-main">
+                <span>#{{ problem.problemId }}</span>
+                <input v-model.number="problem.points" type="number" min="1" max="1000" aria-label="分值" />
+                <div class="teaching-order-actions">
+                  <button type="button" :disabled="index === 0" aria-label="上移" @click="moveProblem(index, -1)">↑</button>
+                  <button type="button" :disabled="index === selected.length - 1" aria-label="下移" @click="moveProblem(index, 1)">↓</button>
+                  <button type="button" @click="removeProblem(problem.problemId)">移除</button>
+                </div>
+              </div>
+              <div class="teaching-form-grid">
+                <label>
+                  <span>该题次数上限（留空继承作业）</span>
+                  <input v-model.number="problem.maxAttempts" type="number" min="1" max="1000" />
+                </label>
+                <label>
+                  <span>答案解析（截止后由教师发布）</span>
+                  <textarea v-model="problem.solutionMd" rows="3" maxlength="20000"></textarea>
+                </label>
               </div>
             </article>
           </div>

@@ -23,6 +23,7 @@ use crate::{
             SubmissionStatusResponse, SubmissionSummary, is_terminal_status,
         },
     },
+    services::assignment_policy::{self as policy},
 };
 
 const SUBMISSIONS_PER_MINUTE: i64 = 10;
@@ -789,7 +790,16 @@ async fn precheck_assignment(
         status: String,
         class_archived_at: Option<DateTime<Utc>>,
         started: bool,
-        open: bool,
+        due_at: Option<DateTime<Utc>>,
+        late_policy: String,
+        late_grace_hours: i32,
+        max_attempts: Option<i32>,
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct OverridePrecheck {
+        makeup_due_at: Option<DateTime<Utc>>,
+        exempt: bool,
     }
 
     if !user.is_student() {
@@ -803,24 +813,18 @@ async fn precheck_assignment(
     let assignment: Option<AssignmentPrecheck> = sqlx::query_as(
         "SELECT a.class_id, a.status, c.archived_at AS class_archived_at, \
          (a.start_at IS NULL OR a.start_at <= CURRENT_TIMESTAMP) AS started, \
-         (a.due_at IS NOT NULL AND CURRENT_TIMESTAMP <= a.due_at) AS open \
+         a.due_at, a.late_policy, a.late_grace_hours, a.max_attempts \
          FROM assignments a JOIN classes c ON c.id = a.class_id WHERE a.id = $1",
     )
     .bind(assignment_id)
     .fetch_optional(pool)
     .await
     .map_err(AppError::Database)?;
-    let AssignmentPrecheck {
-        class_id,
-        status,
-        class_archived_at,
-        started,
-        open,
-    } = assignment.ok_or_else(|| AppError::NotFound("作业不存在".to_owned()))?;
+    let assignment = assignment.ok_or_else(|| AppError::NotFound("作业不存在".to_owned()))?;
     let member: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM class_members WHERE class_id = $1 AND user_id = $2 AND status = 'active')",
     )
-    .bind(class_id)
+    .bind(assignment.class_id)
     .bind(user.id)
     .fetch_one(pool)
     .await
@@ -828,35 +832,75 @@ async fn precheck_assignment(
     if !member {
         return Err(AppError::NotFound("作业不存在".to_owned()));
     }
-    if status == "draft" {
+    if assignment.status == "draft" {
         return Err(AppError::NotFound("作业不存在".to_owned()));
     }
-    if status == "archived" {
+    if assignment.status == "archived" {
         return Err(AppError::Conflict("作业已归档".to_owned()));
     }
-    if class_archived_at.is_some() {
+    if assignment.class_archived_at.is_some() {
         return Err(AppError::Conflict("班级已归档".to_owned()));
     }
-    if !started {
+    if !assignment.started {
         return Err(AppError::Conflict("作业尚未开始".to_owned()));
     }
-    if !open {
-        return Err(AppError::Conflict("作业已截止".to_owned()));
-    }
-    let in_assignment: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM assignment_problems WHERE assignment_id = $1 AND problem_id = $2)",
+    let problem_limit: Option<Option<i32>> = sqlx::query_scalar(
+        "SELECT max_attempts FROM assignment_problems WHERE assignment_id = $1 AND problem_id = $2",
     )
     .bind(assignment_id)
+    .bind(problem_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+    let Some(problem_limit) = problem_limit else {
+        return Err(AppError::BadRequest("题目不属于该作业".to_owned()));
+    };
+
+    let override_row: Option<OverridePrecheck> = sqlx::query_as(
+        "SELECT makeup_due_at, exempt \
+         FROM assignment_student_overrides \
+         WHERE assignment_id = $1 AND user_id = $2 AND problem_id = $3",
+    )
+    .bind(assignment_id)
+    .bind(user.id)
+    .bind(problem_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+    if override_row.as_ref().is_some_and(|row| row.exempt) {
+        return Err(AppError::Conflict("该题已免修".to_owned()));
+    }
+
+    let now = Utc::now();
+    let window_end = policy::submission_window_end(
+        assignment.due_at,
+        override_row.as_ref().and_then(|row| row.makeup_due_at),
+        &assignment.late_policy,
+        assignment.late_grace_hours,
+    )
+    .ok_or_else(|| AppError::Conflict("作业已截止".to_owned()))?;
+    if now > window_end {
+        return Err(AppError::Conflict("作业已截止".to_owned()));
+    }
+
+    let used: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM submissions WHERE assignment_id = $1 AND user_id = $2 \
+         AND problem_id = $3 AND status <> 'internal_error'",
+    )
+    .bind(assignment_id)
+    .bind(user.id)
     .bind(problem_id)
     .fetch_one(pool)
     .await
     .map_err(AppError::Database)?;
-    if !in_assignment {
-        return Err(AppError::BadRequest("题目不属于该作业".to_owned()));
+    let limit = problem_limit.or(assignment.max_attempts);
+    if policy::attempts_exhausted(used, limit) {
+        return Err(AppError::Conflict("该题提交次数已用完".to_owned()));
     }
+
     Ok(AssignmentContext {
         assignment_id,
-        class_id,
+        class_id: assignment.class_id,
     })
 }
 
@@ -899,25 +943,43 @@ async fn persist_submission(
     if class_archived_at.is_some() {
         return Err(AppError::Conflict("班级已归档".to_owned()));
     }
-    let assignment_row: Option<(i32, String, bool, bool)> = sqlx::query_as(
+
+    #[derive(sqlx::FromRow)]
+    struct LockedAssignment {
+        class_id: i32,
+        status: String,
+        started: bool,
+        due_at: Option<DateTime<Utc>>,
+        late_policy: String,
+        late_grace_hours: i32,
+        max_attempts: Option<i32>,
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct OverrideCheck {
+        makeup_due_at: Option<DateTime<Utc>>,
+        exempt: bool,
+    }
+
+    let assignment_row: Option<LockedAssignment> = sqlx::query_as(
         "SELECT class_id, status, \
          (start_at IS NULL OR start_at <= CURRENT_TIMESTAMP) AS started, \
-         (due_at IS NOT NULL AND CURRENT_TIMESTAMP <= due_at) AS open \
+         due_at, late_policy, late_grace_hours, max_attempts \
          FROM assignments WHERE id = $1 FOR SHARE",
     )
     .bind(context.assignment_id)
     .fetch_optional(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
-    let (class_id, status, started, open) =
+    let assignment_row =
         assignment_row.ok_or_else(|| AppError::NotFound("作业不存在".to_owned()))?;
-    if class_id != context.class_id {
+    if assignment_row.class_id != context.class_id {
         return Err(AppError::NotFound("作业不存在".to_owned()));
     }
-    if status == "archived" {
+    if assignment_row.status == "archived" {
         return Err(AppError::Conflict("作业已归档".to_owned()));
     }
-    if status == "draft" {
+    if assignment_row.status == "draft" {
         return Err(AppError::NotFound("作业不存在".to_owned()));
     }
     let membership: Option<String> = sqlx::query_scalar(
@@ -931,25 +993,76 @@ async fn persist_submission(
     if membership.as_deref() != Some("active") {
         return Err(AppError::NotFound("作业不存在".to_owned()));
     }
-    if !started {
+    if !assignment_row.started {
         return Err(AppError::Conflict("作业尚未开始".to_owned()));
     }
-    if !open {
-        return Err(AppError::Conflict("作业已截止".to_owned()));
-    }
-    let in_assignment: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM assignment_problems WHERE assignment_id = $1 AND problem_id = $2)",
+    let problem_limit: Option<Option<i32>> = sqlx::query_scalar(
+        "SELECT max_attempts FROM assignment_problems \
+         WHERE assignment_id = $1 AND problem_id = $2",
     )
     .bind(context.assignment_id)
+    .bind(request.problem_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    let Some(problem_limit) = problem_limit else {
+        return Err(AppError::BadRequest("题目不属于该作业".to_owned()));
+    };
+
+    let override_row: Option<OverrideCheck> = sqlx::query_as(
+        "SELECT makeup_due_at, exempt \
+         FROM assignment_student_overrides \
+         WHERE assignment_id = $1 AND user_id = $2 AND problem_id = $3 \
+         FOR SHARE",
+    )
+    .bind(context.assignment_id)
+    .bind(user.id)
+    .bind(request.problem_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    if override_row.as_ref().is_some_and(|row| row.exempt) {
+        return Err(AppError::Conflict("该题已免修".to_owned()));
+    }
+
+    let now: DateTime<Utc> = sqlx::query_scalar("SELECT CURRENT_TIMESTAMP")
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+    let window_end = policy::submission_window_end(
+        assignment_row.due_at,
+        override_row.as_ref().and_then(|row| row.makeup_due_at),
+        &assignment_row.late_policy,
+        assignment_row.late_grace_hours,
+    )
+    .ok_or_else(|| AppError::Conflict("作业已截止".to_owned()))?;
+    if now > window_end {
+        return Err(AppError::Conflict("作业已截止".to_owned()));
+    }
+
+    let used: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM submissions \
+         WHERE assignment_id = $1 AND user_id = $2 AND problem_id = $3 \
+           AND status <> 'internal_error'",
+    )
+    .bind(context.assignment_id)
+    .bind(user.id)
     .bind(request.problem_id)
     .fetch_one(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
-    if !in_assignment {
-        return Err(AppError::BadRequest("题目不属于该作业".to_owned()));
+    let limit = problem_limit.or(assignment_row.max_attempts);
+    if policy::attempts_exhausted(used, limit) {
+        return Err(AppError::Conflict("该题提交次数已用完".to_owned()));
     }
+
+    let raw_late_days = policy::raw_late_days(now, assignment_row.due_at);
+    let is_late = raw_late_days > 0;
     let submission_id: i32 = sqlx::query_scalar(
-        "INSERT INTO submissions (user_id, problem_id, assignment_id, language, code, status, total_test_cases, run_config_snapshot, judge_cases_snapshot) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
+        "INSERT INTO submissions \
+         (user_id, problem_id, assignment_id, language, code, status, total_test_cases, \
+          run_config_snapshot, judge_cases_snapshot, is_late, late_days) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id",
     )
     .bind(user.id)
     .bind(request.problem_id)
@@ -960,6 +1073,8 @@ async fn persist_submission(
     .bind(case_total)
     .bind(run_config_value)
     .bind(judge_cases_value)
+    .bind(is_late)
+    .bind(raw_late_days)
     .fetch_one(&mut *transaction)
     .await
     .map_err(AppError::Database)?;

@@ -11,6 +11,7 @@ use crate::{
         GradebookProblem, GradebookQuery, GradebookResponse, GradebookStudent, OverallGradeRequest,
         ProblemGradeRequest, PublishGradesResponse,
     },
+    services::assignment_policy::{self as policy, ScoringPolicy, StudentOverride},
 };
 
 const MAX_PROBLEM_FEEDBACK_CHARS: usize = 2_000;
@@ -25,6 +26,11 @@ struct GradingContext {
     status: String,
     due_at: Option<DateTime<Utc>>,
     grades_published_at: Option<DateTime<Utc>>,
+    late_policy: String,
+    late_penalty_per_day: i32,
+    late_penalty_cap: i32,
+    max_attempts: Option<i32>,
+    scoring_policy: String,
     class_owner_id: i32,
     class_archived_at: Option<DateTime<Utc>>,
 }
@@ -42,16 +48,51 @@ struct ProblemRow {
     problem_id: i32,
     title: String,
     points: i32,
+    max_attempts: Option<i32>,
 }
 
 #[derive(Debug, FromRow)]
-struct SubmissionAggRow {
+struct SubmissionRow {
     user_id: i32,
     problem_id: i32,
-    attempts: i64,
-    accepted: bool,
-    last_submission_id: Option<i32>,
-    last_status: Option<String>,
+    id: i32,
+    status: String,
+    submitted_at: DateTime<Utc>,
+    is_late: bool,
+    late_days: i32,
+}
+
+impl SubmissionRow {
+    fn as_scoring_submission(&self) -> policy::ScoringSubmission {
+        policy::ScoringSubmission {
+            id: self.id,
+            status: self.status.clone(),
+            submitted_at: self.submitted_at,
+            is_late: self.is_late,
+            late_days: self.late_days,
+        }
+    }
+}
+
+#[derive(Debug, FromRow)]
+struct OverrideRow {
+    user_id: i32,
+    problem_id: i32,
+    makeup_due_at: Option<DateTime<Utc>>,
+    waive_late_penalty: bool,
+    exempt: bool,
+    exemption_mode: Option<String>,
+}
+
+impl OverrideRow {
+    fn as_policy_override(&self) -> StudentOverride {
+        StudentOverride {
+            makeup_due_at: self.makeup_due_at,
+            waive_late_penalty: self.waive_late_penalty,
+            exempt: self.exempt,
+            exemption_mode: self.exemption_mode.clone(),
+        }
+    }
 }
 
 #[derive(Debug, FromRow)]
@@ -71,7 +112,9 @@ struct ResultRow {
 async fn grading_context(pool: &PgPool, id: i32) -> Result<GradingContext, AppError> {
     sqlx::query_as(
         "SELECT a.id, a.class_id, c.name AS class_name, a.title, a.status, a.due_at, \
-         a.grades_published_at, c.owner_id AS class_owner_id, c.archived_at AS class_archived_at \
+         a.grades_published_at, a.late_policy, a.late_penalty_per_day, a.late_penalty_cap, \
+         a.max_attempts, a.scoring_policy, \
+         c.owner_id AS class_owner_id, c.archived_at AS class_archived_at \
          FROM assignments a JOIN classes c ON c.id = a.class_id WHERE a.id = $1",
     )
     .bind(id)
@@ -109,6 +152,24 @@ pub async fn gradebook(
 ) -> Result<GradebookResponse, AppError> {
     let context = access_grading(pool, user, id).await?;
     let include_removed = query.include_removed.unwrap_or(0) != 0;
+    compute_gradebook_with_context(pool, &context, include_removed).await
+}
+
+pub async fn compute_gradebook(
+    pool: &PgPool,
+    id: i32,
+    include_removed: bool,
+) -> Result<GradebookResponse, AppError> {
+    let context = grading_context(pool, id).await?;
+    compute_gradebook_with_context(pool, &context, include_removed).await
+}
+
+async fn compute_gradebook_with_context(
+    pool: &PgPool,
+    context: &GradingContext,
+    include_removed: bool,
+) -> Result<GradebookResponse, AppError> {
+    let id = context.id;
     let students: Vec<StudentRow> = sqlx::query_as(
         "SELECT u.id AS user_id, u.username, u.email, cm.status \
          FROM class_members cm JOIN users u ON u.id = cm.user_id \
@@ -127,27 +188,43 @@ pub async fn gradebook(
     .map_err(AppError::Database)?;
 
     let problems: Vec<ProblemRow> = sqlx::query_as(
-        "SELECT ap.problem_id, p.title, ap.points FROM assignment_problems ap \
-         JOIN problems p ON p.id = ap.problem_id WHERE ap.assignment_id = $1 \
-         ORDER BY ap.position, ap.problem_id",
+        "SELECT ap.problem_id, p.title, ap.points, ap.max_attempts \
+         FROM assignment_problems ap JOIN problems p ON p.id = ap.problem_id \
+         WHERE ap.assignment_id = $1 ORDER BY ap.position, ap.problem_id",
     )
     .bind(id)
     .fetch_all(pool)
     .await
     .map_err(AppError::Database)?;
 
-    let aggregates: Vec<SubmissionAggRow> = sqlx::query_as(
-        "SELECT user_id, problem_id, COUNT(*)::bigint AS attempts, \
-         BOOL_OR(status = 'accepted') AS accepted, \
-         (ARRAY_AGG(id ORDER BY submitted_at DESC, id DESC))[1] AS last_submission_id, \
-         (ARRAY_AGG(status ORDER BY submitted_at DESC, id DESC))[1] AS last_status \
-         FROM submissions WHERE assignment_id = $1 GROUP BY user_id, problem_id",
+    let submission_rows: Vec<SubmissionRow> = sqlx::query_as(
+        "SELECT user_id, problem_id, id, status, submitted_at, is_late, late_days \
+         FROM submissions WHERE assignment_id = $1 ORDER BY submitted_at, id",
     )
     .bind(id)
     .fetch_all(pool)
     .await
     .map_err(AppError::Database)?;
-    let aggregate_map: HashMap<(i32, i32), SubmissionAggRow> = aggregates
+    let mut submissions_by_cell: HashMap<(i32, i32), Vec<policy::ScoringSubmission>> =
+        HashMap::new();
+    let mut last_by_cell: HashMap<(i32, i32), (i32, String)> = HashMap::new();
+    for row in submission_rows {
+        submissions_by_cell
+            .entry((row.user_id, row.problem_id))
+            .or_default()
+            .push(row.as_scoring_submission());
+        last_by_cell.insert((row.user_id, row.problem_id), (row.id, row.status.clone()));
+    }
+
+    let override_rows: Vec<OverrideRow> = sqlx::query_as(
+        "SELECT user_id, problem_id, makeup_due_at, waive_late_penalty, exempt, exemption_mode \
+         FROM assignment_student_overrides WHERE assignment_id = $1",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+    let override_map: HashMap<(i32, i32), OverrideRow> = override_rows
         .into_iter()
         .map(|row| ((row.user_id, row.problem_id), row))
         .collect();
@@ -182,6 +259,8 @@ pub async fn gradebook(
         .map(|row| (row.user_id, row.overall_feedback))
         .collect();
 
+    let scoring_policy =
+        ScoringPolicy::parse(&context.scoring_policy).unwrap_or(ScoringPolicy::Highest);
     let students = students
         .into_iter()
         .map(|student| {
@@ -189,28 +268,53 @@ pub async fn gradebook(
             let cells = problems
                 .iter()
                 .map(|problem| {
-                    let aggregate = aggregate_map.get(&(student.user_id, problem.problem_id));
-                    let (manual_score, feedback) = manual_map
-                        .get(&(student.user_id, problem.problem_id))
-                        .cloned()
-                        .unwrap_or((None, None));
-                    let auto_score = if aggregate.is_some_and(|row| row.accepted) {
-                        problem.points
+                    let key = (student.user_id, problem.problem_id);
+                    let empty: Vec<policy::ScoringSubmission> = Vec::new();
+                    let submissions = submissions_by_cell.get(&key).unwrap_or(&empty);
+                    let last = last_by_cell.get(&key);
+                    let (manual_score, feedback) =
+                        manual_map.get(&key).cloned().unwrap_or((None, None));
+                    let override_row = override_map.get(&key);
+                    let grade = policy::compute_problem_grade(
+                        problem.points,
+                        submissions,
+                        manual_score,
+                        override_row.map(OverrideRow::as_policy_override).as_ref(),
+                        scoring_policy,
+                        context.late_penalty_per_day,
+                        context.late_penalty_cap,
+                    );
+                    let attempts_limit = problem.max_attempts.or(context.max_attempts);
+                    let attempts = submissions
+                        .iter()
+                        .filter(|row| row.status != policy::SUBMISSION_STATUS_INTERNAL_ERROR)
+                        .count() as i64;
+                    let accepted = submissions.iter().any(|row| row.is_accepted());
+                    if grade.included_in_total {
+                        total_score += grade.final_score;
+                    }
+                    let late_deduction = if grade.is_late {
+                        (problem.points - grade.auto_score).max(0)
                     } else {
                         0
                     };
-                    let final_score = manual_score.unwrap_or(auto_score);
-                    total_score += final_score;
                     GradebookCell {
                         problem_id: problem.problem_id,
-                        attempts: aggregate.map_or(0, |row| row.attempts),
-                        accepted: aggregate.is_some_and(|row| row.accepted),
-                        auto_score,
+                        attempts,
+                        attempts_limit,
+                        accepted,
+                        is_late: grade.is_late,
+                        late_days: grade.late_days,
+                        late_deduction,
+                        exempt: grade.exempt,
+                        exemption_mode: grade.exemption_mode,
+                        included_in_total: grade.included_in_total,
+                        auto_score: grade.auto_score,
                         manual_score,
-                        final_score,
+                        final_score: grade.final_score,
                         feedback,
-                        last_submission_id: aggregate.and_then(|row| row.last_submission_id),
-                        last_status: aggregate.and_then(|row| row.last_status.clone()),
+                        last_submission_id: last.map(|(id, _)| *id),
+                        last_status: last.map(|(_, status)| status.clone()),
                     }
                 })
                 .collect();
@@ -229,9 +333,11 @@ pub async fn gradebook(
     Ok(GradebookResponse {
         assignment: GradebookAssignment {
             id: context.id,
-            title: context.title,
+            title: context.title.clone(),
             due_at: context.due_at,
             grades_published_at: context.grades_published_at,
+            late_policy: context.late_policy.clone(),
+            scoring_policy: context.scoring_policy.clone(),
         },
         problems: problems
             .into_iter()

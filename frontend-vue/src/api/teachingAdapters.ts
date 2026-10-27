@@ -70,8 +70,17 @@ export interface BackendAssignmentProblem {
   points: number
   position: number
   attempts: number
+  attempts_limit: number | null
+  attempts_left: number | null
   accepted: boolean
   last_status: string | null
+  is_late: boolean
+  late_days: number
+  late_deduction: number
+  exempt: boolean
+  exemption_mode: string | null
+  solutions_visible: boolean
+  solution_md: string | null
   auto_score?: number
   manual_score?: number
   final_score?: number
@@ -91,6 +100,17 @@ export interface BackendAssignmentDetail {
   published_at: string | null
   grades_published_at: string | null
   grades_published: boolean
+  late_policy: string
+  late_grace_hours: number
+  late_penalty_per_day: number
+  late_penalty_cap: number
+  scoring_policy: string
+  score_visibility: string
+  allow_peer_code: boolean
+  show_class_stats: boolean
+  solutions_published: boolean
+  solutions_published_at: string | null
+  my_deadline: string | null
   now: string
   is_owner: boolean
   can_submit: boolean
@@ -99,12 +119,21 @@ export interface BackendAssignmentDetail {
   overall_feedback?: string
   student_count?: number
   submitted_student_count?: number
+  late_student_count?: number
+  exempt_count?: number
 }
 
 export interface BackendGradebookCell {
   problem_id: number
   attempts: number
+  attempts_limit: number | null
   accepted: boolean
+  is_late: boolean
+  late_days: number
+  late_deduction: number
+  exempt: boolean
+  exemption_mode: string | null
+  included_in_total: boolean
   auto_score: number
   manual_score: number | null
   final_score: number
@@ -129,6 +158,8 @@ export interface BackendGradebook {
     title: string
     due_at: string | null
     grades_published_at: string | null
+    late_policy: string
+    scoring_policy: string
   }
   problems: Array<{ problem_id: number; title: string; points: number }>
   students: BackendGradebookStudent[]
@@ -153,6 +184,18 @@ export interface BackendAdminUserList {
 }
 
 const optional = (value: string | null): string | undefined => value ?? undefined
+
+const parseLatePolicy = (value: string): AssignmentDetail['latePolicy'] =>
+  value === 'allow' ? 'allow' : 'forbid'
+
+const parseScoringPolicy = (value: string): AssignmentDetail['scoringPolicy'] =>
+  value === 'last' || value === 'first_ac' ? value : 'highest'
+
+const parseScoreVisibility = (value: string): AssignmentDetail['scoreVisibility'] =>
+  value === 'after_due' || value === 'during' ? value : 'after_publish'
+
+const parseExemptionMode = (value: string | null): AssignmentProblem['exemptionMode'] =>
+  value === 'full_score' || value === 'excluded' ? value : undefined
 
 const normalizeStatus = (value: string): AssignmentSummary['status'] =>
   value === 'published' || value === 'archived' ? value : 'draft'
@@ -213,8 +256,17 @@ const mapAssignmentProblem = (row: BackendAssignmentProblem): AssignmentProblem 
   points: row.points,
   position: row.position,
   attempts: row.attempts,
+  attemptsLimit: row.attempts_limit,
+  attemptsLeft: row.attempts_left,
   accepted: row.accepted,
   lastStatus: optional(row.last_status),
+  isLate: row.is_late,
+  lateDays: row.late_days,
+  lateDeduction: row.late_deduction,
+  exempt: row.exempt,
+  exemptionMode: parseExemptionMode(row.exemption_mode),
+  solutionsVisible: row.solutions_visible,
+  solutionMd: optional(row.solution_md),
   autoScore: row.auto_score,
   manualScore: row.manual_score,
   finalScore: row.final_score,
@@ -234,6 +286,17 @@ export const mapAssignmentDetail = (row: BackendAssignmentDetail): AssignmentDet
   publishedAt: optional(row.published_at),
   gradesPublishedAt: optional(row.grades_published_at),
   gradesPublished: row.grades_published,
+  latePolicy: parseLatePolicy(row.late_policy),
+  lateGraceHours: row.late_grace_hours,
+  latePenaltyPerDay: row.late_penalty_per_day,
+  latePenaltyCap: row.late_penalty_cap,
+  scoringPolicy: parseScoringPolicy(row.scoring_policy),
+  scoreVisibility: parseScoreVisibility(row.score_visibility),
+  allowPeerCode: row.allow_peer_code,
+  showClassStats: row.show_class_stats,
+  solutionsPublished: row.solutions_published,
+  solutionsPublishedAt: optional(row.solutions_published_at),
+  myDeadline: optional(row.my_deadline),
   now: row.now,
   isOwner: row.is_owner,
   canSubmit: row.can_submit,
@@ -242,12 +305,21 @@ export const mapAssignmentDetail = (row: BackendAssignmentDetail): AssignmentDet
   overallFeedback: row.overall_feedback,
   studentCount: row.student_count,
   submittedStudentCount: row.submitted_student_count,
+  lateStudentCount: row.late_student_count,
+  exemptCount: row.exempt_count,
 })
 
 const mapGradebookCell = (row: BackendGradebookCell): GradebookCell => ({
   problemId: row.problem_id,
   attempts: row.attempts,
+  attemptsLimit: row.attempts_limit,
   accepted: row.accepted,
+  isLate: row.is_late,
+  lateDays: row.late_days,
+  lateDeduction: row.late_deduction,
+  exempt: row.exempt,
+  exemptionMode: parseExemptionMode(row.exemption_mode),
+  includedInTotal: row.included_in_total,
   autoScore: row.auto_score,
   manualScore: row.manual_score,
   finalScore: row.final_score,
@@ -262,6 +334,8 @@ export const mapGradebook = (row: BackendGradebook): Gradebook => ({
     title: row.assignment.title,
     dueAt: optional(row.assignment.due_at),
     gradesPublishedAt: optional(row.assignment.grades_published_at),
+    latePolicy: parseLatePolicy(row.assignment.late_policy),
+    scoringPolicy: parseScoringPolicy(row.assignment.scoring_policy),
   },
   problems: row.problems.map((problem) => ({
     problemId: problem.problem_id,
