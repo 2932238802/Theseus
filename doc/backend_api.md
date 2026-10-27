@@ -39,6 +39,17 @@ cargo run
 | GET | `/api/submissions` | 用户 | 当前用户提交列表；管理员当前可传 `user_id`，角色迁移后该分支移除 |
 | POST | `/api/submissions` | 用户 | 创建提交，返回 `{submission_id,status,message}` |
 | GET | `/api/submissions/{id}` | 用户 | 提交详情；本人或作业 owner 教师可读 |
+| GET | `/api/auth/me` | 用户 | 当前用户资料，含头像、待验证邮箱、注册时间 |
+| PUT | `/api/profile/username` | 用户 | 修改用户名 |
+| POST | `/api/profile/email` | 用户 | 请求修改邮箱，发送新邮箱验证 |
+| DELETE | `/api/profile/email/pending` | 用户 | 取消待验证邮箱 |
+| PUT | `/api/profile/password` | 用户 | 修改密码，返回新 token |
+| POST | `/api/auth/logout-all` | 用户 | 退出所有设备 |
+| DELETE | `/api/profile` | 用户 | 注销账号并匿名化 |
+| POST | `/api/profile/avatar` | 用户 | 上传头像（multipart） |
+| DELETE | `/api/profile/avatar` | 用户 | 删除头像 |
+| GET | `/api/profile/analytics` | 用户 | 个人学习分析 |
+| GET | `/api/forum/favorites` | 用户 | 当前用户论坛收藏列表 |
 | PUT | `/api/assignments/{id}` | 教师 | 修改作业；发布后仅允许延长截止时间 |
 | POST | `/api/assignments/{id}/solutions/publish` | 教师 | 发布答案解析，要求作业已截止 |
 | GET | `/api/assignments/{id}/overrides` | 教师 | 查询学生补交/免修例外 |
@@ -128,3 +139,17 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 | 次数用尽 | 409 | 该题提交次数已用完 |
 | 发布后修改锁定策略 | 409 | 作业已发布，计分、次数、迟交和可见性策略不可修改 |
 | 未截止发布解析 | 409 | 作业尚未截止，不能发布解析 |
+
+
+## 个人中心接口
+
+完整设计见 `doc/2610272_个人界面的完善.md`。
+
+- `GET /api/auth/me` 增加 `avatar_url`、`pending_email`、`created_at`。
+- `PUT /api/profile/username` 请求 `{"username":"..."}`，唯一性冲突返回 409。
+- `POST /api/profile/email` 请求 `{"email":"..."}`；验证新邮箱前旧邮箱继续可用。
+- `PUT /api/profile/password` 请求 `{"current_password":"...","new_password":"..."}`，返回新 token。
+- `DELETE /api/profile` 请求 `{"password":"...","username":"..."}`；教师有未归档班级或最后一个管理员时返回 409。
+- `POST /api/profile/avatar` 使用 `multipart/form-data`，字段 `file`，JPG/PNG/WebP ≤2MB。
+- `GET /api/profile/analytics?days=30` 返回概览、趋势、难度和标签统计。
+- `GET /api/forum/favorites?page=&size=` 返回当前用户收藏的帖子。
