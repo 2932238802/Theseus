@@ -33,9 +33,11 @@ const percent = (value: number, max: number): string => `${Math.max(4, (value / 
     </div>
     <p v-if="loading" class="teaching-subtle">正在加载学习分析</p>
     <p v-else-if="error" class="form-error" role="alert">{{ error }}</p>
-    <p v-else-if="!analytics || analytics.summary.totalSubmissions === 0" class="empty-state">
-      <span>还没有学习数据，去题库开始第一题</span>
-    </p>
+    <div v-else-if="!analytics || analytics.summary.totalSubmissions === 0" class="empty-state profile-empty-analytics">
+      <strong>还没有学习记录</strong>
+      <span>完成第一道题后，这里会显示你的学习进度。</span>
+      <RouterLink class="primary-button" to="/problems">去题库</RouterLink>
+    </div>
     <template v-else>
       <div class="profile-mini-stats">
         <article><strong>{{ analytics.summary.acceptedProblems }}</strong><span>通过题目</span></article>

@@ -98,10 +98,6 @@ onMounted(() => {
 <template>
   <NavBar />
   <main class="teaching-page page-shell">
-    <header class="page-title">
-      <h1>{{ authStore.isTeacher ? '我教的班级' : '我加入的班级' }}</h1>
-    </header>
-
     <section
       v-if="authStore.isStudent && (invitationStore.isLoading || invitationStore.invitations.length || invitationStore.error)"
       class="teaching-panel"

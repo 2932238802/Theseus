@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { useAuthStore } from '../store/auth'
@@ -11,6 +11,9 @@ const route = useRoute()
 const router = useRouter()
 const store = useProblemStore()
 const authStore = useAuthStore()
+const tagOpen = ref(false)
+const tagSearch = ref('')
+const filteredTags = computed(() => store.tags.filter((tag) => tag.toLowerCase().includes(tagSearch.value.trim().toLowerCase())))
 const difficultyOptions: Array<{ value: Difficulty | 'all'; label: string }> = [{ value: 'all', label: '全部' }, { value: 'easy', label: '简单' }, { value: 'medium', label: '中等' }, { value: 'hard', label: '困难' }]
 const totalStart = computed(() => (store.total ? (store.query.page - 1) * store.query.pageSize + 1 : 0))
 const totalEnd = computed(() => Math.min(store.query.page * store.query.pageSize, store.total))
@@ -62,11 +65,11 @@ onBeforeUnmount(() => window.clearTimeout(keywordTimer))
 <template>
   <NavBar />
   <main class="problems-page page-shell">
-    <header class="page-title"><h1>题库</h1></header>
+    <header class="page-title"><span class="sr-only">题库</span></header>
     <section class="filter-panel" aria-label="题目筛选">
       <form class="filter-search" @submit.prevent="applyFilters"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg><input v-model.trim="store.query.keyword" aria-label="搜索题目名称或标签" placeholder="搜索题目名称或标签" @input="onKeywordInput" /><button class="primary-button" type="submit">搜索</button></form>
       <div class="filter-row"><span>难度</span><div class="filter-pills"><button v-for="option in difficultyOptions" :key="option.value" type="button" :class="{ active: store.query.difficulty === option.value }" @click="store.query.difficulty = option.value; applyFilters()">{{ option.label }}</button></div></div>
-      <div class="filter-row"><span>标签</span><div class="filter-pills tag-pills"><button type="button" :class="{ active: !store.query.tag }" @click="store.query.tag = ''; applyFilters()">全部</button><button v-for="tag in store.tags" :key="tag" type="button" :class="{ active: store.query.tag === tag }" @click="store.query.tag = tag; applyFilters()">{{ tag }}</button></div><button class="clear-filter" type="button" @click="reset">清空筛选</button></div>
+      <div class="filter-row filter-tag-row"><span>标签</span><div class="tag-select"><button type="button" class="tag-select-trigger" :aria-expanded="tagOpen" @click="tagOpen = !tagOpen">{{ store.query.tag ? `已选：${store.query.tag}` : '全部标签' }}<span aria-hidden="true">⌄</span></button><div v-if="tagOpen" class="tag-select-panel"><input v-model="tagSearch" type="search" placeholder="搜索标签" aria-label="搜索标签"><button type="button" :class="{ active: !store.query.tag }" @click="store.query.tag = ''; tagOpen = false; applyFilters()">全部</button><button v-for="tag in filteredTags" :key="tag" type="button" :class="{ active: store.query.tag === tag }" @click="store.query.tag = tag; tagOpen = false; applyFilters()">{{ tag }}</button></div></div><button class="clear-filter" type="button" @click="reset">清空筛选</button></div>
       <div v-if="authStore.isAuthenticated" class="filter-row"><span>状态</span><div class="filter-pills"><button v-for="option in PROBLEM_STATUS_OPTIONS" :key="option.value" type="button" :class="{ active: store.query.status === option.value }" @click="store.query.status = option.value; applyFilters()">{{ option.label }}</button></div></div>
     </section>
     <section class="problem-list-section">

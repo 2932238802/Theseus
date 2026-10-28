@@ -42,18 +42,6 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
 <template>
   <NavBar />
   <main class="forum-page page-shell">
-    <header class="forum-page-heading">
-      <div>
-        <h1>校园墙</h1>
-      </div>
-      <RouterLink
-        class="primary-button"
-        :to="authStore.isAuthenticated ? '/forum/new' : { name: 'login', query: { redirect: '/forum/new' } }"
-      >
-        发帖 <span aria-hidden="true">→</span>
-      </RouterLink>
-    </header>
-
     <section class="forum-toolbar" aria-label="论坛筛选">
       <div class="forum-toolbar-row">
         <div class="forum-sort-tabs" role="tablist" aria-label="排序">
@@ -88,6 +76,12 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
             @keydown.enter.prevent="forumStore.setSearch(searchInput)"
           />
         </label>
+        <RouterLink
+          class="primary-button forum-compose-button"
+          :to="authStore.isAuthenticated ? '/forum/new' : { name: 'login', query: { redirect: '/forum/new' } }"
+        >
+          发帖 <span aria-hidden="true">→</span>
+        </RouterLink>
       </div>
 
       <div class="forum-toolbar-row forum-tag-row">

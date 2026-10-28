@@ -57,7 +57,6 @@ watch(() => `${authStore.user?.id ?? ''}:${authStore.isStudent}`, () => {
 <template>
   <NavBar />
   <main class="rankings-page page-shell">
-    <header class="page-title"><h1>排行榜</h1></header>
 
     <section v-if="authStore.isStudent && data && !error" class="ranking-me" aria-label="我的排名">
       <template v-if="me">
