@@ -65,7 +65,7 @@ pub struct AnalyticsSummary {
     pub streak_days: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct AnalyticsTrendPoint {
     pub date: String,
     pub submissions: i64,
@@ -91,6 +91,7 @@ pub struct AnalyticsResponse {
     pub days: i64,
     pub summary: AnalyticsSummary,
     pub trend: Vec<AnalyticsTrendPoint>,
+    pub heatmap: Vec<AnalyticsTrendPoint>,
     pub difficulty: Vec<AnalyticsDifficulty>,
     pub tags: Vec<AnalyticsTag>,
 }

@@ -60,14 +60,29 @@ const clear = async (): Promise<void> => {
 
 <template>
   <div class="profile-avatar-uploader">
-    <button class="profile-avatar-button" type="button" :disabled="busy" @click="pick">
+    <button
+      class="profile-avatar-button"
+      type="button"
+      :disabled="busy"
+      aria-label="更换头像"
+      title="更换头像"
+      @click="pick"
+    >
       <img v-if="authStore.user?.avatarUrl" :src="authStore.user.avatarUrl" :alt="authStore.user.username" />
       <span v-else>{{ initial }}</span>
+      <span class="profile-avatar-edit" aria-hidden="true">✎</span>
     </button>
-    <input ref="input" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" @change="onChange" />
+    <input
+      ref="input"
+      class="visually-hidden"
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      hidden
+      @change="onChange"
+    />
     <div class="profile-avatar-actions">
       <button type="button" class="teaching-link-button" :disabled="busy" @click="pick">
-        {{ busy ? '处理中' : '更换头像' }}
+        {{ busy ? '处理中' : authStore.user?.avatarUrl ? '更换头像' : '上传头像' }}
       </button>
       <button
         v-if="authStore.user?.avatarUrl"

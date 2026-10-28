@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import NotificationBell from './NotificationBell.vue'
+import NavSearch from './NavSearch.vue'
 import { useAuthStore } from '../store/auth'
 import { isDarkTheme, toggleTheme as applyThemeToggle } from '../utils/theme'
 
@@ -12,6 +13,21 @@ const isMenuOpen = ref(false)
 const isDark = ref(isDarkTheme())
 
 const userInitial = computed(() => authStore.user?.avatar ?? authStore.user?.username.slice(0, 1).toUpperCase() ?? 'T')
+const roleLabel = computed(() => {
+  if (authStore.isAdmin) return '管理员'
+  if (authStore.isTeacher) return '教师'
+  if (authStore.isStudent) return '学生'
+  return ''
+})
+const roleKey = computed(() =>
+  authStore.isAdmin ? 'admin' : authStore.isTeacher ? 'teacher' : authStore.isStudent ? 'student' : '',
+)
+const roleShort = computed(() => {
+  if (authStore.isAdmin) return '管'
+  if (authStore.isTeacher) return '师'
+  if (authStore.isStudent) return '生'
+  return ''
+})
 const isManageOpen = ref(false)
 const manageRef = ref<HTMLElement | null>(null)
 const isAdminArea = computed(() => route.path.startsWith('/admin'))
@@ -91,15 +107,26 @@ onBeforeUnmount(() => {
     </nav>
 
     <div class="header-actions">
+      <NavSearch />
       <NotificationBell />
       <button class="icon-button" type="button" :aria-label="isDark ? '切换至浅色模式' : '切换至深色模式'" @click="toggleTheme">
         <svg v-if="isDark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M3 12h2m14 0h2m-2.64-6.36-1.41 1.41M7.05 16.95l-1.41 1.41m0-12.72 1.41 1.41m9.9 9.9 1.41 1.41M15.5 12a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" /></svg>
         <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M20.1 15.1A8.5 8.5 0 0 1 8.9 3.9 8.5 8.5 0 1 0 20.1 15.1Z" /></svg>
       </button>
       <template v-if="authStore.isAuthenticated">
-        <button class="avatar-button" type="button" :aria-label="`用户菜单：${authStore.user?.username ?? ''}`" aria-haspopup="menu" :aria-expanded="isMenuOpen" @click="isMenuOpen = !isMenuOpen">
+        <button
+          class="avatar-button"
+          type="button"
+          :aria-label="`用户菜单：${authStore.user?.username ?? ''}（${roleLabel}）`"
+          aria-haspopup="menu"
+          :aria-expanded="isMenuOpen"
+          @click="isMenuOpen = !isMenuOpen"
+        >
           <img v-if="authStore.user?.avatarUrl" :src="authStore.user.avatarUrl" :alt="authStore.user.username" />
           <template v-else>{{ userInitial }}</template>
+          <span class="avatar-role-badge" :class="roleKey" aria-hidden="true" :title="`当前身份：${roleLabel}`">
+            {{ roleShort }}
+          </span>
         </button>
         <div v-if="isMenuOpen" class="user-menu">
           <strong>{{ authStore.user?.username }}</strong>

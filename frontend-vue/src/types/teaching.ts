@@ -5,6 +5,8 @@ import type {
 
 export type Role = 'student' | 'teacher' | 'admin'
 
+export type AccountStatus = 'active' | 'disabled' | 'deleted'
+
 export type AssignmentStatus = 'draft' | 'published' | 'archived'
 
 export type ClassRelation = 'owner' | 'student'
@@ -181,6 +183,7 @@ export interface AdminUser {
   username: string
   email: string
   role: Role
+  status: AccountStatus
   activeMembershipCount: number
   ownedActiveClassCount: number
   createdAt: string
@@ -205,6 +208,18 @@ export interface ChangeRoleResult {
   role: Role
   message: string
   archivedClassCount: number
+}
+
+export interface ChangeUserStatusResult {
+  id: number
+  username: string
+  status: 'active' | 'disabled'
+  message: string
+}
+
+export interface DeleteUserResult {
+  id: number
+  message: string
 }
 
 export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired'

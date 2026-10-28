@@ -60,6 +60,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/admin/users", get(admin_user_handler::list))
         .route(
+            "/api/admin/users/{id}",
+            delete(admin_user_handler::delete_user),
+        )
+        .route(
+            "/api/admin/users/{id}/status",
+            put(admin_user_handler::change_status),
+        )
+        .route(
             "/api/admin/users/{id}/role",
             put(admin_user_handler::change_role),
         )

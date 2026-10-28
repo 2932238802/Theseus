@@ -16,6 +16,7 @@ const invitationStore = useInvitationStore()
 const actionError = ref('')
 const actionMessage = ref('')
 const actingNotificationId = ref<number | null>(null)
+const selectedNotification = ref<ForumNotification | null>(null)
 
 const hasMore = computed(
   () => notificationStore.notifications.length < notificationStore.total,
@@ -34,6 +35,45 @@ const load = (page: number, append = false): void => {
 const openNotification = async (item: ForumNotification): Promise<void> => {
   await notificationStore.markRead(item.id)
   if (item.link) await router.push(item.link)
+}
+
+const isActionTarget = (event: Event): boolean => {
+  const target = event.target
+  return target instanceof Element && Boolean(target.closest('button, a, input, label'))
+}
+
+const handleItemClick = async (event: MouseEvent, item: ForumNotification): Promise<void> => {
+  if (isActionTarget(event)) return
+  if (item.link) {
+    await openNotification(item)
+    return
+  }
+  await notificationStore.markRead(item.id)
+  selectedNotification.value = item
+}
+
+const handleItemKeydown = async (
+  event: KeyboardEvent,
+  item: ForumNotification,
+): Promise<void> => {
+  if ((event.key !== 'Enter' && event.key !== ' ') || isActionTarget(event)) return
+  event.preventDefault()
+  if (item.link) {
+    await openNotification(item)
+    return
+  }
+  await notificationStore.markRead(item.id)
+  selectedNotification.value = item
+}
+
+const closeDetail = (): void => {
+  selectedNotification.value = null
+}
+
+const linkLabel = (item: ForumNotification): string => {
+  if (item.type === 'class_invite') return '前往班级 →'
+  if (item.type === 'system_notice') return '打开通知 →'
+  return '查看详情 →'
 }
 
 const respondInvitation = async (
@@ -93,7 +133,11 @@ onMounted(() => {
       <article
         v-for="item in notificationStore.notifications"
         :key="item.id"
-        :class="['notification-item', { unread: !item.read }]"
+        :class="['notification-item', { unread: !item.read, 'has-link': Boolean(item.link) }]"
+        :role="item.link ? 'link' : 'button'"
+        tabindex="0"
+        @click="handleItemClick($event, item)"
+        @keydown="handleItemKeydown($event, item)"
       >
         <span class="notification-icon" aria-hidden="true">{{ notificationIcon(item.type) }}</span>
         <div class="notification-content">
@@ -138,7 +182,7 @@ onMounted(() => {
               class="notification-open"
               @click="openNotification(item)"
             >
-              查看详情 →
+              {{ linkLabel(item) }}
             </button>
           </div>
         </div>
@@ -158,4 +202,41 @@ onMounted(() => {
       <p>暂时没有通知</p>
     </div>
   </main>
+
+  <div v-if="selectedNotification" class="modal-backdrop" @click.self="closeDetail">
+    <section
+      class="run-dialog notification-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="notification-detail-title"
+    >
+      <header>
+        <div>
+          <span class="notification-type">{{ notificationLabel(selectedNotification.type) }}</span>
+          <h2 id="notification-detail-title">{{ selectedNotification.title }}</h2>
+          <p>{{ formatForumDateTime(selectedNotification.createdAt) }}</p>
+        </div>
+        <button type="button" aria-label="关闭" @click="closeDetail">×</button>
+      </header>
+      <div class="run-dialog-body">
+        <MarkdownBody
+          v-if="selectedNotification.type === 'system_notice' && selectedNotification.body"
+          :content="selectedNotification.body"
+        />
+        <p v-else-if="selectedNotification.body" class="notification-detail-body">
+          {{ selectedNotification.body }}
+        </p>
+        <p v-else class="teaching-subtle">这条通知没有正文</p>
+        <div v-if="selectedNotification.link" class="notification-detail-actions">
+          <button
+            class="primary-button"
+            type="button"
+            @click="openNotification(selectedNotification)"
+          >
+            前往相关页面 →
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
 </template>

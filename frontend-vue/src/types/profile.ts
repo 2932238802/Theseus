@@ -30,6 +30,7 @@ export interface ProfileAnalytics {
   days: number
   summary: ProfileAnalyticsSummary
   trend: ProfileTrendPoint[]
+  heatmap: ProfileTrendPoint[]
   difficulty: ProfileDifficulty[]
   tags: ProfileTag[]
 }

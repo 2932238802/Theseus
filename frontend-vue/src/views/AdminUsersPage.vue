@@ -2,9 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
-import { changeUserRole, fetchAdminUsers } from '../api/adminUsers'
+import { changeUserRole, changeUserStatus, deleteAdminUser, fetchAdminUsers } from '../api/adminUsers'
 import { useAuthStore } from '../store/auth'
-import type { AdminUser, Role } from '../types/teaching'
+import type { AccountStatus, AdminUser, Role } from '../types/teaching'
 import { formatDateTime } from '../utils/teaching'
 
 type RoleFilter = Role | ''
@@ -13,6 +13,11 @@ const ROLE_LABELS: Record<Role, string> = {
   student: '学生',
   teacher: '教师',
   admin: '管理员',
+}
+const STATUS_LABELS: Record<AccountStatus, string> = {
+  active: '正常',
+  disabled: '已禁用',
+  deleted: '已删除',
 }
 const ROLE_OPTIONS: Role[] = ['student', 'teacher', 'admin']
 const ROLE_FILTERS: Array<{ value: RoleFilter; label: string }> = [
@@ -138,6 +143,51 @@ const requestRole = (user: AdminUser, event: Event): void => {
   void applyRole(user, nextRole, false)
 }
 
+const toggleStatus = async (user: AdminUser): Promise<void> => {
+  if (busyUserId.value !== null || isSelf(user) || user.status === 'deleted') return
+  const nextStatus = user.status === 'active' ? 'disabled' : 'active'
+  const actionLabel = nextStatus === 'disabled' ? '禁用' : '恢复'
+  const hint = nextStatus === 'disabled' ? '禁用后该用户将无法登录。' : '恢复后该用户可以重新登录。'
+  if (!window.confirm(`确定${actionLabel}账号「${user.username}」吗？${hint}`)) return
+
+  busyUserId.value = user.id
+  actionError.value = ''
+  notice.value = ''
+  try {
+    const result = await changeUserStatus(user.id, nextStatus)
+    notice.value = result.message
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    busyUserId.value = null
+    await load()
+  }
+}
+
+const removeUser = async (user: AdminUser): Promise<void> => {
+  if (busyUserId.value !== null || isSelf(user) || user.status === 'deleted') return
+  if (
+    !window.confirm(
+      `确定删除账号「${user.username}」吗？删除后该账号将无法登录，用户名与邮箱会被匿名化，此操作不可撤销。`,
+    )
+  ) {
+    return
+  }
+
+  busyUserId.value = user.id
+  actionError.value = ''
+  notice.value = ''
+  try {
+    const result = await deleteAdminUser(user.id)
+    notice.value = result.message
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    busyUserId.value = null
+    await load()
+  }
+}
+
 const confirmDemote = async (): Promise<void> => {
   if (!demoteTarget.value || !archiveOwnedClasses.value || demoteSubmitting.value) return
   const { user, nextRole } = demoteTarget.value
@@ -210,6 +260,7 @@ onMounted(() => {
               <th>用户名</th>
               <th>邮箱</th>
               <th>角色</th>
+              <th>状态</th>
               <th>班级</th>
               <th>注册时间</th>
               <th>操作</th>
@@ -225,6 +276,9 @@ onMounted(() => {
               <td>
                 <span :class="['role-badge', user.role]">{{ ROLE_LABELS[user.role] }}</span>
               </td>
+              <td>
+                <span :class="['teaching-badge', `status-${user.status}`]">{{ STATUS_LABELS[user.status] }}</span>
+              </td>
               <td class="admin-user-classes">
                 <span v-if="user.role === 'student'">加入 {{ user.activeMembershipCount }}</span>
                 <span v-else-if="user.role === 'teacher'">拥有 {{ user.ownedActiveClassCount }}</span>
@@ -232,16 +286,36 @@ onMounted(() => {
               </td>
               <td>{{ formatDateTime(user.createdAt) }}</td>
               <td>
-                <select
-                  :value="user.role"
-                  :disabled="isSelf(user) || busyUserId === user.id"
-                  :title="isSelf(user) ? '不能修改自己的角色' : ''"
-                  @change="requestRole(user, $event)"
-                >
-                  <option v-for="role in ROLE_OPTIONS" :key="role" :value="role">
-                    {{ ROLE_LABELS[role] }}
-                  </option>
-                </select>
+                <div class="admin-user-actions">
+                  <select
+                    :value="user.role"
+                    :disabled="isSelf(user) || busyUserId === user.id || user.status === 'deleted'"
+                    :title="isSelf(user) ? '不能修改自己的角色' : user.status === 'deleted' ? '账号已删除' : ''"
+                    @change="requestRole(user, $event)"
+                  >
+                    <option v-for="role in ROLE_OPTIONS" :key="role" :value="role">
+                      {{ ROLE_LABELS[role] }}
+                    </option>
+                  </select>
+                  <button
+                    v-if="user.status !== 'deleted'"
+                    type="button"
+                    class="forum-secondary-button"
+                    :disabled="isSelf(user) || busyUserId === user.id"
+                    @click="toggleStatus(user)"
+                  >
+                    {{ user.status === 'disabled' ? '恢复' : '禁用' }}
+                  </button>
+                  <button
+                    v-if="user.status !== 'deleted'"
+                    type="button"
+                    class="forum-danger-button"
+                    :disabled="isSelf(user) || busyUserId === user.id"
+                    @click="removeUser(user)"
+                  >
+                    删除
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>

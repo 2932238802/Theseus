@@ -170,6 +170,7 @@ export interface BackendAdminUser {
   username: string
   email: string
   role: AdminUser['role']
+  status: AdminUser['status']
   active_membership_count: number
   owned_active_class_count: number
   created_at: string
@@ -358,6 +359,7 @@ export const mapAdminUser = (row: BackendAdminUser): AdminUser => ({
   username: row.username,
   email: row.email,
   role: row.role,
+  status: row.status,
   activeMembershipCount: row.active_membership_count,
   ownedActiveClassCount: row.owned_active_class_count,
   createdAt: row.created_at,

@@ -9,13 +9,18 @@ defineProps<{ post: ForumPostSummary }>()
 
 <template>
   <article :class="['forum-post-card', { pinned: post.isPinned }]">
+    <RouterLink
+      class="forum-post-card-cover"
+      :to="`/forum/${post.id}`"
+      tabindex="-1"
+      aria-hidden="true"
+    ></RouterLink>
     <div class="forum-post-card-main">
       <div class="forum-post-card-topline">
         <span v-if="post.isPinned" class="forum-pin-badge">置顶</span>
         <RouterLink class="forum-post-card-title" :to="`/forum/${post.id}`">{{ post.title }}</RouterLink>
         <span v-for="tag in post.tags" :key="tag" class="forum-tag">{{ FORUM_TAG_LABELS[tag as keyof typeof FORUM_TAG_LABELS] ?? tag }}</span>
       </div>
-      <p class="forum-post-card-excerpt">{{ post.excerpt }}</p>
       <div v-if="post.problem" class="forum-post-card-problem">
         <ProblemReferenceCard :problem="post.problem" />
       </div>

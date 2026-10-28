@@ -1,4 +1,11 @@
-import type { AdminUserList, ChangeRolePayload, ChangeRoleResult, Role } from '../types/teaching'
+import type {
+  AdminUserList,
+  ChangeRolePayload,
+  ChangeRoleResult,
+  ChangeUserStatusResult,
+  DeleteUserResult,
+  Role,
+} from '../types/teaching'
 import { type ApiEnvelope, unwrap } from './client'
 import {
   type BackendAdminUserList,
@@ -47,5 +54,37 @@ export const changeUserRole = async (
     role: data.role,
     message: data.message,
     archivedClassCount: data.archived_class_count,
+  }
+}
+
+export const changeUserStatus = async (
+  userId: number,
+  status: 'active' | 'disabled',
+): Promise<ChangeUserStatusResult> => {
+  const data = await unwrap(
+    http.put<
+      ApiEnvelope<{
+        id: number
+        username: string
+        status: 'active' | 'disabled'
+        message: string
+      }>
+    >(`/admin/users/${userId}/status`, { status }),
+  )
+  return {
+    id: data.id,
+    username: data.username,
+    status: data.status,
+    message: data.message,
+  }
+}
+
+export const deleteAdminUser = async (userId: number): Promise<DeleteUserResult> => {
+  const data = await unwrap(
+    http.delete<ApiEnvelope<{ id: number; message: string }>>(`/admin/users/${userId}`),
+  )
+  return {
+    id: data.id,
+    message: data.message,
   }
 }

@@ -1,4 +1,4 @@
-use chrono::{Duration, NaiveDate, Utc};
+use chrono::{Datelike, Duration, NaiveDate, Utc};
 use sqlx::{FromRow, PgPool};
 
 use crate::{
@@ -24,6 +24,7 @@ const AVATAR_SIZE: u32 = 256;
 const DEFAULT_ANALYTICS_DAYS: i64 = 30;
 const MIN_ANALYTICS_DAYS: i64 = 7;
 const MAX_ANALYTICS_DAYS: i64 = 90;
+const HEATMAP_WEEKS: i64 = 52;
 
 pub async fn update_username(
     pool: &PgPool,
@@ -289,8 +290,9 @@ pub async fn analytics(
     if !(MIN_ANALYTICS_DAYS..=MAX_ANALYTICS_DAYS).contains(&days) {
         return Err(AppError::BadRequest("days 必须在 7 到 90 之间".to_owned()));
     }
-    let start = Utc::now() - Duration::days(days - 1);
-    let start_date = start.date_naive();
+    let today = Utc::now().date_naive();
+    let monday_offset = i64::from(today.weekday().num_days_from_monday());
+    let heatmap_start = today - Duration::days(monday_offset) - Duration::weeks(HEATMAP_WEEKS);
 
     let (total_submissions, accepted_submissions): (i64, i64) = sqlx::query_as(
         "SELECT COUNT(*)::bigint,
@@ -360,11 +362,11 @@ pub async fn analytics(
                 COUNT(*)::bigint AS submissions,
                 COUNT(*) FILTER (WHERE status = 'accepted')::bigint AS accepted
          FROM submissions
-         WHERE user_id = $1 AND submitted_at >= CURRENT_TIMESTAMP - make_interval(days => $2::int)
+         WHERE user_id = $1 AND (submitted_at AT TIME ZONE 'UTC')::date >= $2
          GROUP BY day ORDER BY day",
     )
     .bind(user_id)
-    .bind(days as i32)
+    .bind(heatmap_start)
     .fetch_all(pool)
     .await
     .map_err(AppError::Database)?;
@@ -372,18 +374,18 @@ pub async fn analytics(
         .into_iter()
         .map(|row| (row.day, (row.submissions, row.accepted)))
         .collect();
-    let today = Utc::now().date_naive();
-    let mut trend = Vec::new();
-    let mut day = start_date;
+    let mut heatmap = Vec::new();
+    let mut day = heatmap_start;
     while day <= today {
         let (submissions, accepted) = trend_map.remove(&day).unwrap_or((0, 0));
-        trend.push(AnalyticsTrendPoint {
+        heatmap.push(AnalyticsTrendPoint {
             date: day.format("%Y-%m-%d").to_string(),
             submissions,
             accepted,
         });
         day += Duration::days(1);
     }
+    let trend = heatmap[heatmap.len().saturating_sub(days as usize)..].to_vec();
 
     #[derive(FromRow)]
     struct DifficultyRow {
@@ -462,6 +464,7 @@ pub async fn analytics(
             streak_days,
         },
         trend,
+        heatmap,
         difficulty,
         tags,
     })

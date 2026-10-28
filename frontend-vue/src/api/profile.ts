@@ -31,6 +31,7 @@ interface BackendAnalytics {
     streak_days: number
   }
   trend: Array<{ date: string; submissions: number; accepted: number }>
+  heatmap?: Array<{ date: string; submissions: number; accepted: number }>
   difficulty: Array<{ difficulty: string; attempted: number; accepted: number }>
   tags: Array<{ tag: string; attempted: number; accepted: number }>
 }
@@ -126,6 +127,7 @@ export const fetchAnalytics = async (days = 30): Promise<ProfileAnalytics> => {
       streakDays: data.summary.streak_days,
     },
     trend: data.trend,
+    heatmap: data.heatmap ?? data.trend,
     difficulty: data.difficulty,
     tags: data.tags,
   }
