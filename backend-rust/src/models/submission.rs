@@ -165,6 +165,8 @@ pub struct SubmissionRequest {
     pub code: String,
     #[serde(default)]
     pub assignment_id: Option<i32>,
+    #[serde(default)]
+    pub contest_id: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]

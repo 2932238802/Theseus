@@ -1,3 +1,4 @@
+pub mod contest;
 pub mod forum;
 pub mod notification;
 pub mod problem;

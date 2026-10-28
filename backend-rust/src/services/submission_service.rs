@@ -23,7 +23,10 @@ use crate::{
             SubmissionStatusResponse, SubmissionSummary, is_terminal_status,
         },
     },
-    services::assignment_policy::{self as policy},
+    services::{
+        assignment_policy::{self as policy},
+        contest_service,
+    },
 };
 
 const SUBMISSIONS_PER_MINUTE: i64 = 10;
@@ -118,17 +121,37 @@ impl SubmissionService {
             return Err(AppError::BadRequest("代码不能超过 64 KB".to_owned()));
         }
 
-        let problem = sqlx::query_as::<_, (String, Option<Value>, Option<Value>)>(
-            "SELECT title, run_config, judge_cases FROM problems WHERE id = $1 AND review_status = 'approved'",
-        )
-        .bind(request.problem_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or_else(|| AppError::NotFound("题目不存在".to_owned()))?;
-        let (_problem_title, run_config_value, judge_cases_value) = problem;
-        let Some(run_config_value) = run_config_value else {
-            return Err(AppError::BadRequest("该题暂不支持提交评测".to_owned()));
+        if request.assignment_id.is_some() && request.contest_id.is_some() {
+            return Err(AppError::BadRequest("比赛提交不能同时关联作业".to_owned()));
+        }
+        let contest_context = match request.contest_id {
+            Some(contest_id) => Some(
+                contest_service::precheck_submission(pool, user.id, contest_id, request.problem_id)
+                    .await?,
+            ),
+            None => None,
+        };
+        // Contest submissions use the frozen snapshot captured when the
+        // contest started, so later edits to the problem cannot change judging.
+        let (run_config_value, judge_cases_value) = if let Some(context) = &contest_context {
+            if context.run_config.is_null() {
+                return Err(AppError::BadRequest("该题暂不支持提交评测".to_owned()));
+            }
+            (context.run_config.clone(), context.judge_cases.clone())
+        } else {
+            let problem = sqlx::query_as::<_, (String, Option<Value>, Option<Value>)>(
+                "SELECT title, run_config, judge_cases FROM problems WHERE id = $1 AND review_status = 'approved'",
+            )
+            .bind(request.problem_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::Database)?
+            .ok_or_else(|| AppError::NotFound("题目不存在".to_owned()))?;
+            let (_problem_title, run_config_value, judge_cases_value) = problem;
+            let Some(run_config_value) = run_config_value else {
+                return Err(AppError::BadRequest("该题暂不支持提交评测".to_owned()));
+            };
+            (run_config_value, judge_cases_value)
         };
         let run_config = validate_run_config(&run_config_value)?;
         // The API never inspects hidden case contents: it only checks that the
@@ -205,6 +228,7 @@ impl SubmissionService {
             &run_config_value,
             &judge_cases_value,
             assignment_context.as_ref(),
+            request.contest_id,
         )
         .await
         {
@@ -913,10 +937,11 @@ async fn persist_submission(
     run_config_value: &Value,
     judge_cases_value: &Option<Value>,
     assignment: Option<&AssignmentContext>,
+    contest_id: Option<i32>,
 ) -> Result<i32, AppError> {
     let Some(context) = assignment else {
         return sqlx::query_scalar::<_, i32>(
-            "INSERT INTO submissions (user_id, problem_id, language, code, status, total_test_cases, run_config_snapshot, judge_cases_snapshot) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+            "INSERT INTO submissions (user_id, problem_id, language, code, status, total_test_cases, run_config_snapshot, judge_cases_snapshot, contest_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
         )
         .bind(user.id)
         .bind(request.problem_id)
@@ -926,6 +951,7 @@ async fn persist_submission(
         .bind(case_total)
         .bind(run_config_value)
         .bind(judge_cases_value)
+        .bind(contest_id)
         .fetch_one(pool)
         .await
         .map_err(AppError::Database);

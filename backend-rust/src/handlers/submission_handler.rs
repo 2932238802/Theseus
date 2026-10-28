@@ -21,7 +21,7 @@ pub async fn create(
     Json(request): Json<SubmissionRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let user = authenticate(&state.pool, &headers, &state.config).await?;
-    if request.assignment_id.is_some() {
+    if request.assignment_id.is_some() || request.contest_id.is_some() {
         require_verified_email(&user)?;
     }
     let response = state

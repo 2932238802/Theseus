@@ -3,6 +3,7 @@ pub mod assignment_policy;
 pub mod assignment_service;
 pub mod auth_service;
 pub mod class_service;
+pub mod contest_service;
 pub mod email_service;
 pub mod forum_service;
 pub mod grade_service;

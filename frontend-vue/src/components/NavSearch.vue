@@ -30,6 +30,7 @@ const targets = computed<SearchTarget[]>(() => {
   ]
   if (authStore.isAuthenticated) {
     items.push(
+      { label: '竞赛', hint: '4 人排位赛', group: '社区', to: '/contests', keywords: 'contest 竞赛 排位赛 比赛' },
       { label: '通知中心', hint: '站内通知与班级邀请', group: '个人', to: '/notifications', keywords: 'notifications 消息 通知 邀请' },
       { label: '个人主页', hint: '资料、提交记录与学习分析', group: '个人', to: '/profile', keywords: 'profile 个人 资料 记录 分析' },
       { label: '我的收藏', hint: '收藏的帖子', group: '个人', to: '/profile/favorites', keywords: 'favorites 收藏' },

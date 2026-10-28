@@ -70,9 +70,7 @@ pub async fn list_users(
 }
 
 fn push_filters(builder: &mut QueryBuilder<'_, Postgres>, q: Option<&str>, role: Option<&str>) {
-    builder
-        .push(" AND u.status <> ")
-        .push_bind(STATUS_DELETED);
+    builder.push(" AND u.status <> ").push_bind(STATUS_DELETED);
     if let Some(q) = q {
         let pattern = format!("%{}%", escape_like(q));
         builder
@@ -211,18 +209,19 @@ pub async fn change_status(
     }
 
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
-    let target: Option<(i32, String, String, String)> = sqlx::query_as(
-        "SELECT id, username, role, status FROM users WHERE id = $1 FOR UPDATE",
-    )
-    .bind(target_id)
-    .fetch_optional(&mut *transaction)
-    .await
-    .map_err(AppError::Database)?;
+    let target: Option<(i32, String, String, String)> =
+        sqlx::query_as("SELECT id, username, role, status FROM users WHERE id = $1 FOR UPDATE")
+            .bind(target_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?;
     let (id, username, role, current_status) =
         target.ok_or_else(|| AppError::NotFound("用户不存在".to_owned()))?;
 
     if current_status == STATUS_DELETED {
-        return Err(AppError::ConflictWith("该账号已删除，无法修改状态".to_owned()));
+        return Err(AppError::ConflictWith(
+            "该账号已删除，无法修改状态".to_owned(),
+        ));
     }
     if current_status == next_status {
         transaction.commit().await.map_err(AppError::Database)?;
@@ -282,8 +281,7 @@ pub async fn delete_user(
             .fetch_optional(&mut *transaction)
             .await
             .map_err(AppError::Database)?;
-    let (id, role, status) =
-        target.ok_or_else(|| AppError::NotFound("用户不存在".to_owned()))?;
+    let (id, role, status) = target.ok_or_else(|| AppError::NotFound("用户不存在".to_owned()))?;
 
     if status == STATUS_DELETED {
         transaction.commit().await.map_err(AppError::Database)?;
@@ -378,7 +376,8 @@ async fn ensure_more_than_one_active_admin(
 async fn archive_owned_classes(
     transaction: &mut Transaction<'_, Postgres>,
     owner_id: i32,
-) -> Result<u64, AppError> {    let result = sqlx::query(
+) -> Result<u64, AppError> {
+    let result = sqlx::query(
         "UPDATE classes SET archived_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP \
          WHERE owner_id = $1 AND archived_at IS NULL",
     )

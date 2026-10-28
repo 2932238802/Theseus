@@ -77,6 +77,7 @@ onBeforeUnmount(() => {
       <RouterLink to="/problems">题库</RouterLink>
       <RouterLink to="/forum">校园墙</RouterLink>
       <RouterLink class="nav-rankings" to="/rankings">排行榜</RouterLink>
+      <RouterLink v-if="authStore.isAuthenticated" class="nav-contests" to="/contests">竞赛</RouterLink>
       <RouterLink v-if="authStore.isTeacher" class="nav-teacher-problems" to="/teacher/problems">出题</RouterLink>
       <RouterLink v-if="authStore.isStudent || authStore.isTeacher" class="nav-classes" to="/classes">我的班级</RouterLink>
       <RouterLink v-if="authStore.isAuthenticated" class="nav-profile" to="/profile">个人</RouterLink>

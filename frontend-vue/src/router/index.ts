@@ -8,6 +8,9 @@ import AssignmentComposePage from '../views/AssignmentComposePage.vue'
 import AssignmentDetailPage from '../views/AssignmentDetailPage.vue'
 import ClassDetailPage from '../views/ClassDetailPage.vue'
 import ClassesPage from '../views/ClassesPage.vue'
+import ContestPage from '../views/ContestPage.vue'
+import ContestResultPage from '../views/ContestResultPage.vue'
+import ContestsPage from '../views/ContestsPage.vue'
 import ForumComposePage from '../views/ForumComposePage.vue'
 import ForumPage from '../views/ForumPage.vue'
 import ForumPostPage from '../views/ForumPostPage.vue'
@@ -41,6 +44,9 @@ const router = createRouter({
     { path: '/profile', name: 'profile', component: ProfilePage, meta: { requiresAuth: true } },
     { path: '/profile/favorites', name: 'profile-favorites', component: ProfileFavoritesPage, meta: { requiresAuth: true } },
     { path: '/rankings', name: 'rankings', component: RankingsPage },
+    { path: '/contests', name: 'contests', component: ContestsPage, meta: { requiresAuth: true } },
+    { path: '/contests/:id', name: 'contest', component: ContestPage, meta: { requiresAuth: true } },
+    { path: '/contests/:id/result', name: 'contest-result', component: ContestResultPage, meta: { requiresAuth: true } },
     { path: '/forum', name: 'forum', component: ForumPage },
     { path: '/forum/new', name: 'forum-compose', component: ForumComposePage, meta: { requiresAuth: true } },
     { path: '/forum/:id', name: 'forum-post', component: ForumPostPage },

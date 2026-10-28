@@ -10,6 +10,8 @@ import { useRunStore } from '../store/runs'
 import { useShortcutStore } from '../store/shortcuts'
 import { useSubmissionStore } from '../store/submissions'
 import { fetchAssignment } from '../api/assignments'
+import { fetchContestProblem } from '../api/contests'
+import { toErrorMessage } from '../api/client'
 import type { AssignmentDetail } from '../types/teaching'
 import {
   DIFFICULTY_LABELS,
@@ -21,6 +23,7 @@ import { SHORTCUT_ACTIONS, matchesShortcut } from '../utils/shortcuts'
 import type { Language } from '../types/oj'
 import type { RunMode } from '../types/run'
 import { formatArgs, formatInline } from '../utils/format'
+import { useContestEvents } from '../utils/contestEvents'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,11 +53,18 @@ const assignmentId = computed(() => {
   const value = Number(route.query.assignment_id)
   return Number.isInteger(value) && value > 0 ? value : null
 })
+const contestId = computed(() => {
+  const value = Number(route.query.contest_id)
+  return Number.isInteger(value) && value > 0 ? value : null
+})
+const contestEventsEnabled = computed(() => contestId.value !== null)
+useContestEvents(contestId, contestEventsEnabled)
 const assignment = ref<AssignmentDetail | null>(null)
 const assignmentError = ref('')
 const assignmentLoading = ref(false)
 const assignmentStateLabel = computed(() => {
   if (!assignmentId.value) return ''
+  if (contestId.value) return ''
   if (!authStore.isAuthenticated) return '登录后可提交作业'
   if (authStore.isTeacher) return '教师预览不可提交'
   if (authStore.isAdmin) return '管理员不可提交'
@@ -67,7 +77,10 @@ const assignmentStateLabel = computed(() => {
   return detail.canSubmit ? '' : '当前不能提交'
 })
 const canSubmitCode = computed(
-  () => !assignmentId.value || (authStore.isStudent && assignment.value?.canSubmit === true),
+  () =>
+    Boolean(contestId.value) ||
+    !assignmentId.value ||
+    (authStore.isStudent && assignment.value?.canSubmit === true),
 )
 
 const runConfig = computed(() => problemStore.currentProblem?.runConfig)
@@ -123,6 +136,7 @@ const resetCode = (): void => {
 const loadAssignmentContext = async (): Promise<void> => {
   assignment.value = null
   assignmentError.value = ''
+  if (contestId.value) return
   if (!assignmentId.value || !authStore.isAuthenticated || authStore.isAdmin) return
   assignmentLoading.value = true
   try {
@@ -133,13 +147,42 @@ const loadAssignmentContext = async (): Promise<void> => {
     assignmentLoading.value = false
   }
 }
+let pageProblemRequest = 0
+const loadProblemForPage = async (): Promise<void> => {
+  const requestId = ++pageProblemRequest
+  if (!contestId.value) {
+    await problemStore.loadProblem(problemId.value)
+    return
+  }
+  problemStore.currentProblem = null
+  problemStore.error = ''
+  problemStore.isLoading = true
+  try {
+    const problem = await fetchContestProblem(contestId.value, problemId.value)
+    if (requestId !== pageProblemRequest) return
+    problemStore.currentProblem = problem
+  } catch (exception: unknown) {
+    if (requestId !== pageProblemRequest) return
+    problemStore.error = toErrorMessage(exception)
+  } finally {
+    if (requestId === pageProblemRequest) problemStore.isLoading = false
+  }
+}
 const loadPage = async (): Promise<void> => {
   submissionStore.stopPolling()
   submissionStore.latest = null
   runStore.reset()
   activeOutputTab.value = 'submit'
   isRunDialogOpen.value = false
-  await Promise.all([problemStore.loadProblem(problemId.value), loadAssignmentContext()])
+  if (contestId.value) {
+    assignment.value = null
+    assignmentError.value = ''
+    assignmentLoading.value = false
+  }
+  await Promise.all([
+    loadProblemForPage(),
+    contestId.value ? Promise.resolve() : loadAssignmentContext(),
+  ])
   restoreDraft()
 }
 const submitCode = async (): Promise<void> => {
@@ -165,7 +208,8 @@ const submitCode = async (): Promise<void> => {
       problemStore.currentProblem.id,
       language.value,
       code.value,
-      assignmentId.value ?? undefined,
+      contestId.value ? undefined : (assignmentId.value ?? undefined),
+      contestId.value ?? undefined,
     )
   } catch {
     isOutputOpen.value = true
@@ -537,7 +581,7 @@ watch(language, () => {
   isRunDialogOpen.value = false
 })
 watch(code, saveDraft)
-watch(() => route.params.id, () => { void loadPage() })
+watch([() => route.params.id, contestId], () => { void loadPage() })
 watch(assignmentId, () => { void loadAssignmentContext() })
 onBeforeUnmount(() => {
   submissionStore.stopPolling()
@@ -566,8 +610,13 @@ onBeforeUnmount(() => {
     <template v-else-if="problemStore.currentProblem">
       <section class="problem-pane">
         <div class="problem-pane-inner">
-          <div class="breadcrumb"><RouterLink to="/problems">题库</RouterLink><span>/</span><span>{{ problemStore.currentProblem.id }}. {{ problemStore.currentProblem.title }}</span></div>
-          <aside v-if="assignmentId" class="assignment-context">
+          <div class="breadcrumb"><RouterLink :to="contestId ? '/contests' : '/problems'">{{ contestId ? '竞赛' : '题库' }}</RouterLink><span>/</span><span>{{ problemStore.currentProblem.id }}. {{ problemStore.currentProblem.title }}</span></div>
+          <aside v-if="contestId" class="assignment-context contest-context">
+            <div><span>比赛</span><strong>排位赛 #{{ contestId }}</strong></div>
+            <span>比赛模式 · 题目由比赛提供，提交计入比赛成绩</span>
+            <RouterLink :to="`/contests/${contestId}`">返回比赛</RouterLink>
+          </aside>
+          <aside v-else-if="assignmentId" class="assignment-context">
             <div><span>作业</span><strong>{{ assignment?.title ?? `作业 #${assignmentId}` }}</strong></div>
             <span v-if="assignment?.dueAt">截止 {{ new Date(assignment.dueAt).toLocaleString('zh-CN') }}</span>
             <span v-if="assignmentStateLabel" class="assignment-context-state">{{ assignmentStateLabel }}</span>

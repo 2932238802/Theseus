@@ -9,8 +9,8 @@ use crate::{
     AppState,
     handlers::{
         admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, class_handler,
-        forum_handler, invitation_handler, notification_handler, problem_handler, profile_handler,
-        ranking_handler, run_handler, submission_handler,
+        contest_handler, forum_handler, invitation_handler, notification_handler, problem_handler,
+        profile_handler, ranking_handler, run_handler, submission_handler,
     },
 };
 
@@ -178,6 +178,19 @@ pub fn router(state: AppState) -> Router {
             "/api/runs",
             post(run_handler::create).get(run_handler::list),
         )
+        .route(
+            "/api/contests/match",
+            post(contest_handler::start_match).delete(contest_handler::cancel_match),
+        )
+        .route("/api/contests/current", get(contest_handler::current))
+        .route("/api/contests/{id}", get(contest_handler::detail))
+        .route(
+            "/api/contests/{id}/problems/{problem_id}",
+            get(contest_handler::problem),
+        )
+        .route("/api/contests/{id}/events", post(contest_handler::events))
+        .route("/api/contests/{id}/finish", post(contest_handler::finish))
+        .route("/api/contests/{id}/result", get(contest_handler::result))
         .route("/api/runs/{id}/status", get(run_handler::status))
         .route(
             "/api/runs/{id}",

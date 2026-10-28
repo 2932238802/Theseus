@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use backend_rust::{
     AppState, config::Config, db, db::pool::create_pool, judge::queue, routes,
-    services::email_service,
+    services::contest_service, services::email_service,
 };
 
 #[tokio::main]
@@ -42,6 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     tokio::spawn(email_dispatch_loop(state.clone()));
+    tokio::spawn(contest_settlement_loop(state.clone()));
     if state.config.run_code_enabled || state.config.submit_judge_enabled {
         tokio::spawn(reaper_loop(state.clone()));
     }
@@ -100,6 +101,21 @@ async fn email_dispatch_loop(state: AppState) {
             Ok(0) => {}
             Ok(count) => tracing::info!(count, "delivered queued emails"),
             Err(error) => tracing::error!(error = %error, "email dispatcher failed"),
+        }
+    }
+}
+
+/// Settles ranked contests once their deadline (plus a short judging grace
+/// window) has passed, and retries contests left in `settling` by a crash.
+async fn contest_settlement_loop(state: AppState) {
+    let mut ticker = tokio::time::interval(Duration::from_secs(5));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        ticker.tick().await;
+        match contest_service::settle_due_contests(&state.pool).await {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "settled due contests"),
+            Err(error) => tracing::error!(error = %error, "failed to settle contests"),
         }
     }
 }
