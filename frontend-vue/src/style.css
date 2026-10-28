@@ -6087,41 +6087,130 @@ body.is-resizing-rows {
   margin-top: var(--space-sm);
 }
 
-.profile-shortcuts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--space-sm);
-  margin-top: var(--space-md);
-}
-
-.profile-shortcut {
+.profile-quickbar {
   display: flex;
-  min-height: 88px;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 4px;
-  padding: var(--space-md);
+  align-items: center;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
+}
+
+.profile-quickbar-label {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.profile-combobox {
+  position: relative;
+  min-width: 220px;
+  max-width: 320px;
+  flex: 1 1 260px;
+}
+
+.profile-combobox-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 0 var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 14px;
   text-align: left;
-  transition: border-color var(--duration), transform var(--duration);
+  transition: border-color var(--duration), background-color var(--duration);
 }
 
-.profile-shortcut:hover {
+.profile-combobox-trigger:hover,
+.profile-combobox-trigger:focus-visible,
+.profile-combobox-trigger[aria-expanded='true'] {
   border-color: var(--color-border-strong);
-  transform: translateY(-1px);
+  background: var(--color-surface);
+  outline: none;
 }
 
-.profile-shortcut strong {
-  font-size: 15px;
+.profile-combobox-caret {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform var(--duration);
+}
+
+.profile-combobox-trigger[aria-expanded='true'] .profile-combobox-caret {
+  transform: rotate(225deg) translateY(-2px);
+}
+
+.profile-combobox-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(360px, calc(100vw - 48px));
+  max-height: 360px;
+  overflow-y: auto;
+  padding: var(--space-xs);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg, 0 16px 40px rgb(0 0 0 / 18%));
+}
+
+.profile-combobox-group + .profile-combobox-group {
+  margin-top: var(--space-xs);
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--color-border);
+}
+
+.profile-combobox-group-label {
+  display: block;
+  padding: 4px var(--space-sm);
+  color: var(--color-text-secondary);
+  font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
-.profile-shortcut span {
+.profile-combobox-option {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: 8px var(--space-sm);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  transition: background-color var(--duration);
+}
+
+.profile-combobox-option:hover,
+.profile-combobox-option:focus-visible {
+  background: var(--color-bg);
+  outline: none;
+}
+
+.profile-combobox-option strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.profile-combobox-option span {
   color: var(--color-text-secondary);
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .profile-analytics {
@@ -6333,17 +6422,20 @@ body.is-resizing-rows {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .profile-shortcuts {
-    grid-template-columns: repeat(3, 1fr);
+  .profile-quickbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--space-xs);
   }
 
-  .profile-shortcut {
-    min-height: 78px;
-    padding: var(--space-sm);
+  .profile-combobox {
+    min-width: 0;
+    max-width: none;
+    flex-basis: auto;
   }
 
-  .profile-shortcut strong {
-    font-size: 13px;
+  .profile-combobox-panel {
+    width: calc(100vw - 40px);
   }
 
   .profile-meter-row {

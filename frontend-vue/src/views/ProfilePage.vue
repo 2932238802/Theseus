@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import AvatarUploader from '../components/AvatarUploader.vue'
@@ -43,32 +43,50 @@ type Shortcut = {
   action?: 'records' | 'runs' | 'analytics'
 }
 
+type ShortcutGroup = {
+  label: string
+  items: Shortcut[]
+}
+
+const shortcutOpen = ref(false)
+const shortcutRef = ref<HTMLElement | null>(null)
+const shortcutTrigger = ref<HTMLButtonElement | null>(null)
+const shortcutPanel = ref<HTMLElement | null>(null)
+
 const roleLabel = computed(() => {
   if (authStore.isTeacher) return '教师'
   if (authStore.isAdmin) return '管理员'
   return '学生'
 })
 
-const shortcuts = computed<Shortcut[]>(() => {
-  const items: Shortcut[] = [
+const shortcutGroups = computed<ShortcutGroup[]>(() => {
+  const study: Shortcut[] = [
     { label: '题库', hint: '继续刷题', to: '/problems' },
     { label: '提交记录', hint: '最近提交', action: 'records' },
     ...(runFeatureEnabled
       ? [{ label: '运行记录', hint: '最近运行', action: 'runs' as const }]
       : []),
+    { label: '学习分析', hint: '近 30 天', action: 'analytics' },
+  ]
+  const community: Shortcut[] = [
     { label: '校园墙', hint: '讨论与题解', to: '/forum' },
     { label: '我的收藏', hint: '收藏的帖子', to: '/profile/favorites' },
     { label: '排行榜', hint: '学生榜单', to: '/rankings' },
     { label: '通知中心', hint: '站内通知', to: '/notifications' },
   ]
+  const teaching: Shortcut[] = []
   if (authStore.isStudent || authStore.isTeacher) {
-    items.push({ label: '我的班级', hint: '班级与作业', to: '/classes' })
+    teaching.push({ label: '我的班级', hint: '班级与作业', to: '/classes' })
   }
   if (authStore.isTeacher) {
-    items.push({ label: '出题', hint: '创建与审核', to: '/teacher/problems' })
+    teaching.push({ label: '出题', hint: '创建与审核', to: '/teacher/problems' })
   }
-  items.push({ label: '学习分析', hint: '近 30 天', action: 'analytics' })
-  return items
+  const groups: ShortcutGroup[] = [
+    { label: '学习', items: study },
+    { label: '社区', items: community },
+  ]
+  if (teaching.length) groups.push({ label: '教学', items: teaching })
+  return groups
 })
 
 const formatTime = (value: string): string => new Date(value).toLocaleString('zh-CN')
@@ -78,7 +96,75 @@ const formatMemory = (value: number | null): string => {
 }
 const isAcceptedRun = (status: string): boolean => status === 'completed'
 
+const closeShortcuts = (restoreFocus = false): void => {
+  shortcutOpen.value = false
+  if (restoreFocus) shortcutTrigger.value?.focus()
+}
+
+const openShortcuts = (focusFirst = false): void => {
+  shortcutOpen.value = true
+  if (focusFirst) {
+    void nextTick(() => focusShortcutOption(0))
+  }
+}
+
+const toggleShortcuts = (): void => {
+  if (shortcutOpen.value) closeShortcuts()
+  else openShortcuts()
+}
+
+const shortcutOptions = (): HTMLButtonElement[] =>
+  Array.from(
+    shortcutPanel.value?.querySelectorAll<HTMLButtonElement>('.profile-combobox-option') ?? [],
+  )
+
+const focusShortcutOption = (index: number): void => {
+  const options = shortcutOptions()
+  if (!options.length) return
+  const next = (index + options.length) % options.length
+  options[next]?.focus()
+}
+
+const moveShortcutFocus = (event: KeyboardEvent, delta: number): void => {
+  const options = shortcutOptions()
+  const current = options.indexOf(event.currentTarget as HTMLButtonElement)
+  if (!options.length) return
+  const next = (current + delta + options.length) % options.length
+  options[next]?.focus()
+}
+
+const onShortcutPanelKeydown = (event: KeyboardEvent): void => {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeShortcuts(true)
+  } else if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    moveShortcutFocus(event, 1)
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    moveShortcutFocus(event, -1)
+  } else if (event.key === 'Home') {
+    event.preventDefault()
+    focusShortcutOption(0)
+  } else if (event.key === 'End') {
+    event.preventDefault()
+    const options = shortcutOptions()
+    focusShortcutOption(options.length - 1)
+  }
+}
+
+const onDocumentPointerDown = (event: PointerEvent): void => {
+  if (!shortcutOpen.value) return
+  if (event.target instanceof Node && shortcutRef.value?.contains(event.target)) return
+  closeShortcuts()
+}
+
+const onWindowKeydown = (event: KeyboardEvent): void => {
+  if (event.key === 'Escape' && shortcutOpen.value) closeShortcuts(true)
+}
+
 const handleShortcut = (item: Shortcut): void => {
+  closeShortcuts()
   if (item.to) {
     void router.push(item.to)
     return
@@ -162,11 +248,18 @@ const selectTab = (tab: 'submissions' | 'runs'): void => {
 }
 
 onMounted(() => {
+  document.addEventListener('pointerdown', onDocumentPointerDown)
+  window.addEventListener('keydown', onWindowKeydown)
   void loadAnalytics()
   void submissionStore.loadSubmissions({ page: 1, size: 50 })
   if (runFeatureEnabled) {
     void runStore.loadRecords({ page: 1, size: 20 })
   }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocumentPointerDown)
+  window.removeEventListener('keydown', onWindowKeydown)
 })
 </script>
 
@@ -202,17 +295,54 @@ onMounted(() => {
       <article><strong>{{ analytics?.summary.streakDays ?? 0 }}</strong><span>连续通过天数</span></article>
     </section>
 
-    <section class="profile-shortcuts">
-      <button
-        v-for="item in shortcuts"
-        :key="item.label"
-        type="button"
-        class="profile-shortcut"
-        @click="handleShortcut(item)"
-      >
-        <strong>{{ item.label }}</strong>
-        <span>{{ item.hint }}</span>
-      </button>
+    <section ref="shortcutRef" class="profile-quickbar">
+      <span class="profile-quickbar-label">快捷入口</span>
+      <div class="profile-combobox">
+        <button
+          ref="shortcutTrigger"
+          class="profile-combobox-trigger"
+          type="button"
+          aria-haspopup="listbox"
+          aria-controls="profile-shortcut-list"
+          :aria-expanded="shortcutOpen"
+          @click="toggleShortcuts"
+          @keydown.down.prevent="openShortcuts(true)"
+          @keydown.up.prevent="openShortcuts(true)"
+          @keydown.esc.prevent="closeShortcuts()"
+        >
+          <span>选择入口</span>
+          <span class="profile-combobox-caret" aria-hidden="true"></span>
+        </button>
+        <div
+          v-if="shortcutOpen"
+          id="profile-shortcut-list"
+          ref="shortcutPanel"
+          class="profile-combobox-panel"
+          role="listbox"
+          aria-label="快捷入口"
+          @keydown="onShortcutPanelKeydown"
+        >
+          <div v-for="group in shortcutGroups" :key="group.label" class="profile-combobox-group">
+            <span class="profile-combobox-group-label" role="presentation">{{ group.label }}</span>
+            <button
+              v-for="item in group.items"
+              :key="item.label"
+              type="button"
+              class="profile-combobox-option"
+              role="option"
+              aria-selected="false"
+              @click="handleShortcut(item)"
+              @keydown.down.stop.prevent="moveShortcutFocus($event, 1)"
+              @keydown.up.stop.prevent="moveShortcutFocus($event, -1)"
+              @keydown.home.stop.prevent="focusShortcutOption(0)"
+              @keydown.end.stop.prevent="focusShortcutOption(shortcutOptions().length - 1)"
+            >
+              <strong>{{ item.label }}</strong>
+              <span>{{ item.hint }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <div ref="analyticsAnchor">
