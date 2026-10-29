@@ -22,10 +22,10 @@ const tabFromQuery = (): TabKey => {
   return value === 'posts' || value === 'comments' ? value : 'problems'
 }
 
-const tabs: Array<{ key: TabKey; label: string; unit: string }> = [
-  { key: 'problems', label: '题目', unit: '道题目' },
-  { key: 'posts', label: '帖子', unit: '篇帖子' },
-  { key: 'comments', label: '评论', unit: '条评论' },
+const tabs: Array<{ key: TabKey; label: string }> = [
+  { key: 'problems', label: '题目' },
+  { key: 'posts', label: '帖子' },
+  { key: 'comments', label: '评论' },
 ]
 const activeTab = ref<TabKey>(tabFromQuery())
 const size = 20
@@ -67,9 +67,6 @@ const currentLoading = computed(() => {
   return commentLoading.value
 })
 const totalPages = computed(() => Math.max(1, Math.ceil(currentTotal.value / size)))
-const currentUnit = computed(
-  () => tabs.find((tab) => tab.key === activeTab.value)?.unit ?? '条收藏',
-)
 
 const loadProblems = async (nextPage = problemPage.value): Promise<void> => {
   problemLoading.value = true
@@ -199,11 +196,7 @@ onMounted(() => loadTab(activeTab.value, 1))
   <main class="profile-page page-shell">
     <header class="teaching-page-header">
       <div>
-        <p class="teaching-breadcrumb">
-          <RouterLink to="/profile">个人</RouterLink><span>/</span><span>我的收藏</span>
-        </p>
         <h1>我的收藏</h1>
-        <p class="teaching-subtle">共 {{ currentTotal }} {{ currentUnit }}</p>
       </div>
     </header>
 

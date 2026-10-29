@@ -23,6 +23,7 @@ import ForgotPasswordPage from '../views/ForgotPasswordPage.vue'
 import GradebookPage from '../views/GradebookPage.vue'
 import IndexPage from '../views/IndexPage.vue'
 import LoginAndRegisterPage from '../views/LoginAndRegisterPage.vue'
+import MyAssignmentsPage from '../views/MyAssignmentsPage.vue'
 import NotFoundPage from '../views/NotFoundPage.vue'
 import NotificationsPage from '../views/NotificationsPage.vue'
 import OjPage from '../views/OjPage.vue'
@@ -47,6 +48,12 @@ const router = createRouter({
     { path: '/problem/:id', name: 'problem', component: OjPage, props: true },
     { path: '/profile', name: 'profile', component: ProfilePage, meta: { requiresAuth: true } },
     { path: '/profile/favorites', name: 'profile-favorites', component: ProfileFavoritesPage, meta: { requiresAuth: true } },
+    {
+      path: '/profile/assignments',
+      name: 'profile-assignments',
+      component: MyAssignmentsPage,
+      meta: { requiresAuth: true, requiresTeaching: true },
+    },
     { path: '/rankings', redirect: { name: 'contest-rankings' } },
     { path: '/contests', name: 'contests', component: ContestsPage, meta: { requiresAuth: true } },
     { path: '/contests/events', name: 'contest-events', component: ContestEventsPage, meta: { requiresAuth: true } },

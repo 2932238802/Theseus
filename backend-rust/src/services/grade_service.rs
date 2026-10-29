@@ -134,7 +134,7 @@ async fn access_grading(
     }
     if !user.is_teacher() {
         return Err(AppError::ForbiddenWith(
-            "只有该班级的教师可以批改作业".to_owned(),
+            "只有该组织的教师可以批改作业".to_owned(),
         ));
     }
     let context = grading_context(pool, id).await?;
@@ -364,7 +364,7 @@ pub async fn update_problem_grade(
         return Err(AppError::Conflict("作业当前状态不能改分".to_owned()));
     }
     if !is_active_member(pool, context.class_id, student_id).await? {
-        return Err(AppError::NotFound("学生不在该班级中".to_owned()));
+        return Err(AppError::NotFound("学生不在该组织中".to_owned()));
     }
     let points: Option<i32> = sqlx::query_scalar(
         "SELECT points FROM assignment_problems WHERE assignment_id = $1 AND problem_id = $2",
@@ -433,7 +433,7 @@ pub async fn update_overall_grade(
         return Err(AppError::Conflict("作业当前状态不能写评语".to_owned()));
     }
     if !is_active_member(pool, context.class_id, student_id).await? {
-        return Err(AppError::NotFound("学生不在该班级中".to_owned()));
+        return Err(AppError::NotFound("学生不在该组织中".to_owned()));
     }
     let feedback = normalize_feedback(
         request.overall_feedback.as_deref(),
@@ -491,7 +491,7 @@ pub async fn publish_grades(
         return Err(AppError::Conflict("作业尚未截止，不能发布成绩".to_owned()));
     }
     if context.class_archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
 
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;

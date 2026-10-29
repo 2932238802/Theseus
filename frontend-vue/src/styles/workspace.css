@@ -37,22 +37,6 @@ body.is-resizing {
   padding: var(--space-xl) var(--space-xl) 64px;
 }
 
-.breadcrumb {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-  color: var(--color-text-secondary);
-  font-size: 13px;
-}
-
-.breadcrumb a {
-  color: var(--color-accent);
-}
-
-.breadcrumb a:hover {
-  text-decoration: underline;
-}
-
 .problem-heading {
   display: flex;
   align-items: flex-start;

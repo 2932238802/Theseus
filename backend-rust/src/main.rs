@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use backend_rust::{
     AppState, config::Config, db, db::pool::create_pool, judge::queue, routes,
-    services::contest_service, services::email_service,
+    services::contest_service, services::email_service, services::notification_service,
 };
 
 #[tokio::main]
@@ -90,13 +90,20 @@ async fn reaper_loop(state: AppState) {
 }
 
 /// Polls the email outbox in the API process. Registration and password reset
-/// only enqueue rows, so SMTP latency never blocks those requests.
+/// only enqueue rows, so SMTP latency never blocks those requests. Each tick
+/// first turns pending notifications into outbox rows according to the user's
+/// notification preferences, then delivers whatever is due.
 async fn email_dispatch_loop(state: AppState) {
     let interval = Duration::from_secs(state.config.email_dispatch_interval_secs);
     let mut ticker = tokio::time::interval(interval);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         ticker.tick().await;
+        match notification_service::queue_pending_emails(&state.pool, &state.config, 50).await {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "queued notification emails"),
+            Err(error) => tracing::error!(error = %error, "notification email queue failed"),
+        }
         match email_service::dispatch_pending(&state.pool, &state.config, 20).await {
             Ok(0) => {}
             Ok(count) => tracing::info!(count, "delivered queued emails"),

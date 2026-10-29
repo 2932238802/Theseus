@@ -45,7 +45,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   assignment_published: '作业',
   assignment_grades_published: '成绩',
   problem_review: '题目审核',
-  class_invite: '班级邀请',
+  class_invite: '组织邀请',
   class_invite_accepted: '邀请结果',
   class_invite_declined: '邀请结果',
   system_notice: '站内通知',

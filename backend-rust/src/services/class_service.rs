@@ -88,7 +88,7 @@ async fn fetch_class(pool: &PgPool, class_id: i32) -> Result<ClassRow, AppError>
         .fetch_optional(pool)
         .await
         .map_err(AppError::Database)?
-        .ok_or_else(|| AppError::NotFound("班级不存在".to_owned()))
+        .ok_or_else(|| AppError::NotFound("组织不存在".to_owned()))
 }
 
 async fn is_active_member(pool: &PgPool, class_id: i32, user_id: i32) -> Result<bool, AppError> {
@@ -145,13 +145,13 @@ async fn access_class(
         if class.owner_id == user.id {
             return Ok((class, ClassView::Owner));
         }
-        return Err(AppError::NotFound("班级不存在".to_owned()));
+        return Err(AppError::NotFound("组织不存在".to_owned()));
     }
     if user.is_student() {
         if is_active_member(pool, class_id, user.id).await? {
             return Ok((class, ClassView::Student));
         }
-        return Err(AppError::NotFound("班级不存在".to_owned()));
+        return Err(AppError::NotFound("组织不存在".to_owned()));
     }
     Err(AppError::Forbidden)
 }
@@ -164,7 +164,7 @@ async fn access_owned_class(
     require_teacher_role(user)?;
     let class = fetch_class(pool, class_id).await?;
     if class.owner_id != user.id {
-        return Err(AppError::NotFound("班级不存在".to_owned()));
+        return Err(AppError::NotFound("组织不存在".to_owned()));
     }
     Ok(class)
 }
@@ -210,14 +210,14 @@ pub async fn create_class(
     request: &CreateClassRequest,
 ) -> Result<ClassDetail, AppError> {
     require_teacher_role(user)?;
-    let name = normalize_required(&request.name, "班级名称", MAX_NAME_CHARS)?;
+    let name = normalize_required(&request.name, "组织名称", MAX_NAME_CHARS)?;
     let course_name =
         normalize_optional(request.course_name.as_deref(), MAX_COURSE_CHARS, "课程名称")?;
     let term = normalize_optional(request.term.as_deref(), MAX_TERM_CHARS, "学期")?;
     let description = normalize_optional(
         request.description.as_deref(),
         MAX_DESCRIPTION_CHARS,
-        "班级描述",
+        "组织描述",
     )?;
 
     let mut class_id = None;
@@ -245,7 +245,7 @@ pub async fn create_class(
         }
     }
     let class_id =
-        class_id.ok_or_else(|| AppError::Internal("生成班级邀请码失败，请稍后重试".to_owned()))?;
+        class_id.ok_or_else(|| AppError::Internal("生成组织邀请码失败，请稍后重试".to_owned()))?;
     detail(pool, user, class_id).await
 }
 
@@ -291,10 +291,10 @@ pub async fn update_class(
 ) -> Result<ClassDetail, AppError> {
     let class = access_owned_class(pool, user, class_id).await?;
     if class.archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     let name = match request.name.as_deref() {
-        Some(value) => normalize_required(value, "班级名称", MAX_NAME_CHARS)?,
+        Some(value) => normalize_required(value, "组织名称", MAX_NAME_CHARS)?,
         None => class.name.clone(),
     };
     let course_name = merge_optional(
@@ -313,7 +313,7 @@ pub async fn update_class(
         class.description.as_deref(),
         request.description.as_deref(),
         MAX_DESCRIPTION_CHARS,
-        "班级描述",
+        "组织描述",
     )?;
     sqlx::query(
         "UPDATE classes SET name = $2, course_name = $3, term = $4, description = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
@@ -347,7 +347,7 @@ pub async fn join_class(
         .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound("邀请码无效".to_owned()))?;
     if class.archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     sqlx::query(
         "INSERT INTO class_members (class_id, user_id, status) VALUES ($1, $2, 'active') \
@@ -372,7 +372,7 @@ pub async fn add_member(
 ) -> Result<ClassMemberView, AppError> {
     let class = access_owned_class(pool, user, class_id).await?;
     if class.archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     let identifier = request.identifier.trim();
     if identifier.is_empty() {
@@ -391,7 +391,7 @@ pub async fn add_member(
         target.ok_or_else(|| AppError::NotFound("用户不存在".to_owned()))?;
     if role != "student" {
         return Err(AppError::BadRequest(
-            "教师/管理员账号不能加入班级".to_owned(),
+            "教师/管理员账号不能加入组织".to_owned(),
         ));
     }
     sqlx::query(
@@ -426,7 +426,7 @@ pub async fn remove_member(
 ) -> Result<ClassMutationResponse, AppError> {
     let class = access_owned_class(pool, user, class_id).await?;
     if class.archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     let result = sqlx::query(
         "UPDATE class_members SET status = 'removed', removed_at = CURRENT_TIMESTAMP \
@@ -457,7 +457,7 @@ pub async fn leave_class(
         .await
         .map_err(AppError::Database)?;
     if !exists {
-        return Err(AppError::NotFound("班级不存在".to_owned()));
+        return Err(AppError::NotFound("组织不存在".to_owned()));
     }
     let result = sqlx::query(
         "UPDATE class_members SET status = 'removed', removed_at = CURRENT_TIMESTAMP \
@@ -469,10 +469,10 @@ pub async fn leave_class(
     .await
     .map_err(AppError::Database)?;
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("你不在该班级中".to_owned()));
+        return Err(AppError::NotFound("你不在该组织中".to_owned()));
     }
     Ok(ClassMutationResponse {
-        message: "已退出班级".to_owned(),
+        message: "已退出组织".to_owned(),
     })
 }
 
@@ -483,7 +483,7 @@ pub async fn rotate_invite_code(
 ) -> Result<InviteCodeResponse, AppError> {
     let class = access_owned_class(pool, user, class_id).await?;
     if class.archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     for _ in 0..5 {
         let invite_code = generate_invite_code();
@@ -513,7 +513,7 @@ pub async fn archive_class(
     let class = access_owned_class(pool, user, class_id).await?;
     if class.archived_at.is_some() {
         return Ok(ClassMutationResponse {
-            message: "班级已归档".to_owned(),
+            message: "组织已归档".to_owned(),
         });
     }
     sqlx::query(
@@ -524,7 +524,7 @@ pub async fn archive_class(
     .await
     .map_err(AppError::Database)?;
     Ok(ClassMutationResponse {
-        message: "班级已归档".to_owned(),
+        message: "组织已归档".to_owned(),
     })
 }
 
@@ -615,10 +615,10 @@ mod tests {
     #[test]
     fn class_names_are_trimmed_and_validated() {
         assert_eq!(
-            normalize_required("  算法 1 班 ", "班级名称", 100).expect("valid"),
+            normalize_required("  算法 1 班 ", "组织名称", 100).expect("valid"),
             "算法 1 班"
         );
-        assert!(normalize_required("   ", "班级名称", 100).is_err());
+        assert!(normalize_required("   ", "组织名称", 100).is_err());
         assert_eq!(
             normalize_optional(Some("  "), 30, "学期").expect("valid"),
             None

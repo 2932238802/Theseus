@@ -38,7 +38,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="authStore.isAuthenticated && !authStore.isEmailVerified && route.path !== '/verify-email'" class="email-verify-banner" role="status">
-    <span>邮箱未验证 加入班级 提交作业或发帖前需要先验证</span>
+    <span>邮箱未验证 加入组织 提交作业或发帖前需要先验证</span>
     <RouterLink to="/verify-email">去验证</RouterLink>
   </div>
   <RouterView />

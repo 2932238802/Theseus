@@ -1,6 +1,7 @@
 import { type ApiEnvelope, unwrap } from './client'
 import { http } from './http'
 import {
+  bool,
   nullableNumber,
   nullableText,
   number,
@@ -100,4 +101,49 @@ export const sendNotification = async (
     recipientCount: number(data.recipient_count),
     message: text(data.message),
   }
+}
+
+export interface NotificationPreference {
+  category: string
+  channel: string
+  enabled: boolean
+}
+
+export interface NotificationPreferences {
+  email: string
+  emailVerified: boolean
+  preferences: NotificationPreference[]
+}
+
+const mapPreferences = (data: UnknownRecord): NotificationPreferences => ({
+  email: text(data.email),
+  emailVerified: bool(data.email_verified),
+  preferences: Array.isArray(data.preferences)
+    ? data.preferences.map((value) => {
+        const item = record(value)
+        return {
+          category: text(item.category),
+          channel: text(item.channel, 'email'),
+          enabled: bool(item.enabled),
+        }
+      })
+    : [],
+})
+
+export const fetchNotificationPreferences = async (): Promise<NotificationPreferences> => {
+  const data = await unwrap(
+    http.get<ApiEnvelope<UnknownRecord>>('/profile/notification-preferences'),
+  )
+  return mapPreferences(data)
+}
+
+export const updateNotificationPreferences = async (
+  changes: Array<{ category: string; enabled: boolean }>,
+): Promise<NotificationPreferences> => {
+  const data = await unwrap(
+    http.put<ApiEnvelope<UnknownRecord>>('/profile/notification-preferences', {
+      preferences: changes,
+    }),
+  )
+  return mapPreferences(data)
 }

@@ -9,8 +9,8 @@ use crate::{
     AppState,
     handlers::{
         admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, badge_handler,
-        class_handler, contest_handler, favorite_handler, forum_handler, home_handler,
-        invitation_handler, notification_handler, problem_handler, profile_handler,
+        class_handler, contest_handler, draft_handler, favorite_handler, forum_handler,
+        home_handler, invitation_handler, notification_handler, problem_handler, profile_handler,
         ranking_handler, run_handler, submission_handler,
     },
 };
@@ -267,6 +267,10 @@ pub fn router(state: AppState) -> Router {
             post(favorite_handler::favorite_problem).delete(favorite_handler::unfavorite_problem),
         )
         .route(
+            "/api/problems/{id}/draft",
+            get(draft_handler::get).put(draft_handler::save),
+        )
+        .route(
             "/api/profile/favorites/problems",
             get(favorite_handler::list_problem_favorites),
         )
@@ -344,6 +348,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/forum/reports", post(forum_handler::create_report))
         .route("/api/notifications", get(notification_handler::list))
         .route("/api/notifications/send", post(notification_handler::send))
+        .route(
+            "/api/profile/notification-preferences",
+            get(notification_handler::preferences).put(notification_handler::update_preferences),
+        )
         .route(
             "/api/notifications/unread-count",
             get(notification_handler::unread_count),

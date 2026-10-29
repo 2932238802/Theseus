@@ -6,7 +6,7 @@
 #
 # 覆盖：登录资料、用户名修改与冲突、邮箱变更验证、密码修改与 token 失效、
 #       退出所有设备、头像上传/访问/删除、学习分析、论坛收藏、注销匿名化、
-#       教师有未归档班级时注销被拒绝。
+#       教师有未归档组织时注销被拒绝。
 #
 # 用法：
 #   ./backend-rust/scripts/smoke_profile.sh
@@ -205,9 +205,9 @@ expect_code "取消收藏" 200
 say "教师注销保护"
 TEACHER_TOKEN=$(login "$TEACHER" admin)
 api POST /classes "$TEACHER_TOKEN" "{\"name\":\"$CLASS_NAME\"}"
-expect_code "教师创建班级" 201
+expect_code "教师创建组织" 201
 api DELETE /profile "$TEACHER_TOKEN" "{\"password\":\"admin\",\"username\":\"$TEACHER\"}"
-expect_code "教师有未归档班级时注销被拒绝" 409
+expect_code "教师有未归档组织时注销被拒绝" 409
 
 say "注销账号"
 api DELETE /profile "$TOKEN" "{\"password\":\"newpass12345\",\"username\":\"${STUDENT}_new\"}"

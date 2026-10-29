@@ -9,7 +9,9 @@ use crate::{
     AppState,
     common::{error::AppError, response::ok},
     middleware::auth::{authenticate, require_verified_email},
-    models::notification::{NotificationListQuery, SendNotificationRequest},
+    models::notification::{
+        NotificationListQuery, SendNotificationRequest, UpdateNotificationPreferencesRequest,
+    },
     services::notification_service,
 };
 
@@ -64,5 +66,24 @@ pub async fn mark_all_read(
 ) -> Result<impl IntoResponse, AppError> {
     let user = authenticate(&state.pool, &headers, &state.config).await?;
     let data = notification_service::mark_all_read(&state.pool, user.id).await?;
+    Ok(ok(data))
+}
+
+pub async fn preferences(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data = notification_service::preferences(&state.pool, user.id).await?;
+    Ok(ok(data))
+}
+
+pub async fn update_preferences(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<UpdateNotificationPreferencesRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data = notification_service::update_preferences(&state.pool, user.id, &request).await?;
     Ok(ok(data))
 }

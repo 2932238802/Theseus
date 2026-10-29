@@ -5,6 +5,7 @@ pub mod auth_handler;
 pub mod badge_handler;
 pub mod class_handler;
 pub mod contest_handler;
+pub mod draft_handler;
 pub mod favorite_handler;
 pub mod forum_handler;
 pub mod home_handler;

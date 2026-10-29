@@ -1,18 +1,21 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use sqlx::{PgPool, Postgres, QueryBuilder, Transaction};
+use sqlx::{FromRow, PgPool, Postgres, QueryBuilder, Transaction};
 
 use crate::{
     common::error::AppError,
+    config::Config,
     middleware::auth::AuthUser,
     models::notification::{
         NotificationItem, NotificationListQuery, NotificationListResponse,
-        NotificationReadResponse, NotificationRow, SendNotificationRequest,
-        SendNotificationResponse, UnreadCountResponse,
+        NotificationPreferenceView, NotificationPreferencesResponse, NotificationReadResponse,
+        NotificationRow, SendNotificationRequest, SendNotificationResponse, UnreadCountResponse,
+        UpdateNotificationPreferencesRequest,
     },
+    services::email_service,
 };
 
 const DEFAULT_PAGE: u32 = 1;
@@ -225,7 +228,248 @@ pub async fn mark_all_read(
     })
 }
 
-/// 发送自定义站内通知。教师只能发给名下班级的在读学生；管理员可以发
+/// 邮件通知类别。站内信始终接收，偏好只控制是否额外发送邮件。
+pub const EMAIL_CATEGORIES: [&str; 6] = [
+    "class",
+    "assignment",
+    "forum",
+    "account",
+    "contest",
+    "announcement",
+];
+
+fn category_for_type(notification_type: &str) -> Option<&'static str> {
+    match notification_type {
+        "class_invite" | "class_invite_accepted" | "class_invite_declined" => Some("class"),
+        "assignment_published" | "assignment_grades_published" | "assignment_override_granted" => {
+            Some("assignment")
+        }
+        "forum_reply" | "forum_comment" | "forum_mention" => Some("forum"),
+        "forum_moderation" | "forum_mute" | "reputation_notice" | "problem_review" => {
+            Some("account")
+        }
+        "contest_result" => Some("contest"),
+        "system_notice" => Some("announcement"),
+        _ => None,
+    }
+}
+
+fn default_email_enabled(category: &str) -> bool {
+    matches!(category, "class" | "assignment" | "account" | "contest")
+}
+
+fn is_email_category(category: &str) -> bool {
+    EMAIL_CATEGORIES.contains(&category)
+}
+
+/// 返回通知偏好。未保存过的类别按默认值返回，站内信不受影响。
+pub async fn preferences(
+    pool: &PgPool,
+    user_id: i32,
+) -> Result<NotificationPreferencesResponse, AppError> {
+    let (email, email_verified): (String, bool) =
+        sqlx::query_as("SELECT email, (email_verified_at IS NOT NULL) FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::Database)?;
+    let rows: Vec<(String, bool)> = sqlx::query_as(
+        "SELECT category, enabled FROM notification_preferences \
+         WHERE user_id = $1 AND channel = 'email'",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+    let saved: HashMap<String, bool> = rows.into_iter().collect();
+    let preferences = EMAIL_CATEGORIES
+        .iter()
+        .map(|category| NotificationPreferenceView {
+            category: (*category).to_owned(),
+            channel: "email".to_owned(),
+            enabled: saved
+                .get(*category)
+                .copied()
+                .unwrap_or_else(|| default_email_enabled(category)),
+        })
+        .collect();
+    Ok(NotificationPreferencesResponse {
+        email,
+        email_verified,
+        preferences,
+    })
+}
+
+pub async fn update_preferences(
+    pool: &PgPool,
+    user_id: i32,
+    request: &UpdateNotificationPreferencesRequest,
+) -> Result<NotificationPreferencesResponse, AppError> {
+    if request.preferences.is_empty() {
+        return Err(AppError::BadRequest("请至少提交一项通知偏好".to_owned()));
+    }
+    let mut changes: HashMap<&str, bool> = HashMap::new();
+    for item in &request.preferences {
+        if !is_email_category(&item.category) {
+            return Err(AppError::BadRequest("不支持的通知类别".to_owned()));
+        }
+        changes.insert(item.category.as_str(), item.enabled);
+    }
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    for (category, enabled) in changes {
+        sqlx::query(
+            "INSERT INTO notification_preferences (user_id, category, channel, enabled) \
+             VALUES ($1, $2, 'email', $3) \
+             ON CONFLICT (user_id, category, channel) DO UPDATE \
+                 SET enabled = EXCLUDED.enabled, updated_at = CURRENT_TIMESTAMP",
+        )
+        .bind(user_id)
+        .bind(category)
+        .bind(enabled)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+    }
+    transaction.commit().await.map_err(AppError::Database)?;
+    preferences(pool, user_id).await
+}
+
+#[derive(Debug, FromRow)]
+struct PendingNotificationEmail {
+    id: i64,
+    user_id: i32,
+    notification_type: String,
+    title: String,
+    body: Option<String>,
+    link: Option<String>,
+}
+
+/// 把待处理的通知转换成邮件发件箱记录。
+///
+/// 通知在各自事务里写入后只留下 `email_state = 'pending'`，由邮件循环统一
+/// 判断用户是否验证邮箱、是否开启该类别，因此所有通知入口（包括批量插入）
+/// 都不需要单独处理邮件。
+pub async fn queue_pending_emails(
+    pool: &PgPool,
+    config: &Config,
+    limit: usize,
+) -> Result<usize, AppError> {
+    sqlx::query(
+        "UPDATE notifications SET email_state = 'pending', email_state_at = NULL \
+         WHERE email_state = 'sending' \
+           AND email_state_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes'",
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let rows: Vec<PendingNotificationEmail> = sqlx::query_as(
+        "UPDATE notifications \
+         SET email_state = 'sending', email_state_at = CURRENT_TIMESTAMP \
+         WHERE id IN ( \
+             SELECT id FROM notifications WHERE email_state = 'pending' \
+             ORDER BY id LIMIT $1 FOR UPDATE SKIP LOCKED \
+         ) \
+         RETURNING id, user_id, type AS notification_type, title, body, link",
+    )
+    .bind(limit.max(1) as i64)
+    .fetch_all(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    let mut queued = 0usize;
+    for row in &rows {
+        let sent = queue_one_email(&mut transaction, config, row).await?;
+        sqlx::query(
+            "UPDATE notifications SET email_state = $2, email_state_at = CURRENT_TIMESTAMP \
+             WHERE id = $1",
+        )
+        .bind(row.id)
+        .bind(if sent { "queued" } else { "skipped" })
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        if sent {
+            queued += 1;
+        }
+    }
+    transaction.commit().await.map_err(AppError::Database)?;
+    Ok(queued)
+}
+
+async fn queue_one_email(
+    transaction: &mut Transaction<'_, Postgres>,
+    config: &Config,
+    row: &PendingNotificationEmail,
+) -> Result<bool, AppError> {
+    let Some(category) = category_for_type(&row.notification_type) else {
+        return Ok(false);
+    };
+    let recipient: Option<(String, bool, Option<bool>)> = sqlx::query_as(
+        "SELECT u.email, (u.email_verified_at IS NOT NULL), np.enabled \
+         FROM users u \
+         LEFT JOIN notification_preferences np \
+           ON np.user_id = u.id AND np.category = $2 AND np.channel = 'email' \
+         WHERE u.id = $1 AND u.status = 'active'",
+    )
+    .bind(row.user_id)
+    .bind(category)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(AppError::Database)?;
+    let Some((email, verified, saved)) = recipient else {
+        return Ok(false);
+    };
+    if !verified || email.trim().is_empty() {
+        return Ok(false);
+    }
+    let enabled = saved.unwrap_or_else(|| default_email_enabled(category));
+    if !enabled {
+        return Ok(false);
+    }
+    email_service::enqueue(
+        transaction,
+        &email,
+        &email_subject(&row.title),
+        &email_body(config, row),
+    )
+    .await?;
+    Ok(true)
+}
+
+/// 邮件标题来自通知标题，去掉控制字符避免头部注入。
+fn email_subject(title: &str) -> String {
+    let cleaned: String = title
+        .chars()
+        .map(|value| if value.is_control() { ' ' } else { value })
+        .collect();
+    let title = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let title: String = title.chars().take(120).collect();
+    format!("Theseus 通知：{title}")
+}
+
+fn email_body(config: &Config, row: &PendingNotificationEmail) -> String {
+    let mut body = row.title.clone();
+    if let Some(detail) = row
+        .body
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        body.push_str("\n\n");
+        body.push_str(detail);
+    }
+    if let Some(link) = row.link.as_deref().filter(|value| value.starts_with('/')) {
+        body.push_str("\n\n查看详情：");
+        body.push_str(config.frontend_base_url.trim_end_matches('/'));
+        body.push_str(link);
+    }
+    body.push_str("\n\n你可以在「账号设置 - 通知偏好」中调整邮件通知");
+    body
+}
+
+/// 发送自定义站内通知。教师只能发给名下组织的在读学生；管理员可以发
 /// 给指定用户、某个角色或全站。返回实际写入的通知条数。
 pub async fn send_custom(
     pool: &PgPool,
@@ -251,12 +495,12 @@ pub async fn send_custom(
     if actor.is_teacher() {
         if role.is_some() || all {
             return Err(AppError::ForbiddenWith(
-                "教师只能给本班学生发送通知".to_owned(),
+                "教师只能给本组织学生发送通知".to_owned(),
             ));
         }
         let class_id = request
             .class_id
-            .ok_or_else(|| AppError::BadRequest("请选择要发送通知的班级".to_owned()))?;
+            .ok_or_else(|| AppError::BadRequest("请选择要发送通知的组织".to_owned()))?;
         return send_to_class(
             pool,
             actor.id,
@@ -355,12 +599,12 @@ async fn send_to_class(
             .await
             .map_err(AppError::Database)?;
     let (owner_id, archived_at) =
-        class.ok_or_else(|| AppError::NotFound("班级不存在".to_owned()))?;
+        class.ok_or_else(|| AppError::NotFound("组织不存在".to_owned()))?;
     if owner_id != actor_id {
-        return Err(AppError::NotFound("班级不存在".to_owned()));
+        return Err(AppError::NotFound("组织不存在".to_owned()));
     }
     if archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
 
     let recipients: Vec<i32> = match user_ids {
@@ -377,7 +621,7 @@ async fn send_to_class(
             .map_err(AppError::Database)?;
             if found.len() != ids.len() {
                 return Err(AppError::BadRequest(
-                    "接收人必须都是本班在读学生".to_owned(),
+                    "接收人必须都是本组织在读学生".to_owned(),
                 ));
             }
             found
@@ -535,9 +779,56 @@ fn truncate_chars(value: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_CUSTOM_BODY_CHARS, extract_mentions, normalize_user_ids, validate_audience_role,
-        validate_custom_body, validate_custom_link, validate_custom_title,
+        EMAIL_CATEGORIES, MAX_CUSTOM_BODY_CHARS, category_for_type, default_email_enabled,
+        email_subject, extract_mentions, is_email_category, normalize_user_ids,
+        validate_audience_role, validate_custom_body, validate_custom_link, validate_custom_title,
     };
+
+    #[test]
+    fn strips_control_characters_from_email_subjects() {
+        assert_eq!(
+            email_subject("正常标题"),
+            "Theseus 通知：正常标题".to_owned()
+        );
+        assert_eq!(
+            email_subject("标题\r\nBcc: evil@example.com"),
+            "Theseus 通知：标题 Bcc: evil@example.com".to_owned()
+        );
+    }
+
+    #[test]
+    fn maps_notification_types_to_email_categories() {
+        assert_eq!(category_for_type("class_invite"), Some("class"));
+        assert_eq!(
+            category_for_type("assignment_grades_published"),
+            Some("assignment")
+        );
+        assert_eq!(category_for_type("forum_mention"), Some("forum"));
+        assert_eq!(category_for_type("reputation_notice"), Some("account"));
+        assert_eq!(category_for_type("problem_review"), Some("account"));
+        assert_eq!(category_for_type("contest_result"), Some("contest"));
+        assert_eq!(category_for_type("system_notice"), Some("announcement"));
+        assert_eq!(category_for_type("unknown_type"), None);
+    }
+
+    #[test]
+    fn only_known_categories_are_configurable() {
+        for category in EMAIL_CATEGORIES {
+            assert!(is_email_category(category), "{category}");
+        }
+        assert!(!is_email_category("marketing"));
+        assert!(!is_email_category(""));
+    }
+
+    #[test]
+    fn noisy_categories_default_to_no_email() {
+        assert!(default_email_enabled("class"));
+        assert!(default_email_enabled("assignment"));
+        assert!(default_email_enabled("account"));
+        assert!(default_email_enabled("contest"));
+        assert!(!default_email_enabled("forum"));
+        assert!(!default_email_enabled("announcement"));
+    }
 
     #[test]
     fn extracts_mentions_and_strips_punctuation() {

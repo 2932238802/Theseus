@@ -82,6 +82,19 @@
   color: var(--color-text);
 }
 
+.nav-menu-panel .nav-menu-disabled {
+  display: flex;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 @keyframes nav-menu-in {
   from {
     opacity: 0;

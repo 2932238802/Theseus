@@ -148,7 +148,7 @@ pub async fn change_role(
     .map_err(AppError::Database)?;
     if membership_count > 0 && target_role != ROLE_STUDENT {
         return Err(AppError::ConflictWith(
-            "该用户仍在班级中，请先退出班级或被教师移除".to_owned(),
+            "该用户仍在组织中，请先退出组织或被教师移除".to_owned(),
         ));
     }
 
@@ -163,7 +163,7 @@ pub async fn change_role(
     if owned_count > 0 {
         if target_role == ROLE_TEACHER || !request.archive_owned_classes {
             return Err(AppError::ConflictWith(
-                "该教师仍有未归档的班级；确认归档这些班级后才能降级".to_owned(),
+                "该教师仍有未归档的组织；确认归档这些组织后才能降级".to_owned(),
             ));
         }
         archived_class_count = archive_owned_classes(&mut transaction, target_id).await?;

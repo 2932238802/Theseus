@@ -4,13 +4,21 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import NotificationBell from './NotificationBell.vue'
 import NavSearch from './NavSearch.vue'
 import { useAuthStore } from '../store/auth'
+import { useClassStore } from '../store/classes'
 import { isDarkTheme, toggleTheme as applyThemeToggle } from '../utils/theme'
 
 const authStore = useAuthStore()
+const classStore = useClassStore()
 const router = useRouter()
 const route = useRoute()
 const isMenuOpen = ref(false)
 const isDark = ref(isDarkTheme())
+
+const canBrowseAssignments = computed(() => authStore.isStudent || authStore.isTeacher)
+const classListReady = computed(
+  () => Boolean(authStore.user) && classStore.loadedForUserId === authStore.user?.id,
+)
+const hasClasses = computed(() => classListReady.value && classStore.classes.length > 0)
 
 const userInitial = computed(() => authStore.user?.avatar ?? authStore.user?.username.slice(0, 1).toUpperCase() ?? 'T')
 const roleLabel = computed(() => {
@@ -33,15 +41,22 @@ const manageRef = ref<HTMLElement | null>(null)
 const isAdminArea = computed(() => route.path.startsWith('/admin'))
 const isCampusOpen = ref(false)
 const campusRef = ref<HTMLElement | null>(null)
+const isContestOpen = ref(false)
+const contestRef = ref<HTMLElement | null>(null)
 const isProfileMenuOpen = ref(false)
 const profileMenuRef = ref<HTMLElement | null>(null)
 const isCampusArea = computed(() =>
-  ['/contests', '/classes', '/assignments'].some(
+  ['/classes', '/assignments'].some(
     (prefix) => route.path === prefix || route.path.startsWith(`${prefix}/`),
-  ),
+  ) || route.path === '/profile/assignments',
+)
+const isContestArea = computed(
+  () => route.path === '/contests' || route.path.startsWith('/contests/'),
 )
 const isProfileArea = computed(
-  () => route.path === '/profile' || route.path.startsWith('/profile/'),
+  () =>
+    (route.path === '/profile' || route.path.startsWith('/profile/')) &&
+    route.path !== '/profile/assignments',
 )
 
 const closeManage = (): void => {
@@ -52,6 +67,10 @@ const closeCampus = (): void => {
   isCampusOpen.value = false
 }
 
+const closeContest = (): void => {
+  isContestOpen.value = false
+}
+
 const closeProfileMenu = (): void => {
   isProfileMenuOpen.value = false
 }
@@ -60,6 +79,7 @@ const onDocumentPointerDown = (event: PointerEvent): void => {
   if (!(event.target instanceof Node)) return
   if (isManageOpen.value && !manageRef.value?.contains(event.target)) closeManage()
   if (isCampusOpen.value && !campusRef.value?.contains(event.target)) closeCampus()
+  if (isContestOpen.value && !contestRef.value?.contains(event.target)) closeContest()
   if (isProfileMenuOpen.value && !profileMenuRef.value?.contains(event.target)) closeProfileMenu()
 }
 
@@ -67,6 +87,7 @@ const onWindowKeydown = (event: KeyboardEvent): void => {
   if (event.key !== 'Escape') return
   if (isManageOpen.value) closeManage()
   if (isCampusOpen.value) closeCampus()
+  if (isContestOpen.value) closeContest()
   if (isProfileMenuOpen.value) closeProfileMenu()
   if (isMenuOpen.value) isMenuOpen.value = false
 }
@@ -80,9 +101,18 @@ watch(
   () => {
     closeManage()
     closeCampus()
+    closeContest()
     closeProfileMenu()
     isMenuOpen.value = false
   },
+)
+
+watch(
+  () => authStore.user?.id,
+  (id) => {
+    if (id && canBrowseAssignments.value) void classStore.ensureLoadedFor(id)
+  },
+  { immediate: true },
 )
 
 const logout = (): void => {
@@ -111,7 +141,40 @@ onBeforeUnmount(() => {
     <nav class="main-nav" aria-label="主导航">
       <RouterLink to="/problems">题库</RouterLink>
       <RouterLink class="nav-forum" to="/forum">论坛</RouterLink>
-      <div ref="campusRef" class="nav-menu nav-campus" :class="{ 'is-active': isCampusArea }">
+      <div
+        v-if="authStore.isAuthenticated"
+        ref="contestRef"
+        class="nav-menu nav-contest"
+        :class="{ 'is-active': isContestArea }"
+      >
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-controls="contest-menu-panel"
+          :aria-expanded="isContestOpen"
+          @click="isContestOpen = !isContestOpen"
+        >
+          赛事<span class="nav-caret" aria-hidden="true"></span>
+        </button>
+        <div
+          v-if="isContestOpen"
+          id="contest-menu-panel"
+          class="nav-menu-panel"
+          role="menu"
+          aria-label="赛事"
+        >
+          <RouterLink role="menuitem" to="/contests" @click="closeContest">竞赛</RouterLink>
+          <RouterLink role="menuitem" to="/contests/rankings" @click="closeContest">
+            排行榜
+          </RouterLink>
+        </div>
+      </div>
+      <div
+        v-if="canBrowseAssignments"
+        ref="campusRef"
+        class="nav-menu nav-campus"
+        :class="{ 'is-active': isCampusArea }"
+      >
         <button
           type="button"
           aria-haspopup="menu"
@@ -128,25 +191,26 @@ onBeforeUnmount(() => {
           role="menu"
           aria-label="校园"
         >
-          <RouterLink
-            v-if="authStore.isAuthenticated"
-            role="menuitem"
-            to="/contests"
-            @click="closeCampus"
-          >
-            竞赛
+          <RouterLink role="menuitem" to="/classes" @click="closeCampus">
+            我的组织
           </RouterLink>
           <RouterLink
-            v-if="authStore.isStudent || authStore.isTeacher"
+            v-if="hasClasses"
             role="menuitem"
-            to="/classes"
+            to="/profile/assignments"
             @click="closeCampus"
           >
-            我的班级
+            我的作业
           </RouterLink>
-          <RouterLink role="menuitem" :to="{ name: 'contest-rankings' }" @click="closeCampus">
-            排行榜
-          </RouterLink>
+          <span
+            v-else
+            role="menuitem"
+            class="nav-menu-disabled"
+            aria-disabled="true"
+            title="加入组织后可查看作业"
+          >
+            我的作业
+          </span>
         </div>
       </div>
       <div

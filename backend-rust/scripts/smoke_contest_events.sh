@@ -5,7 +5,7 @@
 # 设计文档：doc/2610291_竞赛ui的完善.md
 #
 # 覆盖：首页 featured 返回排位赛配置与规则、赛事三种状态（报名中/即将开始/进行中）、
-#       公开报名与重复报名幂等、名额已满、邀请赛事直接加入、外部链接赛事、班级范围限制、
+#       公开报名与重复报名幂等、名额已满、邀请赛事直接加入、外部链接赛事、组织范围限制、
 #       报名截止、已结束/草稿赛事不进入首页、赛事详情。
 #
 # 用法：
@@ -146,7 +146,7 @@ insert_event() {
 OPEN_ID=$(insert_event "公开报名" official open "1 hour" "3 hours" "1")
 INVITE_ID=$(insert_event "邀请加入" teacher invite "2 hours" "4 hours" "NULL")
 EXTERNAL_ID=$(insert_event "外部报名" school external "3 hours" "5 hours" "NULL")
-CLASS_ID_EVENT=$(insert_event "班级限定" school open "4 hours" "6 hours" "NULL" "NULL" "$CLASS_ID")
+CLASS_ID_EVENT=$(insert_event "组织限定" school open "4 hours" "6 hours" "NULL" "NULL" "$CLASS_ID")
 CLOSED_ID=$(insert_event "报名截止" official open "5 hours" "7 hours" "NULL" "CURRENT_TIMESTAMP - INTERVAL '1 minute'")
 RUNNING_ID=$(insert_event "进行中" official open "-10 minutes" "50 minutes" "NULL")
 ENDED_ID=$(insert_event "已结束" official open "-3 hours" "-1 hour" "NULL")
@@ -228,19 +228,19 @@ expect_jq "截止赛事显示原因" ".data.events | map(select(.id == $CLOSED_I
 api POST "/contests/events/$CLOSED_ID/register" "$TOKEN"
 expect_code "截止赛事报名被拒绝" 409
 
-say "班级范围"
+say "组织范围"
 api GET /contests/featured "$TOKEN"
-expect_jq "非班级成员不可参加" ".data.events | map(select(.id == $CLASS_ID_EVENT))[0].eligible == false"
-expect_jq "不可参加原因可见" ".data.events | map(select(.id == $CLASS_ID_EVENT))[0].ineligible_reason == \"仅限指定班级的学生参加\""
+expect_jq "非组织成员不可参加" ".data.events | map(select(.id == $CLASS_ID_EVENT))[0].eligible == false"
+expect_jq "不可参加原因可见" ".data.events | map(select(.id == $CLASS_ID_EVENT))[0].ineligible_reason == \"仅限指定组织的学生参加\""
 api POST "/contests/events/$CLASS_ID_EVENT/register" "$TOKEN"
-expect_code "非班级成员报名被拒绝" 403
+expect_code "非组织成员报名被拒绝" 403
 psql "$DATABASE_URL" -q -c "INSERT INTO class_members (class_id, user_id, status)
     VALUES ($CLASS_ID, $STUDENT_ID, 'active') ON CONFLICT (class_id, user_id)
     DO UPDATE SET status = 'active';"
 api GET /contests/featured "$TOKEN"
-expect_jq "班级成员可参加" ".data.events | map(select(.id == $CLASS_ID_EVENT))[0].eligible == true"
+expect_jq "组织成员可参加" ".data.events | map(select(.id == $CLASS_ID_EVENT))[0].eligible == true"
 api POST "/contests/events/$CLASS_ID_EVENT/register" "$TOKEN"
-expect_code "班级成员报名成功" 200
+expect_code "组织成员报名成功" 200
 
 say "进行中赛事"
 psql "$DATABASE_URL" -q -c "INSERT INTO official_event_registrations (event_id, user_id, status)

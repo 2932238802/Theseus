@@ -11,6 +11,7 @@ import { useShortcutStore } from '../store/shortcuts'
 import { useSubmissionStore } from '../store/submissions'
 import { fetchAssignment } from '../api/assignments'
 import { fetchContestProblem } from '../api/contests'
+import { fetchProblemDraft, saveProblemDraft } from '../api/drafts'
 import { setProblemFavorite } from '../api/favorites'
 import { toErrorMessage } from '../api/client'
 import type { AssignmentDetail } from '../types/teaching'
@@ -187,6 +188,94 @@ const resetCode = (): void => {
   saveDraft()
   if (problemStore.currentProblem) clearDraftMeta(problemStore.currentProblem.id)
 }
+
+// 跨设备草稿：本地草稿仍然即时落盘，服务端在停止编辑约 1 秒后同步
+let draftSyncTimer: ReturnType<typeof setTimeout> | null = null
+let draftHydrationGeneration = 0
+let activeHydrations = 0
+let pendingDraftSync = false
+let adoptingRemoteDraft = false
+
+const cancelDraftSync = (): void => {
+  if (draftSyncTimer !== null) {
+    clearTimeout(draftSyncTimer)
+    draftSyncTimer = null
+  }
+}
+
+const pushDraftToServer = async (
+  targetProblemId: number | undefined,
+  targetLanguage: Language,
+  content: string,
+): Promise<void> => {
+  if (!targetProblemId || contestId.value || !authStore.isAuthenticated) return
+  try {
+    await saveProblemDraft(targetProblemId, targetLanguage, content)
+  } catch {
+    // 同步失败不影响答题，下次编辑时会重试
+  }
+}
+
+const scheduleDraftSync = (): void => {
+  if (!authStore.isAuthenticated || contestId.value) return
+  const problem = problemStore.currentProblem
+  if (!problem) return
+  if (activeHydrations > 0) {
+    // 正在读取云端草稿，等读取结束后再决定推送哪一份
+    pendingDraftSync = true
+    return
+  }
+  cancelDraftSync()
+  const payload = code.value === templateFor(language.value) ? '' : code.value
+  const targetLanguage = language.value
+  const targetProblemId = problem.id
+  draftSyncTimer = setTimeout(() => {
+    draftSyncTimer = null
+    void pushDraftToServer(targetProblemId, targetLanguage, payload)
+  }, 1000)
+}
+
+const hydrateDraftFromServer = async (): Promise<void> => {
+  if (!authStore.isAuthenticated || contestId.value) return
+  const problem = problemStore.currentProblem
+  if (!problem) return
+  const generation = ++draftHydrationGeneration
+  const targetLanguage = language.value
+  const localCode = code.value
+  const template = templateFor(targetLanguage)
+  activeHydrations += 1
+  try {
+    const remote = await fetchProblemDraft(problem.id, targetLanguage)
+    if (generation !== draftHydrationGeneration) return
+    if (language.value !== targetLanguage) return
+    if (code.value !== localCode) {
+      // 读取期间用户已经编辑，保留本地内容并稍后同步
+      scheduleDraftSync()
+      return
+    }
+    if (localCode !== template) {
+      // 本地已有编辑，避免被云端覆盖
+      scheduleDraftSync()
+      return
+    }
+    if (!remote || remote.code === template) return
+    adoptingRemoteDraft = true
+    try {
+      code.value = remote.code
+      localStorage.setItem(`theseus-draft-${problem.id}-${targetLanguage}`, remote.code)
+    } finally {
+      adoptingRemoteDraft = false
+    }
+  } catch {
+    // 读取失败时沿用本地草稿，后续编辑仍会同步
+  } finally {
+    activeHydrations -= 1
+    if (activeHydrations === 0 && pendingDraftSync) {
+      pendingDraftSync = false
+      scheduleDraftSync()
+    }
+  }
+}
 const loadAssignmentContext = async (): Promise<void> => {
   assignment.value = null
   assignmentError.value = ''
@@ -238,6 +327,7 @@ const loadPage = async (): Promise<void> => {
     contestId.value ? Promise.resolve() : loadAssignmentContext(),
   ])
   restoreDraft()
+  await hydrateDraftFromServer()
 }
 const problemContextText = (): string => {
   const problem = problemStore.currentProblem
@@ -675,14 +765,21 @@ watch(language, (_next, previous) => {
   }
   restoreDraft()
   isRunDialogOpen.value = false
+  void hydrateDraftFromServer()
 })
-watch(code, saveDraft)
+watch(code, () => {
+  saveDraft()
+  if (!adoptingRemoteDraft) scheduleDraftSync()
+})
 watch(
   () => submissionStore.latest?.status,
   (status) => {
-    if (status === 'Accepted' && problemStore.currentProblem) {
-      clearDraftMeta(problemStore.currentProblem.id)
-    }
+    if (status !== 'Accepted' || !problemStore.currentProblem) return
+    clearDraftMeta(problemStore.currentProblem.id)
+    // 通过后清掉云端草稿，避免首页继续学习展示已完成的题目
+    cancelDraftSync()
+    pendingDraftSync = false
+    void pushDraftToServer(problemStore.currentProblem.id, language.value, '')
   },
 )
 watch([() => route.params.id, contestId], () => { void loadPage() })
@@ -690,6 +787,13 @@ watch(assignmentId, () => { void loadAssignmentContext() })
 onBeforeUnmount(() => {
   submissionStore.stopPolling()
   runStore.stopPolling()
+  if (draftSyncTimer !== null || pendingDraftSync) {
+    // 离开页面时立即把最后一次编辑同步到云端
+    cancelDraftSync()
+    pendingDraftSync = false
+    const payload = code.value === templateFor(language.value) ? '' : code.value
+    void pushDraftToServer(problemStore.currentProblem?.id, language.value, payload)
+  }
   window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('keydown', onShortcutKeydown, true)
   window.removeEventListener('pointermove', onPointerMove)
@@ -709,12 +813,11 @@ onBeforeUnmount(() => {
   <NavBar />
   <main ref="pageRef" class="oj-page">
     <div v-if="problemStore.isLoading || assignmentLoading" class="oj-loading">正在准备题目</div>
-    <div v-else-if="assignmentError" class="oj-error"><h1>无法打开作业</h1><p>{{ assignmentError }}</p><RouterLink class="primary-button" to="/classes">返回班级</RouterLink></div>
+    <div v-else-if="assignmentError" class="oj-error"><h1>无法打开作业</h1><p>{{ assignmentError }}</p><RouterLink class="primary-button" to="/classes">返回组织</RouterLink></div>
     <div v-else-if="problemStore.error" class="oj-error"><h1>无法打开题目</h1><p>{{ problemStore.error }}</p><RouterLink class="primary-button" to="/problems">返回题库</RouterLink></div>
     <template v-else-if="problemStore.currentProblem">
       <section class="problem-pane">
         <div class="problem-pane-inner">
-          <div class="breadcrumb"><RouterLink :to="contestId ? '/contests' : '/problems'">{{ contestId ? '竞赛' : '题库' }}</RouterLink><span>/</span><span>{{ problemStore.currentProblem.id }}. {{ problemStore.currentProblem.title }}</span></div>
           <aside v-if="contestId" class="assignment-context contest-context">
             <div><span>比赛</span><strong>排位赛 #{{ contestId }}</strong></div>
             <span>比赛模式 · 题目由比赛提供，提交计入比赛成绩</span>

@@ -191,14 +191,6 @@ onBeforeUnmount(() => {
 <template>
   <NavBar />
   <main class="teaching-page page-shell contest-page">
-    <nav class="teaching-breadcrumb" aria-label="面包屑">
-      <RouterLink to="/contests">竞赛</RouterLink>
-      <span>/</span>
-      <RouterLink v-if="detail?.event_id" :to="`/contests/events/${detail.event_id}`">赛事详情</RouterLink>
-      <span v-if="detail?.event_id">/</span>
-      <span>{{ contestIdRef ? `${detail?.event_id ? '赛事比赛' : '排位赛'} #${contestIdRef}` : '排位赛' }}</span>
-    </nav>
-
     <div v-if="isLoading && !detail" class="empty-state">
       <p>正在加载比赛</p>
     </div>

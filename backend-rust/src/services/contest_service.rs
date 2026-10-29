@@ -2246,7 +2246,7 @@ async fn register_event_inner(
         .await
         .map_err(AppError::Database)?;
         if !allowed {
-            return Err(AppError::ForbiddenWith("仅限指定班级的学生参加".to_owned()));
+            return Err(AppError::ForbiddenWith("仅限指定组织的学生参加".to_owned()));
         }
     }
 
@@ -2401,7 +2401,7 @@ fn build_event_card(row: EventRow, now: DateTime<Utc>) -> ContestEventCard {
     let mut ineligible_reason = if eligible {
         None
     } else {
-        Some("仅限指定班级的学生参加".to_owned())
+        Some("仅限指定组织的学生参加".to_owned())
     };
     if ineligible_reason.is_none() && full && !row.is_registered {
         ineligible_reason = Some("名额已满".to_owned());
@@ -3329,7 +3329,7 @@ pub async fn admin_create_event(
                 .await
                 .map_err(AppError::Database)?;
         if !class_exists {
-            return Err(AppError::BadRequest("班级不存在".to_owned()));
+            return Err(AppError::BadRequest("组织不存在".to_owned()));
         }
     }
     ensure_problems_exist(&mut transaction, &input.problem_ids).await?;
@@ -3416,7 +3416,7 @@ pub async fn admin_update_event(
                 .await
                 .map_err(AppError::Database)?;
         if !class_exists {
-            return Err(AppError::BadRequest("班级不存在".to_owned()));
+            return Err(AppError::BadRequest("组织不存在".to_owned()));
         }
     }
     ensure_problems_exist(&mut transaction, &input.problem_ids).await?;

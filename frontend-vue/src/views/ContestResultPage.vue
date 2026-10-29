@@ -59,18 +59,6 @@ void load()
 <template>
   <NavBar />
   <main class="teaching-page page-shell contest-result-page">
-    <nav class="teaching-breadcrumb" aria-label="面包屑">
-      <RouterLink to="/contests">竞赛</RouterLink>
-      <span>/</span>
-      <RouterLink
-        :to="isEventContest ? `/contests/events/${result?.contest.event_id}` : `/contests/${contestId}`"
-      >
-        {{ isEventContest ? '赛事详情' : `排位赛 #${contestId}` }}
-      </RouterLink>
-      <span>/</span>
-      <span>结果</span>
-    </nav>
-
     <div v-if="isLoading" class="empty-state">
       <p>正在加载比赛结果</p>
     </div>

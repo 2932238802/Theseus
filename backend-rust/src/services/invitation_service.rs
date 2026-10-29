@@ -135,12 +135,12 @@ pub async fn create_invitations(
             .await
             .map_err(AppError::Database)?;
     let (class_name, owner_id, archived_at) =
-        class.ok_or_else(|| AppError::NotFound("班级不存在".to_owned()))?;
+        class.ok_or_else(|| AppError::NotFound("组织不存在".to_owned()))?;
     if owner_id != teacher.id {
-        return Err(AppError::NotFound("班级不存在".to_owned()));
+        return Err(AppError::NotFound("组织不存在".to_owned()));
     }
     if archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
 
     let teacher_username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = $1")
@@ -216,8 +216,8 @@ pub async fn create_invitations(
             target.id,
             "class_invite",
             Some(teacher.id),
-            &format!("{teacher_username} 邀请你加入班级「{class_name}」"),
-            Some("邀请 7 天内有效，可在通知中心或「我的班级」中接受或拒绝"),
+            &format!("{teacher_username} 邀请你加入组织「{class_name}」"),
+            Some("邀请 7 天内有效，可在通知中心或「我的组织」中接受或拒绝"),
             Some("/classes"),
             Some("class_invitation"),
             Some(invitation_id),
@@ -228,7 +228,7 @@ pub async fn create_invitations(
     transaction.commit().await.map_err(AppError::Database)?;
 
     let message = if invited_count > 0 {
-        format!("已发送 {invited_count} 份班级邀请")
+        format!("已发送 {invited_count} 份组织邀请")
     } else {
         "没有新的邀请发送".to_owned()
     };
@@ -266,7 +266,7 @@ pub async fn list_my_invitations(
 ) -> Result<MyInvitationListResponse, AppError> {
     if !student.is_student() {
         return Err(AppError::ForbiddenWith(
-            "只有学生账号可以查看班级邀请".to_owned(),
+            "只有学生账号可以查看组织邀请".to_owned(),
         ));
     }
     expire_stale(pool, "invitee_id", i64::from(student.id)).await?;
@@ -302,7 +302,7 @@ pub async fn accept_invitation(
         return Err(AppError::ConflictWith("邀请已过期".to_owned()));
     }
     if invitation.archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
 
     sqlx::query(
@@ -328,8 +328,8 @@ pub async fn accept_invitation(
         invitation.inviter_id,
         "class_invite_accepted",
         Some(student.id),
-        &format!("{username} 接受了你发送的班级邀请"),
-        Some(&format!("已加入班级「{}」", invitation.class_name)),
+        &format!("{username} 接受了你发送的组织邀请"),
+        Some(&format!("已加入组织「{}」", invitation.class_name)),
         Some(&format!("/classes/{}", invitation.class_id)),
         Some("class_invitation"),
         Some(invitation_id),
@@ -340,7 +340,7 @@ pub async fn accept_invitation(
         id: invitation_id,
         class_id: invitation.class_id,
         status: "accepted".to_owned(),
-        message: format!("已加入班级「{}」", invitation.class_name),
+        message: format!("已加入组织「{}」", invitation.class_name),
     })
 }
 
@@ -371,8 +371,8 @@ pub async fn decline_invitation(
         invitation.inviter_id,
         "class_invite_declined",
         Some(student.id),
-        &format!("{username} 拒绝了你发送的班级邀请"),
-        Some(&format!("班级「{}」", invitation.class_name)),
+        &format!("{username} 拒绝了你发送的组织邀请"),
+        Some(&format!("组织「{}」", invitation.class_name)),
         Some(&format!("/classes/{}", invitation.class_id)),
         Some("class_invitation"),
         Some(invitation_id),
@@ -403,7 +403,7 @@ async fn ensure_class_owner(
         .await
         .map_err(AppError::Database)?;
     if owner_id != Some(teacher.id) {
-        return Err(AppError::NotFound("班级不存在".to_owned()));
+        return Err(AppError::NotFound("组织不存在".to_owned()));
     }
     Ok(())
 }

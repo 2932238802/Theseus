@@ -304,9 +304,6 @@ watch(includeRemoved, load)
     <template v-else-if="gradebook">
       <header class="teaching-page-header">
         <div>
-          <p class="teaching-breadcrumb">
-            <RouterLink :to="`/assignments/${assignmentId}`">{{ gradebook.assignment.title }}</RouterLink><span>/</span><span>批改台</span>
-          </p>
           <h1>{{ gradebook.assignment.title }}</h1>
           <p class="teaching-subtle">
             <span>截止 {{ formatDateTime(gradebook.assignment.dueAt) }}</span>

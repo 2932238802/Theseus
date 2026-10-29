@@ -31,13 +31,13 @@ const targets = computed<SearchTarget[]>(() => {
   if (authStore.isAuthenticated) {
     items.push(
       { label: '竞赛', hint: '4 人排位赛', group: '社区', to: '/contests', keywords: 'contest 竞赛 排位赛 比赛' },
-      { label: '通知中心', hint: '站内通知与班级邀请', group: '个人', to: '/notifications', keywords: 'notifications 消息 通知 邀请' },
+      { label: '通知中心', hint: '站内通知与组织邀请', group: '个人', to: '/notifications', keywords: 'notifications 消息 通知 邀请' },
       { label: '个人主页', hint: '资料、提交记录与学习分析', group: '个人', to: '/profile', keywords: 'profile 个人 资料 记录 分析' },
       { label: '我的收藏', hint: '题目、帖子与评论', group: '个人', to: '/profile/favorites', keywords: 'favorites 收藏' },
     )
   }
   if (authStore.isStudent || authStore.isTeacher) {
-    items.push({ label: '我的班级', hint: '班级、成员与作业', group: '教学', to: '/classes', keywords: 'classes 班级 作业' })
+    items.push({ label: '我的组织', hint: '组织、成员与作业', group: '教学', to: '/classes', keywords: 'classes 组织 作业' })
   }
   if (authStore.isTeacher) {
     items.push({ label: '出题', hint: '创建与维护题目', group: '教学', to: '/teacher/problems', keywords: 'teacher problems 出题 我的题目' })

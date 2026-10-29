@@ -102,7 +102,7 @@ onMounted(() => {
       class="teaching-panel"
     >
       <div class="section-heading">
-        <h2>班级邀请</h2>
+        <h2>组织邀请</h2>
         <span class="teaching-subtle">{{ invitationStore.invitations.length }} 条待处理</span>
       </div>
       <p v-if="invitationStore.error" class="form-error" role="alert">{{ invitationStore.error }}</p>
@@ -112,7 +112,7 @@ onMounted(() => {
           <div>
             <strong>{{ item.className }}</strong>
             <span>
-              {{ invitationMeta(item) || '班级邀请' }} · {{ item.inviterUsername }} 邀请
+              {{ invitationMeta(item) || '组织邀请' }} · {{ item.inviterUsername }} 邀请
             </span>
             <span>{{ formatDateTime(item.expiresAt) }} 前有效</span>
           </div>
@@ -141,7 +141,7 @@ onMounted(() => {
 
     <section v-if="authStore.isTeacher" class="teaching-toolbar">
       <button class="primary-button" type="button" @click="showCreateForm = !showCreateForm">
-        {{ showCreateForm ? '收起' : '创建班级' }}
+        {{ showCreateForm ? '收起' : '创建组织' }}
       </button>
     </section>
 
@@ -149,7 +149,7 @@ onMounted(() => {
       <form class="teaching-form" @submit.prevent="createClass">
         <div class="teaching-form-grid">
           <label>
-            <span>班级名称</span>
+            <span>组织名称</span>
             <input v-model="createForm.name" maxlength="100" required />
           </label>
           <label>
@@ -168,7 +168,7 @@ onMounted(() => {
         <p v-if="createError" class="form-error" role="alert">{{ createError }}</p>
         <div class="teaching-form-actions">
           <button class="primary-button" type="submit" :disabled="isCreating || !createForm.name.trim()">
-            {{ isCreating ? '创建中' : '创建班级' }}
+            {{ isCreating ? '创建中' : '创建组织' }}
           </button>
         </div>
       </form>
@@ -181,7 +181,7 @@ onMounted(() => {
           <input v-model="inviteCode" maxlength="8" placeholder="8 位邀请码" required />
         </label>
         <button class="primary-button" type="submit" :disabled="isJoining || !inviteCode.trim()">
-          {{ isJoining ? '加入中' : '加入班级' }}
+          {{ isJoining ? '加入中' : '加入组织' }}
         </button>
       </form>
       <p v-if="joinError" class="form-error" role="alert">{{ joinError }}</p>
@@ -190,7 +190,7 @@ onMounted(() => {
     <p v-if="classStore.error" class="form-error" role="alert">{{ classStore.error }}</p>
 
     <section class="teaching-list" aria-live="polite">
-      <div v-if="classStore.isLoading" class="empty-state"><p>正在加载班级</p></div>
+      <div v-if="classStore.isLoading" class="empty-state"><p>正在加载组织</p></div>
       <template v-else-if="classStore.classes.length">
         <RouterLink
           v-for="item in classStore.classes"
@@ -212,7 +212,7 @@ onMounted(() => {
         </RouterLink>
       </template>
       <div v-else-if="!classStore.error" class="empty-state">
-        <p>{{ authStore.isTeacher ? '还没有班级' : '还没有加入班级' }}</p>
+        <p>{{ authStore.isTeacher ? '还没有组织' : '还没有加入组织' }}</p>
       </div>
     </section>
   </main>

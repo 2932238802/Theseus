@@ -20,6 +20,15 @@ struct ContinueRow {
 }
 
 #[derive(Debug, FromRow)]
+struct DraftContinueRow {
+    problem_id: i32,
+    problem_title: String,
+    difficulty: String,
+    language: String,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, FromRow)]
 struct ActivityRow {
     submission_id: i32,
     problem_id: i32,
@@ -62,7 +71,18 @@ pub async fn overview(pool: &PgPool, user_id: i32) -> Result<HomeOverviewRespons
         .map_err(AppError::Database)?
     };
 
-    let continue_learning = unfinished
+    let draft: Option<DraftContinueRow> = sqlx::query_as(
+        "SELECT d.problem_id, p.title AS problem_title, p.difficulty, d.language, d.updated_at \
+         FROM problem_drafts d JOIN problems p ON p.id = d.problem_id \
+         WHERE d.user_id = $1 AND p.review_status = 'approved' \
+         ORDER BY d.updated_at DESC LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    let from_submission = unfinished
         .map(|row| (row, "resume"))
         .or_else(|| latest.map(|row| (row, "review")))
         .map(|(row, action)| HomeContinue {
@@ -74,6 +94,26 @@ pub async fn overview(pool: &PgPool, user_id: i32) -> Result<HomeOverviewRespons
             last_activity_at: row.submitted_at,
             action: action.to_owned(),
         });
+    let from_draft = draft.map(|row| HomeContinue {
+        problem_id: row.problem_id,
+        problem_title: row.problem_title,
+        difficulty: row.difficulty,
+        language: row.language,
+        status: "draft".to_owned(),
+        last_activity_at: row.updated_at,
+        action: "resume".to_owned(),
+    });
+    let continue_learning = match (from_draft, from_submission) {
+        (Some(draft_entry), Some(submission_entry)) => {
+            if draft_entry.last_activity_at >= submission_entry.last_activity_at {
+                Some(draft_entry)
+            } else {
+                Some(submission_entry)
+            }
+        }
+        (Some(draft_entry), None) => Some(draft_entry),
+        (None, submission_entry) => submission_entry,
+    };
 
     let (accepted_problems, attempted_problems): (i64, i64) = sqlx::query_as(
         "SELECT COUNT(DISTINCT problem_id) FILTER (WHERE status = 'accepted')::bigint, \

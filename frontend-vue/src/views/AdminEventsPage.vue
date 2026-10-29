@@ -389,7 +389,7 @@ onMounted(() => {
           </select>
         </label>
         <label class="contest-admin-field">
-          <span>限定班级编号</span>
+          <span>限定组织编号</span>
           <input v-model="form.class_id" type="number" min="1" placeholder="留空表示不限" />
         </label>
         <label class="contest-admin-field">

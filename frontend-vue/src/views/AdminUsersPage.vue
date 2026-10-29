@@ -101,7 +101,7 @@ const resetFilters = (): void => {
 
 const successMessage = (message: string, archivedCount: number): string => {
   const base = message || '角色已更新 立即生效'
-  return archivedCount > 0 ? `${base} 已归档 ${archivedCount} 个班级` : base
+  return archivedCount > 0 ? `${base} 已归档 ${archivedCount} 个组织` : base
 }
 
 const applyRole = async (user: AdminUser, role: Role, archive: boolean): Promise<void> => {
@@ -129,7 +129,7 @@ const requestRole = (user: AdminUser, event: Event): void => {
   if (nextRole === user.role || busyUserId.value !== null) return
 
   if (user.role === 'student' && user.activeMembershipCount > 0) {
-    actionError.value = `该学生仍有 ${user.activeMembershipCount} 个班级 请先退出班级`
+    actionError.value = `该学生仍有 ${user.activeMembershipCount} 个组织 请先退出组织`
     return
   }
 
@@ -317,7 +317,7 @@ onMounted(() => {
               <th>角色</th>
               <th>状态</th>
               <th>信誉分</th>
-              <th>班级</th>
+              <th>组织</th>
               <th>注册时间</th>
               <th>操作</th>
             </tr>
@@ -406,15 +406,15 @@ onMounted(() => {
       <header>
         <div>
           <h2 id="demote-title">变更教师「{{ demoteTarget.user.username }}」的角色</h2>
-          <p>该教师仍有 {{ demoteTarget.user.ownedActiveClassCount }} 个未归档班级</p>
+          <p>该教师仍有 {{ demoteTarget.user.ownedActiveClassCount }} 个未归档组织</p>
         </div>
         <button type="button" aria-label="关闭" @click="closeDemote">×</button>
       </header>
       <div class="run-dialog-body">
-        <p class="teaching-subtle">变更为{{ ROLE_LABELS[demoteTarget.nextRole] }}会先归档这些班级</p>
+        <p class="teaching-subtle">变更为{{ ROLE_LABELS[demoteTarget.nextRole] }}会先归档这些组织</p>
         <label class="teaching-switch">
           <input v-model="archiveOwnedClasses" type="checkbox" />
-          <span>归档这些班级后降级</span>
+          <span>归档这些组织后降级</span>
         </label>
         <p v-if="demoteError" class="form-error" role="alert">{{ demoteError }}</p>
         <div class="teaching-form-actions">

@@ -195,7 +195,7 @@ onMounted(() => {
       <article><strong>{{ analytics?.summary.totalSubmissions ?? 0 }}</strong><span>总提交数</span></article>
       <article><strong>{{ analytics?.summary.acceptanceRate ?? 0 }}<small>%</small></strong><span>通过率</span></article>
       <article><strong>{{ analytics?.summary.attemptedProblems ?? 0 }}</strong><span>已尝试题目</span></article>
-      <article><strong>{{ analytics?.summary.activeClasses ?? 0 }}</strong><span>活跃班级</span></article>
+      <article><strong>{{ analytics?.summary.activeClasses ?? 0 }}</strong><span>活跃组织</span></article>
       <article><strong>{{ analytics?.summary.streakDays ?? 0 }}</strong><span>连续通过天数</span></article>
     </section>
 

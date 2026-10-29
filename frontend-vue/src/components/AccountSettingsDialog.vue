@@ -12,6 +12,12 @@ import {
   setBadgeVisibility,
   updateUsername,
 } from '../api/profile'
+import {
+  fetchNotificationPreferences,
+  updateNotificationPreferences,
+  type NotificationPreference,
+  type NotificationPreferences,
+} from '../api/notifications'
 import { useAuthStore } from '../store/auth'
 import type { ProfileBadge } from '../types/profile'
 
@@ -30,17 +36,32 @@ const busy = ref('')
 const error = ref('')
 const badges = ref<ProfileBadge[]>([])
 const badgesLoading = ref(true)
-const activeSection = ref<'username' | 'email' | 'password' | 'sessions' | 'badges' | 'danger'>(
-  'username',
-)
+const notificationPrefs = ref<NotificationPreferences | null>(null)
+const notificationPrefsLoading = ref(true)
+const activeSection = ref<
+  'username' | 'email' | 'password' | 'notifications' | 'sessions' | 'badges' | 'danger'
+>('username')
 const sections = [
   { key: 'username', label: '用户名' },
   { key: 'email', label: '邮箱' },
   { key: 'password', label: '密码' },
+  { key: 'notifications', label: '通知偏好' },
   { key: 'sessions', label: '设备会话' },
   { key: 'badges', label: '徽章展示' },
   { key: 'danger', label: '注销账号' },
 ] as const
+
+const NOTIFICATION_CATEGORY_INFO: Record<string, { label: string; description: string }> = {
+  class: { label: '组织', description: '组织邀请与邀请处理结果' },
+  assignment: { label: '作业与成绩', description: '新作业发布与成绩公布' },
+  forum: { label: '论坛互动', description: '帖子回复、评论与提及' },
+  account: { label: '账号处理', description: '违规处理、禁言、信誉分与题目审核' },
+  contest: { label: '竞赛结果', description: '排位赛与赛事结算结果' },
+  announcement: { label: '系统公告', description: '管理员和教师发布的公告' },
+}
+
+const categoryInfo = (category: string): { label: string; description: string } =>
+  NOTIFICATION_CATEGORY_INFO[category] ?? { label: category, description: '' }
 
 const run = async (key: string, action: () => Promise<void>): Promise<void> => {
   if (busy.value) return
@@ -115,8 +136,46 @@ const toggleBadge = (badge: ProfileBadge): void => {
   })
 }
 
+const loadNotificationPrefs = async (): Promise<void> => {
+  notificationPrefsLoading.value = true
+  try {
+    notificationPrefs.value = await fetchNotificationPreferences()
+  } catch (exception: unknown) {
+    error.value = toErrorMessage(exception)
+  } finally {
+    notificationPrefsLoading.value = false
+  }
+}
+
+const toggleNotificationPreference = async (
+  preference: NotificationPreference,
+): Promise<void> => {
+  if (busy.value) return
+  const enabled = !preference.enabled
+  busy.value = `pref-${preference.category}`
+  error.value = ''
+  try {
+    notificationPrefs.value = await updateNotificationPreferences([
+      { category: preference.category, enabled },
+    ])
+    toast.success(enabled ? '已开启该类邮件通知' : '已关闭该类邮件通知')
+  } catch (exception: unknown) {
+    error.value = toErrorMessage(exception)
+    if (notificationPrefs.value) {
+      // 失败时重建列表，让复选框回到服务端状态
+      notificationPrefs.value = {
+        ...notificationPrefs.value,
+        preferences: [...notificationPrefs.value.preferences],
+      }
+    }
+  } finally {
+    busy.value = ''
+  }
+}
+
 onMounted(() => {
   void loadBadges()
+  void loadNotificationPrefs()
 })
 
 const logoutEverywhere = (): void => {
@@ -232,6 +291,35 @@ const removeAccount = (): void => {
           </div>
         </form>
 
+        <section v-show="activeSection === 'notifications'" class="teaching-grade-form">
+          <h3>通知偏好</h3>
+          <p class="teaching-subtle">
+            站内信始终接收，这里只控制是否额外发送邮件到
+            {{ notificationPrefs?.email || authStore.user?.email }}
+          </p>
+          <p v-if="notificationPrefs && !notificationPrefs.emailVerified" class="teaching-subtle">
+            邮箱尚未验证，验证后才会收到通知邮件
+          </p>
+          <p v-if="notificationPrefsLoading" class="teaching-subtle">加载中</p>
+          <ul v-else-if="notificationPrefs" class="profile-badge-settings">
+            <li v-for="preference in notificationPrefs.preferences" :key="preference.category">
+              <div>
+                <strong>{{ categoryInfo(preference.category).label }}</strong>
+                <small>{{ categoryInfo(preference.category).description }}</small>
+              </div>
+              <label class="profile-badge-toggle">
+                <input
+                  type="checkbox"
+                  :checked="preference.enabled"
+                  :disabled="Boolean(busy)"
+                  @change="toggleNotificationPreference(preference)"
+                />
+                <span>邮件</span>
+              </label>
+            </li>
+          </ul>
+        </section>
+
         <section v-show="activeSection === 'sessions'" class="teaching-grade-form">
           <h3>设备会话</h3>
           <p class="teaching-subtle">退出所有设备会使当前浏览器也退出登录</p>
@@ -280,7 +368,7 @@ const removeAccount = (): void => {
           <h3>注销账号</h3>
           <p class="teaching-subtle">
             注销后账号立即不可登录，用户名和邮箱会匿名化；历史提交、成绩和教学记录保留；
-            教师需先归档自己的班级
+            教师需先归档自己的组织
           </p>
           <label>
             <span>当前密码</span>

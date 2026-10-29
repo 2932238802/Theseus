@@ -81,7 +81,7 @@ pub struct NotificationReadResponse {
 }
 
 /// 自定义站内通知。受众三选一：
-/// - 教师：class_id（可选 user_ids 限定本班成员）
+/// - 教师：class_id（可选 user_ids 限定本组织成员）
 /// - 管理员：user_ids / role / all
 #[derive(Debug, Deserialize)]
 pub struct SendNotificationRequest {
@@ -104,4 +104,30 @@ pub struct SendNotificationRequest {
 pub struct SendNotificationResponse {
     pub recipient_count: u64,
     pub message: String,
+}
+
+/// 通知偏好按「类别 + 渠道」保存；当前只开放邮件渠道，站内信始终接收。
+#[derive(Debug, Serialize)]
+pub struct NotificationPreferenceView {
+    pub category: String,
+    pub channel: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NotificationPreferencesResponse {
+    pub email: String,
+    pub email_verified: bool,
+    pub preferences: Vec<NotificationPreferenceView>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateNotificationPreferencesRequest {
+    pub preferences: Vec<NotificationPreferenceUpdate>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NotificationPreferenceUpdate {
+    pub category: String,
+    pub enabled: bool,
 }

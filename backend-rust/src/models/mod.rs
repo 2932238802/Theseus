@@ -1,5 +1,6 @@
 pub mod badge;
 pub mod contest;
+pub mod draft;
 pub mod favorite;
 pub mod forum;
 pub mod home;

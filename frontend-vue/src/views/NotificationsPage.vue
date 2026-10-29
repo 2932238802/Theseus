@@ -71,7 +71,7 @@ const closeDetail = (): void => {
 }
 
 const linkLabel = (item: ForumNotification): string => {
-  if (item.type === 'class_invite') return '前往班级 →'
+  if (item.type === 'class_invite') return '前往组织 →'
   if (item.type === 'system_notice') return '打开通知 →'
   return '查看详情 →'
 }
@@ -120,6 +120,12 @@ onMounted(() => {
         全部标为已读
       </button>
     </header>
+
+    <p class="teaching-subtle">
+      站内信始终接收，邮件通知可在
+      <RouterLink to="/profile">个人界面</RouterLink>
+      的「账号设置 - 通知偏好」中调整
+    </p>
 
     <p v-if="notificationStore.error" class="form-error" role="alert">{{ notificationStore.error }}</p>
     <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>

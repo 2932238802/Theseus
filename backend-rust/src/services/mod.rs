@@ -5,6 +5,7 @@ pub mod auth_service;
 pub mod badge_service;
 pub mod class_service;
 pub mod contest_service;
+pub mod draft_service;
 pub mod email_service;
 pub mod favorite_service;
 pub mod forum_service;

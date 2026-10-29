@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# Theseus 班级 / 作业 / 批改冒烟测试。
+# Theseus 组织 / 作业 / 批改冒烟测试。
 #
 # 设计文档：doc/2610259_班级与作业设计方案.md
 #
 # 只操作真实运行的 API + PostgreSQL，不 mock 任何一层。覆盖：
-#   管理员改角色 / 角色立即生效 / 自助改角色拒绝 / 学生有班级时不能升教师 /
-#   教师班级与邀请码 / 学生加入 / 教师不能加入 / 学生不能建班 /
+#   管理员改角色 / 角色立即生效 / 自助改角色拒绝 / 学生有组织时不能升教师 /
+#   教师组织与邀请码 / 学生加入 / 教师不能加入 / 学生不能创建组织 /
 #   管理员不能访问教学数据 / 非 owner 教师 404 / 作业草稿与发布 /
 #   发布通知 / 学生作业提交 / 教师不能提交作业 / 教师查看提交代码 /
 #   自动评分与手动改分 / 学生成绩可见性 / 截止前不能发布成绩 / 截止后拒绝提交 /
-#   成绩发布通知 / 教师有班级时降级 409 / 归档确认后降级 / 清理。
+#   成绩发布通知 / 教师有组织时降级 409 / 归档确认后降级 / 清理。
 #
 # 用法：
 #   ./backend-rust/scripts/smoke_teaching.sh
@@ -584,7 +584,7 @@ main() {
     api_request GET '/api/admin/users?size=1' "$TEACHER_TOKEN" ""
     assert_status "教师访问用户管理" "403"
 
-    # 另一位教师用于非 owner 边界；无班级，可直接提升。
+    # 另一位教师用于非 owner 边界；无组织，可直接提升。
     body=$(jq -nc '{role:"teacher"}')
     api_request PUT "/api/admin/users/$OTHER_ID/role" "$ADMIN_TOKEN" "$body"
     assert_status "提升第二位教师" "200"
@@ -594,13 +594,13 @@ main() {
     end_check
 
     # ------------------------------------------------------------------
-    # 班级创建、加入与边界
+    # 组织创建、加入与边界
     # ------------------------------------------------------------------
     begin_check class_create_join
-    body=$(jq -nc --arg name "冒烟班级 ${suffix}" \
+    body=$(jq -nc --arg name "冒烟组织 ${suffix}" \
         '{name:$name, course_name:"算法", term:"2026 秋", description:"teaching smoke"}')
     api_request POST /api/classes "$TEACHER_TOKEN" "$body"
-    assert_status "教师创建班级" "201"
+    assert_status "教师创建组织" "201"
     CLASS_ID=$(jq -r '.data.id // empty' <<<"$API_BODY")
     INVITE_CODE=$(jq -r '.data.invite_code // empty' <<<"$API_BODY")
     assert_nonempty "class_id" "$CLASS_ID"
@@ -610,43 +610,43 @@ main() {
 
     body=$(jq -nc --arg code "$INVITE_CODE" '{invite_code:$code}')
     api_request POST /api/classes/join "$TEACHER_TOKEN" "$body"
-    assert_status "教师加入班级" "403"
+    assert_status "教师加入组织" "403"
 
-    api_request POST /api/classes "$STUDENT_TOKEN" '{"name":"学生班级"}'
-    assert_status "学生创建班级" "403"
+    api_request POST /api/classes "$STUDENT_TOKEN" '{"name":"学生组织"}'
+    assert_status "学生创建组织" "403"
 
     api_request GET '/api/classes' "$STUDENT_TOKEN" ""
-    assert_status "学生初始班级列表" "200"
-    assert_eq "学生初始班级数" "0" "$(jq -r '.data.classes | length' <<<"$API_BODY")"
+    assert_status "学生初始组织列表" "200"
+    assert_eq "学生初始组织数" "0" "$(jq -r '.data.classes | length' <<<"$API_BODY")"
 
     api_request POST /api/classes/join "$STUDENT_TOKEN" "$body"
     assert_status "学生邀请码加入" "200"
     assert_eq "学生关系" "student" "$(jq -r '.data.relation // empty' <<<"$API_BODY")"
 
     api_request GET "/api/classes/$CLASS_ID" "$STUDENT_TOKEN" ""
-    assert_status "学生查看班级" "200"
-    assert_json_absent "学生班级详情" "$(jq -c '.data' <<<"$API_BODY")" "invite_code"
-    assert_json_absent "学生班级详情" "$(jq -c '.data' <<<"$API_BODY")" "members"
+    assert_status "学生查看组织" "200"
+    assert_json_absent "学生组织详情" "$(jq -c '.data' <<<"$API_BODY")" "invite_code"
+    assert_json_absent "学生组织详情" "$(jq -c '.data' <<<"$API_BODY")" "members"
 
     api_request GET "/api/classes/$CLASS_ID" "$TEACHER_TOKEN" ""
-    assert_status "教师查看班级" "200"
+    assert_status "教师查看组织" "200"
     assert_eq "教师可见邀请码" "$INVITE_CODE" "$(jq -r '.data.invite_code // empty' <<<"$API_BODY")"
     assert_eq "教师可见成员邮箱" "1" \
         "$(jq -r --arg email "${STUDENT_USER}@example.test" '[.data.members[] | select(.email == $email)] | length' <<<"$API_BODY")"
 
     api_request GET '/api/classes' "$ADMIN_TOKEN" ""
-    assert_status "管理员班级列表" "403"
+    assert_status "管理员组织列表" "403"
     api_request GET "/api/classes/$CLASS_ID" "$ADMIN_TOKEN" ""
-    assert_status "管理员班级详情" "403"
+    assert_status "管理员组织详情" "403"
     api_request GET "/api/classes/$CLASS_ID" "$OTHER_TOKEN" ""
-    assert_status "非 owner 教师班级详情" "404"
+    assert_status "非 owner 教师组织详情" "404"
     api_request GET "/api/classes/$CLASS_ID/assignments" "$OTHER_TOKEN" ""
     assert_status "非 owner 教师作业列表" "404"
 
     body=$(jq -nc '{role:"teacher"}')
     api_request PUT "/api/admin/users/$STUDENT_ID/role" "$ADMIN_TOKEN" "$body"
-    assert_status "学生有班级时升教师" "409"
-    assert_contains "升教师错误文案" "$(api_error)" "请先退出班级"
+    assert_status "学生有组织时升教师" "409"
+    assert_contains "升教师错误文案" "$(api_error)" "请先退出组织"
 
     CHECK_NOTE="class=$CLASS_ID"
     end_check
@@ -805,7 +805,7 @@ main() {
     begin_check teacher_demotion
     body=$(jq -nc '{role:"student"}')
     api_request PUT "/api/admin/users/$TEACHER_ID/role" "$ADMIN_TOKEN" "$body"
-    assert_status "教师有班级时降级" "409"
+    assert_status "教师有组织时降级" "409"
     assert_contains "降级错误文案" "$(api_error)" "未归档"
     assert_eq "降级失败后角色仍为教师" "teacher" \
         "$(db_scalar "SELECT role FROM users WHERE id = $TEACHER_ID")"
@@ -815,14 +815,14 @@ main() {
     assert_status "确认归档后降级" "200"
     assert_eq "降级响应角色" "student" "$(jq -r '.data.role // empty' <<<"$API_BODY")"
     ARCHIVED_CLASS_COUNT=$(jq -r '.data.archived_class_count // 0' <<<"$API_BODY")
-    [[ "${ARCHIVED_CLASS_COUNT:-0}" -ge 1 ]] || fail_check "归档班级数应 >= 1，实际 [$ARCHIVED_CLASS_COUNT]"
-    assert_eq "班级已归档" "t" \
+    [[ "${ARCHIVED_CLASS_COUNT:-0}" -ge 1 ]] || fail_check "归档组织数应 >= 1，实际 [$ARCHIVED_CLASS_COUNT]"
+    assert_eq "组织已归档" "t" \
         "$(db_scalar "SELECT archived_at IS NOT NULL FROM classes WHERE id = $CLASS_ID")"
 
     login_only "$TEACHER_USER" "$password"
     TEACHER_TOKEN=$REG_TOKEN
     api_request GET "/api/classes/$CLASS_ID" "$TEACHER_TOKEN" ""
-    assert_status "降级后原教师查看班级" "404"
+    assert_status "降级后原教师查看组织" "404"
     CHECK_NOTE="archived=$ARCHIVED_CLASS_COUNT"
     end_check
 

@@ -60,8 +60,10 @@ const notifyError = ref('')
 
 let inviteSearchSequence = 0
 
-const classMeta = computed(() =>
-  [detail.value?.courseName, detail.value?.term].filter(Boolean).join(' · '),
+const createdLabel = computed(() =>
+  detail.value?.createdAt
+    ? new Date(detail.value.createdAt).toLocaleDateString('zh-CN')
+    : '—',
 )
 const activeMembers = computed(() =>
   (detail.value?.members ?? []).filter((member) => member.status === 'active'),
@@ -214,7 +216,7 @@ const sendClassNotice = async (): Promise<void> => {
 
 const removeMember = async (userId: number, username: string): Promise<void> => {
   if (!detail.value) return
-  if (!window.confirm(`确定将「${username}」移出班级吗？`)) return
+  if (!window.confirm(`确定将「${username}」移出组织吗？`)) return
   clearActionState()
   removingUserId.value = userId
   try {
@@ -233,7 +235,7 @@ const archiveClass = async (): Promise<void> => {
   isArchiving.value = true
   try {
     await classStore.archive(detail.value.id)
-    toast.success('班级已归档')
+    toast.success('组织已归档')
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
   } finally {
@@ -243,7 +245,7 @@ const archiveClass = async (): Promise<void> => {
 
 const leaveClass = async (): Promise<void> => {
   if (!detail.value) return
-  if (!window.confirm('确定退出该班级吗？')) return
+  if (!window.confirm('确定退出该组织吗？')) return
   clearActionState()
   isLeaving.value = true
   try {
@@ -290,18 +292,16 @@ watch(classId, load)
 <template>
   <NavBar />
   <main class="teaching-page page-shell">
-    <p v-if="classStore.isDetailLoading" class="empty-state"><span>正在加载班级</span></p>
+    <p v-if="classStore.isDetailLoading" class="empty-state"><span>正在加载组织</span></p>
     <div v-else-if="classStore.detailError" class="empty-state">
       <p>{{ classStore.detailError }}</p>
-      <RouterLink class="primary-button" to="/classes">返回班级</RouterLink>
+      <RouterLink class="primary-button" to="/classes">返回组织</RouterLink>
     </div>
 
     <template v-else-if="detail">
       <header class="teaching-page-header">
         <div>
-          <p class="teaching-breadcrumb"><RouterLink to="/classes">班级</RouterLink><span>/</span><span>{{ detail.name }}</span></p>
           <h1>{{ detail.name }}</h1>
-          <p v-if="classMeta" class="teaching-subtle">{{ classMeta }}</p>
         </div>
         <div class="teaching-header-actions">
           <RouterLink
@@ -318,7 +318,7 @@ watch(classId, load)
             :disabled="isArchiving"
             @click="archiveClass"
           >
-            {{ isArchiving ? '归档中' : '归档班级' }}
+            {{ isArchiving ? '归档中' : '归档组织' }}
           </button>
           <button
             v-if="detail.relation === 'student'"
@@ -327,13 +327,30 @@ watch(classId, load)
             :disabled="isLeaving"
             @click="leaveClass"
           >
-            {{ isLeaving ? '退出中' : '退出班级' }}
+            {{ isLeaving ? '退出中' : '退出组织' }}
           </button>
         </div>
       </header>
 
-      <p v-if="detail.archivedAt" class="teaching-badge">已归档于 {{ formatDateTime(detail.archivedAt) }}</p>
-      <p v-if="detail.description" class="teaching-description">{{ detail.description }}</p>
+      <div class="teaching-stat-strip">
+        <div class="teaching-stat">
+          <span>成员</span>
+          <strong>{{ detail.memberCount }}<small>人</small></strong>
+        </div>
+        <div class="teaching-stat">
+          <span>作业</span>
+          <strong>{{ detail.assignments.length }}<small>份</small></strong>
+        </div>
+        <div class="teaching-stat">
+          <span>创建时间</span>
+          <strong class="is-date">{{ createdLabel }}</strong>
+        </div>
+      </div>
+
+      <p v-if="detail.archivedAt" class="teaching-badge archived teaching-archived-note">
+        已归档于 {{ formatDateTime(detail.archivedAt) }}
+      </p>
+      <p v-if="detail.description" class="teaching-intro">{{ detail.description }}</p>
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
 
       <section v-if="isOwner" class="teaching-panel">
@@ -363,7 +380,18 @@ watch(classId, load)
             </button>
           </article>
         </div>
-        <p v-else class="empty-state"><span>还没有成员</span></p>
+        <div v-else class="teaching-empty-block">
+          <span class="teaching-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="12" cy="8" r="3.5" />
+              <path d="M5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5" stroke-linecap="round" />
+            </svg>
+          </span>
+          <div>
+            <strong>还没有成员</strong>
+            <p>通过邀请码或邀请学生加入后会显示在这里</p>
+          </div>
+        </div>
 
         <details v-if="removedMembers.length" class="teaching-removed">
           <summary>已移除成员 {{ removedMembers.length }} 人</summary>
@@ -379,7 +407,7 @@ watch(classId, load)
       <section v-if="isOwner && !isArchived" class="teaching-panel">
         <div class="section-heading">
           <h2>邀请学生</h2>
-          <span class="teaching-subtle">学生确认后加入班级</span>
+          <span class="teaching-subtle">学生确认后加入组织</span>
         </div>
         <form class="teaching-inline-form" @submit.prevent="searchCandidates">
           <label>
@@ -455,13 +483,13 @@ watch(classId, load)
 
       <section v-if="isOwner && !isArchived" class="teaching-panel">
         <div class="section-heading">
-          <h2>给本班学生发通知</h2>
+          <h2>给本组织学生发通知</h2>
           <span class="teaching-subtle">支持 Markdown</span>
         </div>
         <div class="teaching-audience">
           <label>
             <input v-model="notifyForm.audience" type="radio" value="all" />
-            <span>全班学生（{{ activeMembers.length }} 人）</span>
+            <span>全部学生（{{ activeMembers.length }} 人）</span>
           </label>
           <label>
             <input
@@ -530,7 +558,12 @@ watch(classId, load)
       </section>
 
       <section class="teaching-section">
-        <div class="section-heading"><h2>作业</h2></div>
+        <div class="section-heading">
+          <h2>作业</h2>
+          <span v-if="detail.assignments.length" class="teaching-badge">
+            {{ detail.assignments.length }} 份
+          </span>
+        </div>
         <div v-if="detail.assignments.length" class="teaching-card-list">
           <RouterLink
             v-for="assignment in detail.assignments"
@@ -550,7 +583,22 @@ watch(classId, load)
             </footer>
           </RouterLink>
         </div>
-        <p v-else class="empty-state"><span>还没有作业</span></p>
+        <div v-else class="teaching-empty-block">
+          <span class="teaching-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M7 3.5h8.5L19 7v13.5H7z" stroke-linejoin="round" />
+              <path d="M15 3.5V7h4" stroke-linejoin="round" />
+              <path d="M10 11h6M10 15h6" stroke-linecap="round" />
+            </svg>
+          </span>
+          <div>
+            <strong>还没有作业</strong>
+            <p v-if="isOwner">
+              {{ isArchived ? '组织已归档，无法继续创建作业' : '点击右上角「创建作业」布置第一份作业' }}
+            </p>
+            <p v-else>老师布置作业后会显示在这里</p>
+          </div>
+        </div>
       </section>
     </template>
   </main>

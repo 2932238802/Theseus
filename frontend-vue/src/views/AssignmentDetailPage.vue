@@ -146,17 +146,12 @@ watch(assignmentId, load)
     <p v-if="assignmentStore.isLoading" class="empty-state"><span>正在加载作业</span></p>
     <div v-else-if="assignmentStore.error" class="empty-state">
       <p>{{ assignmentStore.error }}</p>
-      <RouterLink class="primary-button" to="/classes">返回班级</RouterLink>
+      <RouterLink class="primary-button" to="/classes">返回组织</RouterLink>
     </div>
 
     <template v-else-if="detail">
       <header class="teaching-page-header">
         <div>
-          <p class="teaching-breadcrumb">
-            <RouterLink to="/classes">班级</RouterLink><span>/</span>
-            <RouterLink :to="`/classes/${detail.classId}`">{{ detail.className }}</RouterLink><span>/</span>
-            <span>{{ detail.title }}</span>
-          </p>
           <h1>{{ detail.title }}</h1>
           <p class="teaching-subtle">
             <span :class="['teaching-badge', detail.status]">{{ assignmentStatusLabel(detail.status) }}</span>
@@ -321,11 +316,11 @@ watch(assignmentId, load)
       </section>
 
       <section v-if="canSeeStats" class="teaching-panel">
-        <div class="section-heading"><h2>班级统计</h2></div>
+        <div class="section-heading"><h2>组织统计</h2></div>
         <p v-if="statsError" class="form-error">{{ statsError }}</p>
         <template v-else-if="stats">
           <div class="teaching-stats">
-            <article><strong>{{ stats.averageScore }}</strong><span>班级平均分</span></article>
+            <article><strong>{{ stats.averageScore }}</strong><span>组织平均分</span></article>
             <article><strong>{{ stats.submittedStudentCount }} / {{ stats.studentCount }}</strong><span>已提交</span></article>
             <article v-if="stats.myTotalScore !== undefined"><strong>{{ stats.myTotalScore }}</strong><span>我的总分</span></article>
             <article v-if="stats.myPositionBucket"><strong>{{ positionLabel(stats.myPositionBucket) }}</strong><span>我的位置</span></article>

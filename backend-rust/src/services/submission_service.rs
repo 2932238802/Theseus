@@ -828,7 +828,7 @@ async fn precheck_assignment(
 
     if !user.is_student() {
         return Err(AppError::ForbiddenWith(
-            "教师/管理员不能提交班级作业".to_owned(),
+            "教师/管理员不能提交组织作业".to_owned(),
         ));
     }
     if assignment_id <= 0 {
@@ -863,7 +863,7 @@ async fn precheck_assignment(
         return Err(AppError::Conflict("作业已归档".to_owned()));
     }
     if assignment.class_archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     if !assignment.started {
         return Err(AppError::Conflict("作业尚未开始".to_owned()));
@@ -967,7 +967,7 @@ async fn persist_submission(
     let (_, class_archived_at) =
         class.ok_or_else(|| AppError::NotFound("作业不存在".to_owned()))?;
     if class_archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
 
     #[derive(sqlx::FromRow)]

@@ -8,7 +8,7 @@
 
 认证接口返回的 JWT 通过 `Authorization: Bearer <token>` 访问受保护资源。管理员接口还要求 token 中的用户角色是 `admin`。
 
-> **角色模型：** 当前使用 `student` / `teacher` / `admin` 三个互斥角色，认证每次从 `users.role` 读取；管理员不能查看其他人的提交，教师只能访问自己的班级。详见 `doc/总体设计.md` 与 `doc/2610259_班级与作业设计方案.md`。
+> **角色模型：** 当前使用 `student` / `teacher` / `admin` 三个互斥角色，认证每次从 `users.role` 读取；管理员不能查看其他人的提交，教师只能访问自己的组织。详见 `doc/总体设计.md` 与 `doc/2610259_班级与作业设计方案.md`。
 
 ## 运行环境
 
@@ -34,6 +34,8 @@ cargo run
 | GET | `/api/problems/{id}` | 可选 | 已审核题目详情，登录时 `favorited` 表示是否已收藏 |
 | POST | `/api/problems/{id}/favorite` | 用户 | 收藏题目 |
 | DELETE | `/api/problems/{id}/favorite` | 用户 | 取消收藏题目 |
+| GET | `/api/problems/{id}/draft` | 用户 | 读取云端草稿，查询参数 `language`，返回 `{draft:{language,code,updated_at}\|null}` |
+| PUT | `/api/problems/{id}/draft` | 用户 | 保存云端草稿 `{language,code}`；`code` 为空或全空白时删除草稿 |
 | GET | `/api/stats` | 否 | `{total_problems,total_submissions,accepted_submissions}` |
 | POST | `/api/problems/custom` | 用户 | 提交自定义题目，状态为 `pending`；迁移后仅 `teacher` 可提交 |
 | POST | `/api/admin/problems` | 管理员 | 创建题目 |
@@ -61,6 +63,8 @@ cargo run
 | DELETE | `/api/forum/comments/{id}/favorite` | 用户 | 取消收藏论坛评论或回复 |
 | GET | `/api/profile/favorites/problems` | 用户 | 当前用户题目收藏列表 |
 | GET | `/api/profile/favorites/comments` | 用户 | 当前用户评论收藏列表 |
+| GET | `/api/profile/notification-preferences` | 用户 | 通知邮件偏好与邮箱验证状态 |
+| PUT | `/api/profile/notification-preferences` | 用户 | 批量更新通知邮件偏好 |
 | GET | `/api/contests/featured` | 用户 | 竞赛首页：排位赛配置、规则分组与限时赛事列表 |
 | GET | `/api/contests/events` | 用户 | 赛事列表，支持 `type`、`status`、`following`、`page`、`page_size` |
 | GET | `/api/contests/events/{id}` | 用户 | 赛事详情（含说明、规则和报名链接） |
@@ -84,7 +88,7 @@ cargo run
 | GET | `/api/assignments/{id}/overrides` | 教师 | 查询学生补交/免修例外 |
 | PUT | `/api/assignments/{id}/overrides/{user_id}/problems/{problem_id}` | 教师 | 设置补交/免修 |
 | DELETE | `/api/assignments/{id}/overrides/{user_id}/problems/{problem_id}` | 教师 | 撤销补交/免修 |
-| GET | `/api/assignments/{id}/statistics` | 学生/教师 | 匿名班级统计；学生需作业开启统计 |
+| GET | `/api/assignments/{id}/statistics` | 学生/教师 | 匿名组织统计；学生需作业开启统计 |
 | GET | `/api/assignments/{id}/policy-audits` | 教师 | 策略、例外和解析发布审计 |
 | GET | `/api/assignments/{id}/problems/{problem_id}/peer-submissions` | 学生/教师 | 同学 AC 代码；需作业开启开关 |
 
@@ -178,13 +182,16 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 - `PUT /api/profile/username` 请求 `{"username":"..."}`，唯一性冲突返回 409。
 - `POST /api/profile/email` 请求 `{"email":"..."}`；验证新邮箱前旧邮箱继续可用。
 - `PUT /api/profile/password` 请求 `{"current_password":"...","new_password":"..."}`，返回新 token。
-- `DELETE /api/profile` 请求 `{"password":"...","username":"..."}`；教师有未归档班级或最后一个管理员时返回 409。
+- `DELETE /api/profile` 请求 `{"password":"...","username":"..."}`；教师有未归档组织或最后一个管理员时返回 409。
 - `POST /api/profile/avatar` 使用 `multipart/form-data`，字段 `file`，JPG/PNG/WebP ≤2MB。
 - `GET /api/profile/analytics?days=30` 返回概览、趋势、难度和标签统计。
 - `GET /api/forum/favorites?page=&size=` 返回当前用户收藏的帖子。
 - `GET /api/profile/favorites/problems?page=&size=` 返回收藏的已审核题目 `{total,page,size,favorites:[{problem_id,title,difficulty,acceptance_rate,favorited_at}]}`
 - `GET /api/profile/favorites/comments?page=&size=` 返回收藏的评论 `{total,page,size,favorites:[{comment_id,post_id,post_title,parent_id,body_md,author,created_at,favorited_at}]}` 作者字段沿用公开作者结构，匿名评论不会泄露真实用户名
 - 收藏与取消收藏接口均返回 `{favorited}`，重复调用幂等；题目详情和列表的 `favorited` 字段、论坛评论和回复的 `favorited` 字段只对当前登录用户生效
+- `GET /api/profile/notification-preferences` 返回 `{email,email_verified,preferences:[{category,channel,enabled}]}`，未保存过的类别返回代码里的默认值
+- `PUT /api/profile/notification-preferences` 请求 `{"preferences":[{"category":"forum","enabled":true}]}`，可一次提交多项，返回与 GET 相同的完整偏好；`category` 取 `class|assignment|forum|account|contest|announcement`
+- 偏好只控制邮件渠道，站内信始终接收；通知邮件只发送到已验证的邮箱，后台邮件循环每轮把待处理通知转入发件箱，用户关闭某类别后该类别不再产生新邮件
 
 ## 竞赛与限时赛事接口
 
@@ -233,7 +240,7 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 
 - `status`：`registration` 报名中、`upcoming` 即将开始、`running` 进行中、`full` 已满员；已结束和草稿赛事不返回。
 - `action`：`register` 报名、`join` 加入、`enter` 进入赛事、`details` 查看详情、`full` 已满员、`closed` 已截止。
-- `eligible = false` 时前端置灰操作，原因在 `ineligible_reason`；目前仅支持班级范围，因此原因可能是「仅限指定班级的学生参加」。
+- `eligible = false` 时前端置灰操作，原因在 `ineligible_reason`；目前仅支持组织范围，因此原因可能是「仅限指定组织的学生参加」。
 - 排名排序：进行中赛事优先且按结束时间，其余按开始时间升序。
 
 报名与加入错误：
@@ -242,7 +249,7 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 |---|---:|
 | 赛事不存在或未发布 | 404 |
 | 外部链接赛事走站内报名、报名/加入接口与 `registration_mode` 不匹配 | 400 |
-| 非指定班级成员 | 403 |
+| 非指定组织成员 | 403 |
 | 赛事已开始或已结束 | 409 |
 | 报名尚未开始或已截止 | 409 |
 | 名额已满 | 409 |
@@ -373,6 +380,12 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 
 `POST /api/admin/events/{id}/forum` 要求赛事已发布。首次调用会创建校园墙帖子并置顶，返回 `{event_id,forum_post_id,pinned,message}`；已同步过的赛事返回原帖子且 `pinned=false`。置顶位已满时帖子创建成功但不置顶。赛事结束或取消后后台任务自动取消置顶。
 
+## 题目草稿接口
+
+- `GET /api/problems/{id}/draft?language=cpp` 需要登录，`language` 取 `cpp|java|python|javascript`；只对已审核题目开放，返回 `{draft: {language, code, updated_at} | null}`。
+- `PUT /api/problems/{id}/draft` 需要登录，请求体 `{language, code}`；`code` 上限 256 KB，超过返回参数错误；`code` 为空或全空白时删除该题该语言的草稿，返回 `{draft: null}`。
+- 草稿按「用户 + 题目 + 语言」唯一，重复保存为覆盖写入并刷新 `updated_at`；题目取消审核后读取和保存均返回不可见错误。
+
 ## 首页工作台接口
 
 `GET /api/home/overview` 需要登录，返回：
@@ -410,6 +423,8 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
   }
 }
 ```
+
+`continue_learning` 优先取最近一次未通过的提交，没有时取最近一次提交；再与最近一份云端草稿（仅限已审核题目）比较 `last_activity_at`，取更新的一方。来自草稿时 `status` 为 `draft`、`action` 为 `resume`。
 
 `POST /api/home/check-in` 每个 UTC 自然日只能成功一次，返回 `{checked_in,reputation_score,checkin_streak,message}`；首次签到信誉分 +0.1，上限 100，已经签到或已满时 `checked_in=false` 或分数不变。签到成功提示会显示连续签到天数，个人界面展示「连续签到 N 天」。信誉分只能通过每日签到和管理员定量恢复，退款、上诉等人工复核结果由管理员通过 `PUT /api/admin/users/{id}/reputation` 处理。
 

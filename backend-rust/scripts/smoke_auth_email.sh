@@ -355,8 +355,8 @@ main() {
     assert_eq "/me 邮箱状态" "false" "$(jq -r '.data.email_verified' <<<"$API_BODY")"
 
     api_request POST /api/classes/join "$USER_TOKEN" '{"invite_code":"XXXXXXXX"}'
-    assert_status "未验证加入班级" "403"
-    assert_contains "加入班级拦截文案" "$(api_error)" "验证邮箱"
+    assert_status "未验证加入组织" "403"
+    assert_contains "加入组织拦截文案" "$(api_error)" "验证邮箱"
 
     body=$(jq -nc '{title:"未验证发帖", body_md:"hello", tags:["general"], problem_id:null}')
     api_request POST /api/forum/posts "$USER_TOKEN" "$body"

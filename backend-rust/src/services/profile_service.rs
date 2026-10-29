@@ -105,7 +105,7 @@ pub async fn delete_account(
         .map_err(AppError::Database)?;
         if owned > 0 {
             return Err(AppError::Conflict(
-                "请先归档你的班级后再注销账号".to_owned(),
+                "请先归档你的组织后再注销账号".to_owned(),
             ));
         }
     }

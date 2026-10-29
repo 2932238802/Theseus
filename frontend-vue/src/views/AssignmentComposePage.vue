@@ -48,7 +48,6 @@ const policy = reactive({
   showClassStats: false,
 })
 const selected = ref<AssignmentProblemInput[]>([])
-const className = ref('')
 const status = ref<'draft' | 'published' | 'archived'>('draft')
 const isPublished = computed(() => status.value === 'published')
 const isArchived = computed(() => status.value === 'archived')
@@ -74,7 +73,6 @@ const fillForm = (detail: {
   startAt?: string
   dueAt?: string
   status: 'draft' | 'published' | 'archived'
-  className: string
   latePolicy: LatePolicy
   lateGraceHours: number
   latePenaltyPerDay: number
@@ -105,7 +103,6 @@ const fillForm = (detail: {
   policy.allowPeerCode = detail.allowPeerCode
   policy.showClassStats = detail.showClassStats
   status.value = detail.status
-  className.value = detail.className
   selected.value = isEdit.value
     ? detail.problems.map((problem) => ({
         problemId: problem.problemId,
@@ -130,8 +127,7 @@ const load = async (): Promise<void> => {
       if (detail.isOwner === false) throw new Error('作业不存在')
     } else {
       const detail = await fetchClass(classId.value)
-      className.value = detail.name
-      if (detail.relation !== 'owner') throw new Error('班级不存在')
+      if (detail.relation !== 'owner') throw new Error('组织不存在')
     }
     await searchProblems()
   } catch (exception: unknown) {
@@ -264,11 +260,6 @@ onMounted(load)
   <main class="teaching-page page-shell">
     <header class="teaching-page-header">
       <div>
-        <p class="teaching-breadcrumb">
-          <RouterLink to="/classes">班级</RouterLink><span>/</span>
-          <RouterLink v-if="className" :to="`/classes/${isEdit ? assignmentStore.current?.classId : classId}`">{{ className }}</RouterLink>
-          <span v-if="className">/</span><span>{{ isEdit ? '编辑作业' : '创建作业' }}</span>
-        </p>
         <h1>{{ isEdit ? '编辑作业' : '创建作业' }}</h1>
       </div>
     </header>
@@ -276,7 +267,7 @@ onMounted(load)
     <p v-if="isLoading" class="empty-state"><span>正在加载</span></p>
     <div v-else-if="loadError" class="empty-state">
       <p>{{ loadError }}</p>
-      <RouterLink class="primary-button" to="/classes">返回班级</RouterLink>
+      <RouterLink class="primary-button" to="/classes">返回组织</RouterLink>
     </div>
 
     <template v-else>
@@ -374,7 +365,7 @@ onMounted(load)
           <div class="teaching-form-actions">
             <label class="teaching-checkbox">
               <input v-model="policy.showClassStats" type="checkbox" />
-              <span>允许学生查看匿名班级统计</span>
+              <span>允许学生查看匿名组织统计</span>
             </label>
             <label class="teaching-checkbox">
               <input v-model="policy.allowPeerCode" type="checkbox" />

@@ -115,7 +115,7 @@ pub fn require_verified_email(user: &AuthUser) -> Result<(), AppError> {
         Ok(())
     } else {
         Err(AppError::ForbiddenWith(
-            "请先验证邮箱后再加入班级、提交作业或发帖".to_owned(),
+            "请先验证邮箱后再加入组织、提交作业或发帖".to_owned(),
         ))
     }
 }

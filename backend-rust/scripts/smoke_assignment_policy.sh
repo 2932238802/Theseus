@@ -13,7 +13,7 @@
 #   SMOKE_API_BASE=http://127.0.0.1:3001 ./backend-rust/scripts/smoke_assignment_policy.sh
 #
 # 依赖：bash、curl、jq、psql。
-# 只使用随机哑账号，结束后删除测试班级和账号。
+# 只使用随机哑账号，结束后删除测试组织和账号。
 
 set -uo pipefail
 
@@ -115,13 +115,13 @@ TEACHER_TOKEN=$(login "$TEACHER")
 STUDENT_TOKEN=$(login "$STUDENT")
 [[ -n "$TEACHER_TOKEN" && -n "$STUDENT_TOKEN" ]] || fatal "测试账号登录失败"
 
-say "创建班级并加入"
+say "创建组织并加入"
 api POST /classes "$TEACHER_TOKEN" "{\"name\":\"$CLASS_NAME\",\"course_name\":\"Algo\"}"
-expect_code "教师创建班级" 201
+expect_code "教师创建组织" 201
 CLASS_ID=$(jq -r '.data.id' <<<"$LAST_BODY")
 INVITE=$(jq -r '.data.invite_code' <<<"$LAST_BODY")
 api POST /classes/join "$STUDENT_TOKEN" "{\"invite_code\":\"$INVITE\"}"
-expect_code "学生加入班级" 200
+expect_code "学生加入组织" 200
 
 say "创建并发布带策略作业"
 DUE=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)

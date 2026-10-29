@@ -458,18 +458,18 @@ async fn class_context(
             .await
             .map_err(AppError::Database)?;
     let (owner_id, archived_at) =
-        class.ok_or_else(|| AppError::NotFound("班级不存在".to_owned()))?;
+        class.ok_or_else(|| AppError::NotFound("组织不存在".to_owned()))?;
     if user.is_teacher() {
         if owner_id == user.id {
             return Ok((owner_id, archived_at));
         }
-        return Err(AppError::NotFound("班级不存在".to_owned()));
+        return Err(AppError::NotFound("组织不存在".to_owned()));
     }
     if user.is_student() {
         if is_active_member(pool, class_id, user.id).await? {
             return Ok((owner_id, archived_at));
         }
-        return Err(AppError::NotFound("班级不存在".to_owned()));
+        return Err(AppError::NotFound("组织不存在".to_owned()));
     }
     Err(AppError::Forbidden)
 }
@@ -526,10 +526,10 @@ pub async fn create(
 ) -> Result<AssignmentDetail, AppError> {
     let (owner_id, archived_at) = class_context(pool, user, class_id).await?;
     if owner_id != user.id || !user.is_teacher() {
-        return Err(AppError::NotFound("班级不存在".to_owned()));
+        return Err(AppError::NotFound("组织不存在".to_owned()));
     }
     if archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     let title = normalize_title(&request.title)?;
     let description = normalize_description(request.description.as_deref())?;
@@ -584,7 +584,7 @@ pub async fn update(
         return Err(AppError::Conflict("已归档作业不能修改".to_owned()));
     }
     if assignment.class_archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     let policy = PolicyValues::from_update(request, &assignment)?;
 
@@ -720,7 +720,7 @@ pub async fn update_problems(
 ) -> Result<AssignmentDetail, AppError> {
     let assignment = access_owned_assignment(pool, user, id).await?;
     if assignment.class_archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     if assignment.status != ASSIGNMENT_STATUS_DRAFT {
         return Err(AppError::Conflict("只能修改草稿作业的题目".to_owned()));
@@ -749,7 +749,7 @@ pub async fn publish(
 ) -> Result<AssignmentDetail, AppError> {
     let assignment = access_owned_assignment(pool, user, id).await?;
     if assignment.class_archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     if assignment.status != ASSIGNMENT_STATUS_DRAFT {
         return Err(AppError::Conflict("作业已发布".to_owned()));
@@ -1418,7 +1418,7 @@ pub async fn publish_solutions(
 ) -> Result<PublishSolutionsResponse, AppError> {
     let assignment = access_owned_assignment(pool, user, id).await?;
     if assignment.class_archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     if assignment.status != ASSIGNMENT_STATUS_PUBLISHED {
         return Err(AppError::Conflict("作业当前状态不能发布解析".to_owned()));
@@ -1520,13 +1520,13 @@ pub async fn set_override(
 ) -> Result<OverrideListResponse, AppError> {
     let assignment = access_owned_assignment(pool, user, id).await?;
     if assignment.class_archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     if assignment.status != ASSIGNMENT_STATUS_PUBLISHED {
         return Err(AppError::Conflict("作业当前状态不能设置例外".to_owned()));
     }
     if !is_active_member(pool, assignment.class_id, student_id).await? {
-        return Err(AppError::NotFound("学生不在该班级中".to_owned()));
+        return Err(AppError::NotFound("学生不在该组织中".to_owned()));
     }
     let problem_exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM assignment_problems WHERE assignment_id = $1 AND problem_id = $2)",
@@ -1659,7 +1659,7 @@ pub async fn delete_override(
 ) -> Result<OverrideListResponse, AppError> {
     let assignment = access_owned_assignment(pool, user, id).await?;
     if assignment.class_archived_at.is_some() {
-        return Err(AppError::Conflict("班级已归档".to_owned()));
+        return Err(AppError::Conflict("组织已归档".to_owned()));
     }
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
     let before: Option<OverrideRow> = sqlx::query_as(

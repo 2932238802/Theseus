@@ -12,6 +12,7 @@ import {
   rotateInviteCode,
 } from '../api/classes'
 import { toErrorMessage } from '../api/client'
+import { useAuthStore } from './auth'
 import type { ClassDetail, ClassSummary } from '../types/teaching'
 
 export const useClassStore = defineStore('classes', () => {
@@ -21,6 +22,8 @@ export const useClassStore = defineStore('classes', () => {
   const isDetailLoading = ref(false)
   const error = ref('')
   const detailError = ref('')
+  // 列表最近一次成功加载时对应的用户，用于导航栏按用户判断是否需要重新拉取
+  const loadedForUserId = ref<number | null>(null)
 
   let listSequence = 0
   let detailSequence = 0
@@ -33,12 +36,25 @@ export const useClassStore = defineStore('classes', () => {
       const result = await fetchClasses()
       if (sequence !== listSequence) return
       classes.value = result
+      loadedForUserId.value = useAuthStore().user?.id ?? null
     } catch (exception: unknown) {
       if (sequence !== listSequence) return
       error.value = toErrorMessage(exception)
     } finally {
       if (sequence === listSequence) isLoading.value = false
     }
+  }
+
+  // 同一用户只加载一次组织列表，避免每个页面挂载导航栏都重复请求
+  let ensureLoad: Promise<void> | null = null
+  const ensureLoadedFor = async (userId: number): Promise<void> => {
+    if (loadedForUserId.value === userId) return
+    if (!ensureLoad) {
+      ensureLoad = loadClasses().finally(() => {
+        ensureLoad = null
+      })
+    }
+    await ensureLoad
   }
 
   const loadClass = async (id: number): Promise<void> => {
@@ -106,6 +122,7 @@ export const useClassStore = defineStore('classes', () => {
     current.value = null
     error.value = ''
     detailError.value = ''
+    loadedForUserId.value = null
   }
 
   return {
@@ -115,7 +132,9 @@ export const useClassStore = defineStore('classes', () => {
     isDetailLoading,
     error,
     detailError,
+    loadedForUserId,
     loadClasses,
+    ensureLoadedFor,
     loadClass,
     create,
     join,
