@@ -26,7 +26,9 @@ cargo run
 |---|---|---|---|
 | POST | `/api/auth/register` | 否 | 注册，返回 `{message}` |
 | POST | `/api/auth/login` | 否 | 登录，`username` 字段可传用户名或邮箱，返回 `{token,user}` |
+| GET | `/api/home/overview` | 用户 | 首页学习工作台：继续学习、统计与最近活动 |
 | GET | `/api/problems` | 可选 | 分页题库，见下方查询参数 |
+| GET | `/api/problems/random` | 否 | 随机返回一道已通过审核的题目 `{problem_id}` |
 | GET | `/api/problems/tags` | 否 | 已审核题目的去重标签数组 |
 | GET | `/api/problems/{id}` | 可选 | 已审核题目详情 |
 | GET | `/api/stats` | 否 | `{total_problems,total_submissions,accepted_submissions}` |
@@ -51,9 +53,20 @@ cargo run
 | GET | `/api/profile/analytics` | 用户 | 个人学习分析 |
 | GET | `/api/forum/favorites` | 用户 | 当前用户论坛收藏列表 |
 | GET | `/api/contests/featured` | 用户 | 竞赛首页：排位赛配置、规则分组与限时赛事列表 |
+| GET | `/api/contests/events` | 用户 | 赛事列表，支持 `type`、`status`、`following`、`page`、`page_size` |
 | GET | `/api/contests/events/{id}` | 用户 | 赛事详情（含说明、规则和报名链接） |
+| POST | `/api/contests/events/{id}/follow` | 用户 | 关注赛事 |
+| DELETE | `/api/contests/events/{id}/follow` | 用户 | 取消关注 |
 | POST | `/api/contests/events/{id}/register` | 用户 | 公开赛事报名，返回更新后的赛事卡片 |
 | POST | `/api/contests/events/{id}/join` | 用户 | 邀请赛事直接加入，返回更新后的赛事卡片 |
+| POST | `/api/contests/events/{id}/enter` | 用户 | 进入赛事比赛，返回 `{event_id,contest_id}` |
+| GET | `/api/contests/events/{id}/leaderboard` | 用户 | 赛事排行榜 |
+| GET | `/api/contests/rankings` | 用户 | 排位榜，`limit` 默认 20 |
+| GET | `/api/admin/events` | 管理员 | 赛事管理列表 |
+| POST | `/api/admin/events` | 管理员 | 创建赛事 |
+| GET | `/api/admin/events/{id}` | 管理员 | 赛事管理详情 |
+| PUT | `/api/admin/events/{id}` | 管理员 | 更新赛事 |
+| POST | `/api/admin/events/{id}/forum` | 管理员 | 同步赛事到校园墙并置顶 |
 | PUT | `/api/assignments/{id}` | 教师 | 修改作业；发布后仅允许延长截止时间 |
 | POST | `/api/assignments/{id}/solutions/publish` | 教师 | 发布答案解析，要求作业已截止 |
 | GET | `/api/assignments/{id}/overrides` | 教师 | 查询学生补交/免修例外 |
@@ -162,6 +175,8 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 
 完整设计见 `doc/2610281_实现多人竞赛匹配机制.md` 与 `doc/2610291_竞赛ui的完善.md`。
 
+`POST /api/contests/match` 请求体为 `{camera_permission,screen_permission}`，取值 `granted|denied|unavailable`。两个字段都必须是 `granted`，否则返回 400；客户端应依次完成摄像头授权和屏幕共享后再调用。比赛创建时两个授权结果写入 `contest_participants` 并各记录一条 `contest_events`。
+
 `GET /api/contests/featured` 返回：
 
 ```json
@@ -218,3 +233,134 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 | 名额已满 | 409 |
 
 重复报名幂等：已报名的用户再次调用返回 200 与最新卡片。`POST .../join` 仅适用于 `registration_mode = 'invite'` 的赛事；公开赛事应调用 `register`。
+
+### 赛事列表与关注
+
+`GET /api/contests/events` 返回 `{events,total,page,page_size,server_time}`，`events` 元素与 `featured.events` 的赛事卡片一致，并额外包含 `is_followed`。`type` 取 `official|teacher|school`，`status` 取 `registration|upcoming|running|ended|cancelled`，`following=true` 仅返回已关注赛事。
+
+`POST|DELETE /api/contests/events/{id}/follow` 返回 `{is_followed}`，重复调用幂等。
+
+### 赛事内答题
+
+`POST /api/contests/events/{id}/enter` 要求赛事已发布、当前时间在 `[starts_at,ends_at)` 内且用户已报名。首次进入时按 `official_event_problems` 冻结题目快照并创建赛事比赛，然后把该用户从 `queued` 提升为 `active`，返回 `{event_id,contest_id}`。前端随后使用常规比赛接口 `GET /api/contests/{id}`、`/problems/{problem_id}`、`/events`、`/finish`、`/result`。
+
+赛事比赛特点：
+
+- 题目只能来自赛事配置，未配置题目时返回 409「赛事暂未配置题目」。
+- 提前离场不会立即结算，赛事结束后统一结算。
+- 赛事比赛不修改 `users.contest_rating`；排名只在本赛事内生效。
+
+错误：未报名 403，比赛未开始或已结束 409，未配置题目 409。
+
+### 赛事排行榜
+
+`GET /api/contests/events/{id}/leaderboard` 返回：
+
+```json
+{
+  "event_id": 1,
+  "state": "running",
+  "contest_id": 12,
+  "entries": [
+    {
+      "rank": 1,
+      "user_id": 3,
+      "username": "student",
+      "solved_count": 3,
+      "total_score": 285.5,
+      "is_me": false
+    }
+  ],
+  "server_time": "2026-10-29T04:00:00Z"
+}
+```
+
+- 首位选手进入前 `state = pending`、`contest_id = null`，`entries` 为已报名用户。
+- 进入后 `state` 为比赛状态 `running|settling|finished`；`rank` 结算前为 `null`，结算后按名次返回。
+
+### 排位榜
+
+`GET /api/contests/rankings?limit=20` 返回 `{entries,my_rank,my_rating,total,server_time}`，`entries` 元素为 `{rank,user_id,username,rating,played,wins,is_me}`。统计只包含非赛事比赛的已结束场次，`limit` 取值 1-100。
+
+### 赛事管理
+
+`GET /api/admin/events` 返回 `{events:[AdminEventView]}`。`AdminEventView` 字段：
+
+```json
+{
+  "id": 1,
+  "title": "校园算法挑战赛",
+  "organizer": "教务处",
+  "type": "school",
+  "description": "赛事说明",
+  "scope": "面向本校学生",
+  "capacity": 100,
+  "registration_mode": "open",
+  "class_id": null,
+  "registration_url": null,
+  "registration_opens_at": null,
+  "registration_deadline": "2026-10-30T15:59:00Z",
+  "starts_at": "2026-10-31T06:00:00Z",
+  "ends_at": "2026-10-31T08:00:00Z",
+  "status": "draft",
+  "rules": [{ "title": "参赛说明", "items": ["独立完成"] }],
+  "problem_ids": [1, 2, 3],
+  "registered_count": 12,
+  "contest_id": null,
+  "forum_post_id": null,
+  "created_at": "2026-10-20T02:00:00Z"
+}
+```
+
+`POST|PUT /api/admin/events[/{id}]` 接收同名字段与 `problem_ids`（按顺序生成题位）。校验规则：
+
+- 标题 ≤200 字、主办方 ≤100 字、说明 ≤5000 字、范围 ≤200 字、外部链接 ≤500 字且为 http(s)。
+- `type` 取 `official|teacher|school`，`registration_mode` 取 `open|invite|external`，`status` 取 `draft|published|cancelled`。
+- 结束时间必须晚于开始时间；报名截止不晚于开始且晚于报名开始。
+- 规则最多 20 组、每组最多 50 条，末尾中文句号会被自动去除。
+- 题目最多 50 道且不能重复。
+- 已生成比赛的赛事不能修改开始/结束时间（允许 60 秒内的时间精度误差）和题目，可修改其他信息；把状态改为 `cancelled` 会同时取消进行中的比赛。
+
+`POST /api/admin/events/{id}/forum` 要求赛事已发布。首次调用会创建校园墙帖子并置顶，返回 `{event_id,forum_post_id,pinned,message}`；已同步过的赛事返回原帖子且 `pinned=false`。置顶位已满时帖子创建成功但不置顶。赛事结束或取消后后台任务自动取消置顶。
+
+## 首页工作台接口
+
+`GET /api/home/overview` 需要登录，返回：
+
+```json
+{
+  "continue_learning": {
+    "problem_id": 12,
+    "problem_title": "两数之和",
+    "difficulty": "easy",
+    "language": "cpp",
+    "status": "wrong_answer",
+    "last_activity_at": "2026-10-29T06:30:00Z",
+    "action": "resume"
+  },
+  "stats": {
+    "streak_days": 4,
+    "accepted_problems": 18,
+    "review_problems": 5,
+    "week_submissions": 23
+  },
+  "recent_activity": [
+    {
+      "submission_id": 88,
+      "problem_id": 12,
+      "problem_title": "两数之和",
+      "language": "cpp",
+      "status": "accepted",
+      "submitted_at": "2026-10-29T06:35:00Z"
+    }
+  ]
+}
+```
+
+- `continue_learning.action`：`resume` 表示最近有未通过且尚未通过的题目，`review` 表示没有未完成题目时回看最近一题
+- `review_problems`：尝试过但未通过的题目数
+- `week_submissions`：近 7 天提交数，不是自然周
+- `recent_activity` 最多 5 条，按提交时间倒序
+- 没有历史记录时 `continue_learning = null`，`recent_activity = []`
+
+`GET /api/problems/random` 从 `review_status = 'approved'` 的题目中随机返回一题，题库为空时返回 404。

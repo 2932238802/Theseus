@@ -2,9 +2,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
+import ContestEventCardView from '../components/ContestEventCard.vue'
 import { toErrorMessage } from '../api/client'
 import {
   cancelMatch,
+  enterContestEvent,
   fetchContestEventDetail,
   fetchCurrentContest,
   fetchFeaturedContests,
@@ -16,10 +18,10 @@ import type {
   CameraPermission,
   ContestEventCard,
   ContestEventDetail,
-  ContestEventStatus,
-  ContestEventType,
   ContestFeatured,
+  ScreenPermission,
 } from '../types/contest'
+import { EVENT_STATUS_LABELS, EVENT_TYPE_LABELS, eventCapacityLabel } from '../utils/contestEventUi'
 import { formatDateTime } from '../utils/teaching'
 
 const router = useRouter()
@@ -33,6 +35,8 @@ const queuedAt = ref<string | null>(null)
 const now = ref(Date.now())
 const serverOffset = ref(0)
 const cameraPermission = ref<CameraPermission | null>(null)
+const screenPermission = ref<ScreenPermission | null>(null)
+const startFlowError = ref('')
 const currentMyRating = ref<number | null>(null)
 const isStarting = ref(false)
 const isCancelling = ref(false)
@@ -134,6 +138,7 @@ const loadFeatured = async (silent = false): Promise<void> => {
 const ranked = computed(() => featured.value?.ranked ?? null)
 const rankedRules = computed(() => featured.value?.ranked.rules ?? [])
 const events = computed(() => featured.value?.events ?? [])
+const eventsTotal = computed(() => featured.value?.events_total ?? events.value.length)
 const myRating = computed(() => currentMyRating.value ?? featured.value?.ranked.my_rating ?? null)
 const participantLabel = computed(() => `${ranked.value?.participants ?? 4} 人`)
 const durationLabel = computed(() => `${ranked.value?.duration_minutes ?? 60} 分钟`)
@@ -160,76 +165,20 @@ const cameraNote = computed(() => {
   return '当前环境无法检测摄像头'
 })
 
-const EVENT_STATUS_LABELS: Record<ContestEventStatus, string> = {
-  registration: '报名中',
-  upcoming: '即将开始',
-  running: '进行中',
-  full: '已满员',
-  finished: '已结束',
-}
-
-const EVENT_TYPE_LABELS: Record<ContestEventType, string> = {
-  official: '官方',
-  teacher: '老师',
-  school: '学校',
-}
-
-const eventStatusLabel = (event: ContestEventCard): string => EVENT_STATUS_LABELS[event.status]
-
-const eventButtonLabel = (event: ContestEventCard): string => {
-  if (!event.eligible) return '暂不可参加'
-  if (event.is_registered) return event.action === 'enter' ? '进入赛事' : '查看详情'
-  switch (event.action) {
-    case 'register':
-      return '报名'
-    case 'join':
-      return '加入赛事'
-    case 'enter':
-      return '进入赛事'
-    case 'full':
-      return '已满员'
-    case 'closed':
-      return '已截止'
-    default:
-      return '查看详情'
+const screenNote = computed(() => {
+  if (!screenPermission.value) return ''
+  if (screenPermission.value === 'granted') {
+    return '屏幕共享权限已读取并立即关闭，仅记录授权状态'
   }
-}
-
-const isEventActionDisabled = (event: ContestEventCard): boolean =>
-  !event.eligible || event.action === 'full' || event.action === 'closed'
-
-const pad = (value: number): string => String(value).padStart(2, '0')
-
-const clockLabel = (milliseconds: number): string => {
-  const total = Math.max(0, Math.floor(milliseconds / 1000))
-  const hours = Math.floor(total / 3600)
-  const minutes = Math.floor((total % 3600) / 60)
-  const seconds = total % 60
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
-}
-
-const eventTimeLabel = (event: ContestEventCard): string => {
-  const startsAt = new Date(event.starts_at).getTime()
-  const endsAt = new Date(event.ends_at).getTime()
-  if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt)) return ''
-  if (event.status === 'running') return `还剩 ${clockLabel(endsAt - now.value)}`
-  if (event.status === 'finished') return '已结束'
-  const untilStart = startsAt - now.value
-  if (untilStart > 0 && untilStart <= 24 * 3600 * 1000) {
-    return `距开始 ${clockLabel(untilStart)}`
+  if (screenPermission.value === 'denied') {
+    return '屏幕共享未通过，请重新选择要共享的屏幕'
   }
-  return `${formatDateTime(event.starts_at)} 开始`
-}
+  return '当前环境无法共享屏幕'
+})
 
-const eventDeadlineLabel = (event: ContestEventCard): string => {
-  if (event.status !== 'registration' || !event.registration_deadline) return ''
-  return `截止报名 ${formatDateTime(event.registration_deadline)}`
-}
-
-const eventCapacityLabel = (event: ContestEventCard): string => {
-  if (event.capacity == null) return `${event.registered_count} 人参加`
-  return `${event.registered_count}/${event.capacity} 人`
-}
+const bothPermissionsGranted = computed(
+  () => cameraPermission.value === 'granted' && screenPermission.value === 'granted',
+)
 
 const replaceEvent = (card: ContestEventCard): void => {
   const current = featured.value
@@ -292,6 +241,7 @@ const openStartFlow = (): void => {
   if (isStarting.value) return
   rulesOpen.value = false
   eventDetailOpen.value = false
+  startFlowError.value = ''
   startFlowOpen.value = true
 }
 
@@ -329,6 +279,19 @@ const handleEventAction = async (event: ContestEventCard): Promise<void> => {
     eventActionError.value = event.ineligible_reason ?? '当前不可报名'
     return
   }
+  if (event.action === 'enter') {
+    eventActionId.value = event.id
+    try {
+      const result = await enterContestEvent(event.id)
+      await router.push({ name: 'contest', params: { id: result.contest_id } })
+    } catch (exception: unknown) {
+      eventActionError.value = toErrorMessage(exception)
+      void loadFeatured(true)
+    } finally {
+      eventActionId.value = null
+    }
+    return
+  }
   if (event.action === 'register' || event.action === 'join') {
     eventActionId.value = event.id
     try {
@@ -357,36 +320,154 @@ const handleEventAction = async (event: ContestEventCard): Promise<void> => {
   void openEventDetail(event)
 }
 
-const detectCameraPermission = async (): Promise<CameraPermission> => {
-  if (!navigator.mediaDevices?.getUserMedia) return 'unavailable'
+interface PermissionProbe {
+  permission: CameraPermission
+  message: string
+}
+
+const detectCameraPermission = async (): Promise<PermissionProbe> => {
+  if (!window.isSecureContext) {
+    return {
+      permission: 'unavailable',
+      message: '当前页面不是安全上下文，浏览器不会弹出摄像头授权，请通过 localhost 或 HTTPS 访问',
+    }
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return {
+      permission: 'unavailable',
+      message: '当前浏览器不支持摄像头采集，请使用最新版 Chrome、Edge 或 Firefox',
+    }
+  }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true })
     stream.getTracks().forEach((track) => track.stop())
-    return 'granted'
+    return { permission: 'granted', message: '' }
   } catch (exception: unknown) {
-    if (exception instanceof Error && exception.name === 'NotAllowedError') {
-      return 'denied'
+    const name = exception instanceof Error ? exception.name : ''
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      return {
+        permission: 'denied',
+        message: '摄像头权限被拒绝，请在浏览器地址栏的网站设置中允许摄像头后重试',
+      }
     }
-    return 'unavailable'
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      return {
+        permission: 'unavailable',
+        message: '未检测到可用摄像头，请连接摄像头或检查系统隐私设置后重试',
+      }
+    }
+    if (name === 'NotReadableError' || name === 'TrackStartError') {
+      return {
+        permission: 'unavailable',
+        message: '摄像头被其他程序占用，请关闭占用摄像头的应用后重试',
+      }
+    }
+    if (name === 'SecurityError') {
+      return {
+        permission: 'unavailable',
+        message: '浏览器安全策略禁止访问摄像头，请检查站点权限设置',
+      }
+    }
+    return {
+      permission: 'unavailable',
+      message: name ? `摄像头启动失败（${name}），请检查系统摄像头设置` : '摄像头启动失败，请检查系统摄像头设置',
+    }
   }
 }
 
-const confirmStartMatch = async (): Promise<void> => {
+const detectScreenPermission = async (): Promise<PermissionProbe> => {
+  if (!window.isSecureContext) {
+    return {
+      permission: 'unavailable',
+      message: '当前页面不是安全上下文，浏览器不会弹出屏幕共享，请通过 localhost 或 HTTPS 访问',
+    }
+  }
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    return {
+      permission: 'unavailable',
+      message: '当前浏览器不支持屏幕共享，请使用最新版 Chrome、Edge 或 Firefox',
+    }
+  }
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+    stream.getTracks().forEach((track) => track.stop())
+    return { permission: 'granted', message: '' }
+  } catch (exception: unknown) {
+    const name = exception instanceof Error ? exception.name : ''
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'AbortError') {
+      return {
+        permission: 'denied',
+        message: '屏幕共享被取消或拒绝，请重新点击并选择要共享的屏幕',
+      }
+    }
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      return {
+        permission: 'unavailable',
+        message: '未找到可共享的屏幕，请检查系统屏幕录制权限后重试',
+      }
+    }
+    if (name === 'NotReadableError' || name === 'TrackStartError') {
+      return {
+        permission: 'unavailable',
+        message: '屏幕共享启动失败，请关闭占用屏幕录制的程序后重试',
+      }
+    }
+    if (name === 'SecurityError') {
+      return {
+        permission: 'unavailable',
+        message: '浏览器安全策略禁止屏幕共享，请检查站点权限设置',
+      }
+    }
+    return {
+      permission: 'unavailable',
+      message: name ? `屏幕共享启动失败（${name}），请检查系统屏幕录制权限` : '屏幕共享启动失败，请检查系统屏幕录制权限',
+    }
+  }
+}
+
+const requestCamera = async (): Promise<void> => {
   if (isStarting.value) return
   isStarting.value = true
+  startFlowError.value = ''
+  try {
+    const probe = await detectCameraPermission()
+    cameraPermission.value = probe.permission
+    if (probe.permission !== 'granted') {
+      startFlowError.value = probe.message
+    }
+  } finally {
+    isStarting.value = false
+  }
+}
+
+const requestScreen = async (): Promise<void> => {
+  if (isStarting.value) return
+  isStarting.value = true
+  startFlowError.value = ''
+  try {
+    const probe = await detectScreenPermission()
+    screenPermission.value = probe.permission
+    if (probe.permission !== 'granted') {
+      startFlowError.value = probe.message
+    }
+  } finally {
+    isStarting.value = false
+  }
+}
+
+const beginMatch = async (): Promise<void> => {
+  if (isStarting.value) return
+  if (cameraPermission.value !== 'granted' || screenPermission.value !== 'granted') {
+    startFlowError.value = '请先完成摄像头和屏幕共享授权'
+    return
+  }
+  isStarting.value = true
+  startFlowError.value = ''
   error.value = ''
   notice.value = ''
   try {
-    cameraPermission.value = await detectCameraPermission()
+    const result = await matchContest(cameraPermission.value, screenPermission.value)
     startFlowOpen.value = false
-    if (cameraPermission.value !== 'granted') {
-      error.value =
-        cameraPermission.value === 'denied'
-          ? '需要开启摄像头权限后才能开始排位赛'
-          : '当前环境无法使用摄像头，暂时不能开始排位赛'
-      return
-    }
-    const result = await matchContest(cameraPermission.value)
     notice.value = result.message
     if (result.state === 'matched') {
       if (result.contest) {
@@ -402,7 +483,7 @@ const confirmStartMatch = async (): Promise<void> => {
     queuedAt.value = new Date().toISOString()
     startPolling()
   } catch (exception: unknown) {
-    error.value = toErrorMessage(exception)
+    startFlowError.value = toErrorMessage(exception)
   } finally {
     isStarting.value = false
   }
@@ -491,6 +572,9 @@ onBeforeUnmount(() => {
         <h2>{{ ranked?.title ?? '4 人排位赛' }}</h2>
         <div class="contest-heading-actions">
           <span class="teaching-badge">{{ participantLabel }} · {{ durationLabel }} · {{ problemLabel }}</span>
+          <RouterLink class="contest-rules-button contest-rules-link" :to="{ name: 'contest-rankings' }">
+            排位榜
+          </RouterLink>
           <button
             class="contest-rules-button"
             type="button"
@@ -550,6 +634,7 @@ onBeforeUnmount(() => {
       </div>
       <p class="run-note">匹配成功后不能取消，请保持页面打开</p>
       <p v-if="cameraNote" class="teaching-subtle contest-camera-note">{{ cameraNote }}</p>
+      <p v-if="screenNote" class="teaching-subtle contest-camera-note">{{ screenNote }}</p>
     </section>
 
     <section
@@ -592,15 +677,51 @@ onBeforeUnmount(() => {
       <div class="contest-rules-backdrop" @click="startFlowOpen = false"></div>
       <div ref="startPanel" class="contest-rules-panel contest-start-panel">
         <header>
-          <h2 id="contest-camera-title">开启摄像头</h2>
+          <h2 id="contest-camera-title">开始排位赛</h2>
           <button type="button" aria-label="取消开始排位赛" @click="startFlowOpen = false">×</button>
         </header>
         <div class="contest-rules-content">
-          <p>开始排位赛需要开启摄像头：系统只记录授权状态，不会录制或上传视频；继续后，浏览器会请求摄像头权限</p>
+          <p>开始排位赛前需要完成以下两项授权；系统只记录授权状态，不会录制或上传画面</p>
+          <ul class="contest-start-checks">
+            <li>
+              <div>
+                <strong>摄像头</strong>
+                <span class="teaching-subtle">{{ cameraPermission === 'granted' ? '已授权' : '未授权' }}</span>
+              </div>
+              <button
+                class="forum-secondary-button"
+                type="button"
+                :disabled="isStarting"
+                @click="requestCamera"
+              >
+                {{ cameraPermission === 'granted' ? '重新检测' : '开启摄像头' }}
+              </button>
+            </li>
+            <li>
+              <div>
+                <strong>屏幕共享</strong>
+                <span class="teaching-subtle">{{ screenPermission === 'granted' ? '已授权' : '未授权' }}</span>
+              </div>
+              <button
+                class="forum-secondary-button"
+                type="button"
+                :disabled="isStarting"
+                @click="requestScreen"
+              >
+                {{ screenPermission === 'granted' ? '重新选择' : '共享屏幕' }}
+              </button>
+            </li>
+          </ul>
+          <p v-if="startFlowError" class="form-error" role="alert">{{ startFlowError }}</p>
           <div class="contest-start-flow-actions">
             <button class="forum-secondary-button" type="button" @click="startFlowOpen = false">暂不开始</button>
-            <button class="primary-button" type="button" :disabled="isStarting" @click="confirmStartMatch">
-              {{ isStarting ? '正在检查权限' : '继续并开启摄像头' }}
+            <button
+              class="primary-button"
+              type="button"
+              :disabled="isStarting || !bothPermissionsGranted"
+              @click="beginMatch"
+            >
+              {{ isStarting ? '正在检查权限' : '开始匹配' }}
             </button>
           </div>
         </div>
@@ -663,7 +784,9 @@ onBeforeUnmount(() => {
     <section class="teaching-panel contest-events" aria-label="限时赛事">
       <div class="section-heading">
         <h2>限时赛事</h2>
-        <span v-if="events.length" class="teaching-subtle">{{ events.length }} 场</span>
+        <RouterLink class="contest-events-all" :to="{ name: 'contest-events' }">
+          查看全部<span v-if="eventsTotal > events.length"> · {{ eventsTotal }} 场</span>
+        </RouterLink>
       </div>
 
       <p v-if="eventActionError" class="form-error" role="alert">{{ eventActionError }}</p>
@@ -687,41 +810,15 @@ onBeforeUnmount(() => {
       </p>
 
       <div v-else class="contest-event-grid">
-        <article
+        <ContestEventCardView
           v-for="event in events"
           :key="event.id"
-          :class="[
-            'contest-event-card',
-            { 'is-ineligible': !event.eligible || event.action === 'full' || event.action === 'closed' },
-          ]"
-        >
-          <div class="contest-event-card-head">
-            <span :class="['contest-event-status', `is-${event.status}`]">{{ eventStatusLabel(event) }}</span>
-            <span class="teaching-subtle contest-event-organizer">
-              {{ event.organizer }} · {{ EVENT_TYPE_LABELS[event.type] }}
-            </span>
-          </div>
-          <h3>
-            <button class="contest-event-title" type="button" @click="openEventDetail(event)">
-              {{ event.title }}
-            </button>
-            <span v-if="event.is_registered" class="contest-event-registered">已报名</span>
-          </h3>
-          <p class="contest-event-meta">
-            {{ event.scope || '公开赛事' }} · {{ eventCapacityLabel(event) }}
-          </p>
-          <p class="contest-event-time">{{ eventTimeLabel(event) }}</p>
-          <p v-if="eventDeadlineLabel(event)" class="teaching-subtle">{{ eventDeadlineLabel(event) }}</p>
-          <p v-if="event.ineligible_reason" class="contest-ineligible-reason">{{ event.ineligible_reason }}</p>
-          <button
-            class="forum-secondary-button"
-            type="button"
-            :disabled="isEventActionDisabled(event) || eventActionId === event.id"
-            @click="handleEventAction(event)"
-          >
-            {{ eventActionId === event.id ? '处理中…' : eventButtonLabel(event) }}
-          </button>
-        </article>
+          :event="event"
+          :now="now"
+          :busy="eventActionId === event.id"
+          @open="openEventDetail"
+          @action="handleEventAction"
+        />
       </div>
     </section>
   </main>

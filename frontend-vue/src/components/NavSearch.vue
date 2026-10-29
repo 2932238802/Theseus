@@ -47,6 +47,7 @@ const targets = computed<SearchTarget[]>(() => {
       { label: '题目审核', hint: '审核待发布题目', group: '管理', to: '/admin/problems', keywords: 'admin problems 审核 题目 管理' },
       { label: '论坛管理', hint: '帖子与评论审核', group: '管理', to: '/admin/forum', keywords: 'admin forum 论坛 管理' },
       { label: '用户管理', hint: '用户与角色管理', group: '管理', to: '/admin/users', keywords: 'admin users 用户 角色' },
+      { label: '赛事管理', hint: '创建赛事并配置规则与题目', group: '管理', to: '/admin/events', keywords: 'admin events 竞赛 赛事 报名 规则' },
       { label: '通知管理', hint: '向用户或角色发送通知', group: '管理', to: '/admin/notifications', keywords: 'admin notifications 通知 广播' },
     )
   }

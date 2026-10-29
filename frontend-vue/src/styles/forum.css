@@ -37,12 +37,6 @@
   font-size: 14px;
 }
 
-.eyebrow {
-  color: var(--color-accent);
-  font-size: 13px;
-  font-weight: 650;
-}
-
 .forum-secondary-button,
 .forum-danger-button {
   display: inline-flex;

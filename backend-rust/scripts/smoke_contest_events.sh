@@ -54,6 +54,7 @@ SUFFIX=$RANDOM
 TEACHER="events_t_$SUFFIX"
 STUDENT="events_s_$SUFFIX"
 OUTSIDER="events_o_$SUFFIX"
+ADMIN="events_a_$SUFFIX"
 CLASS_NAME="Events Smoke $SUFFIX"
 TITLE_PREFIX="Smoke Event $SUFFIX"
 
@@ -98,9 +99,10 @@ expect_jq() {
 }
 
 cleanup() {
+    psql "$DATABASE_URL" -q -c "DELETE FROM forum_posts WHERE title LIKE '$TITLE_PREFIX%';" >/dev/null 2>&1 || true
     psql "$DATABASE_URL" -q -c "DELETE FROM official_events WHERE title LIKE '$TITLE_PREFIX%';" >/dev/null 2>&1 || true
     psql "$DATABASE_URL" -q -c "DELETE FROM classes WHERE name = '$CLASS_NAME';" >/dev/null 2>&1 || true
-    psql "$DATABASE_URL" -q -c "DELETE FROM users WHERE username IN ('$TEACHER', '$STUDENT', '$OUTSIDER');" >/dev/null 2>&1 || true
+    psql "$DATABASE_URL" -q -c "DELETE FROM users WHERE username IN ('$TEACHER', '$STUDENT', '$OUTSIDER', '$ADMIN');" >/dev/null 2>&1 || true
 }
 
 cleanup
@@ -108,7 +110,8 @@ psql "$DATABASE_URL" -q -v ON_ERROR_STOP=1 <<SQL
 INSERT INTO users (username, email, password_hash, role, email_verified_at)
 VALUES ('$TEACHER', '$TEACHER@example.test', '$PASSWORD_HASH', 'teacher', CURRENT_TIMESTAMP),
        ('$STUDENT', '$STUDENT@example.test', '$PASSWORD_HASH', 'student', CURRENT_TIMESTAMP),
-       ('$OUTSIDER', '$OUTSIDER@example.test', '$PASSWORD_HASH', 'student', CURRENT_TIMESTAMP);
+       ('$OUTSIDER', '$OUTSIDER@example.test', '$PASSWORD_HASH', 'student', CURRENT_TIMESTAMP),
+       ('$ADMIN', '$ADMIN@example.test', '$PASSWORD_HASH', 'admin', CURRENT_TIMESTAMP);
 SQL
 
 TEACHER_ID=$(psql "$DATABASE_URL" -Atc "SELECT id FROM users WHERE username = '$TEACHER'")
@@ -119,6 +122,8 @@ TOKEN=$(login "$STUDENT" admin)
 [[ -n "$TOKEN" ]] || fatal "学生登录失败"
 OUTSIDER_TOKEN=$(login "$OUTSIDER" admin)
 [[ -n "$OUTSIDER_TOKEN" ]] || fatal "旁听学生登录失败"
+ADMIN_TOKEN=$(login "$ADMIN" admin)
+[[ -n "$ADMIN_TOKEN" ]] || fatal "管理员登录失败"
 
 CLASS_ID=$(psql "$DATABASE_URL" -Atc "SELECT id FROM classes WHERE name = '$CLASS_NAME'")
 if [[ -z "$CLASS_ID" ]]; then
@@ -163,6 +168,32 @@ expect_jq "进行中赛事可见" ".data.events | any(.id == $RUNNING_ID and .st
 expect_jq "已结束赛事不进入首页" ".data.events | any(.id == $ENDED_ID) | not"
 expect_jq "草稿赛事不进入首页" ".data.events | any(.id == $DRAFT_ID) | not"
 expect_jq "进行中赛事排在前面" "([.data.events[].id] | index($RUNNING_ID)) < ([.data.events[].id] | index($OPEN_ID))"
+
+say "赛事列表与筛选"
+api GET "/contests/events?page_size=50" "$TOKEN"
+expect_code "读取全部赛事" 200
+expect_jq "全部赛事包含已结束" ".data.events | any(.id == $ENDED_ID)"
+expect_jq "全部赛事不包含草稿" ".data.events | any(.id == $DRAFT_ID) | not"
+expect_jq "返回赛事总数" ".data.total >= 6"
+api GET "/contests/events?status=running" "$TOKEN"
+expect_code "按状态筛选" 200
+expect_jq "状态筛选只返回进行中" "(.data.events | length) >= 1 and (.data.events | all(.status == \"running\"))"
+api GET "/contests/events?type=school" "$TOKEN"
+expect_jq "按类型筛选" "(.data.events | length) >= 1 and (.data.events | all(.type == \"school\"))"
+api GET "/contests/events?page=1&page_size=2" "$TOKEN"
+expect_jq "分页大小生效" "(.data.events | length) <= 2"
+
+say "关注赛事"
+api POST "/contests/events/$OPEN_ID/follow" "$TOKEN"
+expect_code "关注赛事" 200
+expect_jq "关注状态" ".data.is_followed == true"
+api GET "/contests/events?following=true&page_size=50" "$TOKEN"
+expect_jq "关注列表包含赛事" ".data.events | any(.id == $OPEN_ID and .is_followed)"
+api DELETE "/contests/events/$OPEN_ID/follow" "$TOKEN"
+expect_code "取消关注" 200
+expect_jq "取消关注状态" ".data.is_followed == false"
+api GET "/contests/events?following=true&page_size=50" "$TOKEN"
+expect_jq "取消后不在关注列表" ".data.events | any(.id == $OPEN_ID) | not"
 
 say "公开报名"
 api POST "/contests/events/$OPEN_ID/register" "$TOKEN"
@@ -218,6 +249,54 @@ api GET /contests/featured "$TOKEN"
 expect_jq "已报名进行中赛事可进入" ".data.events | map(select(.id == $RUNNING_ID))[0].action == \"enter\""
 api POST "/contests/events/$RUNNING_ID/register" "$TOKEN"
 expect_code "已开始赛事不能报名" 409
+
+say "赛事内答题"
+PROBLEM_ID=$(psql "$DATABASE_URL" -Atc "SELECT id FROM problems
+    WHERE run_config IS NOT NULL AND judge_cases IS NOT NULL
+      AND jsonb_typeof(judge_cases) = 'array' AND jsonb_array_length(judge_cases) > 0
+    ORDER BY id LIMIT 1")
+[[ -n "$PROBLEM_ID" ]] || fatal "题库中没有可用于赛事的题目"
+psql "$DATABASE_URL" -q -c "INSERT INTO official_event_problems (event_id, problem_id, position, points)
+    VALUES ($RUNNING_ID, $PROBLEM_ID, 1, 100) ON CONFLICT DO NOTHING;"
+api POST "/contests/events/$RUNNING_ID/enter" "$TOKEN"
+expect_code "报名选手进入赛事" 200
+CONTEST_ID=$(jq -r '.data.contest_id // empty' <<<"$LAST_BODY")
+[[ -n "$CONTEST_ID" ]] || fatal "进入赛事未返回比赛编号"
+api GET "/contests/$CONTEST_ID" "$TOKEN"
+expect_code "赛事比赛可读取" 200
+expect_jq "比赛关联赛事" ".data.event_id == $RUNNING_ID"
+expect_jq "赛事题目已冻结" ".data.problem_count == 1"
+api GET "/contests/events/$RUNNING_ID/leaderboard" "$TOKEN"
+expect_code "赛事排行榜可读取" 200
+expect_jq "进行中排行榜状态" ".data.state == \"running\""
+expect_jq "排行榜包含本人" ".data.entries | any(.is_me)"
+api GET "/contests/rankings?limit=10" "$TOKEN"
+expect_code "排位榜可读取" 200
+expect_jq "排位榜包含本人排名" ".data.my_rank >= 1"
+
+say "赛事管理"
+api GET /admin/events "$TOKEN"
+expect_code "普通学生不能读取管理列表" 403
+ADMIN_STARTS=$(date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)
+ADMIN_ENDS=$(date -u -d '+3 hours' +%Y-%m-%dT%H:%M:%SZ)
+ADMIN_BODY=$(jq -n --arg title "$TITLE_PREFIX 管理创建" --argjson pid "$PROBLEM_ID" \
+    --arg starts "$ADMIN_STARTS" --arg ends "$ADMIN_ENDS" \
+    '{title: $title, organizer: "课程组", type: "official", status: "draft",
+      starts_at: $starts, ends_at: $ends, registration_mode: "open",
+      rules: [{title: "参赛说明", items: ["独立完成"]}], problem_ids: [$pid]}')
+api POST /admin/events "$ADMIN_TOKEN" "$ADMIN_BODY"
+expect_code "管理员创建赛事" 200
+NEW_EVENT_ID=$(jq -r '.data.id // empty' <<<"$LAST_BODY")
+expect_jq "保存赛事题目" ".data.problem_ids == [$PROBLEM_ID]"
+ADMIN_PUBLISH=$(jq '.status = "published"' <<<"$ADMIN_BODY")
+api PUT "/admin/events/$NEW_EVENT_ID" "$ADMIN_TOKEN" "$ADMIN_PUBLISH"
+expect_code "管理员发布赛事" 200
+api GET /admin/events "$ADMIN_TOKEN"
+expect_code "管理员读取赛事列表" 200
+expect_jq "管理列表包含新赛事" ".data.events | any(.id == $NEW_EVENT_ID and .status == \"published\")"
+api POST "/admin/events/$NEW_EVENT_ID/forum" "$ADMIN_TOKEN"
+expect_code "赛事同步到校园墙" 200
+expect_jq "返回论坛帖子编号" ".data.forum_post_id != null"
 
 cleanup
 if ((FAILED > 0)); then

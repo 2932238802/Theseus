@@ -470,7 +470,7 @@ pub async fn analytics(
     })
 }
 
-fn compute_streak(days: &[NaiveDate]) -> i64 {
+pub(crate) fn compute_streak(days: &[NaiveDate]) -> i64 {
     if days.is_empty() {
         return 0;
     }

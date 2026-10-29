@@ -93,6 +93,7 @@ const handleSubmit = async (): Promise<void> => {
       </form>
 
       <p class="auth-footnote">继续即代表你同意 Theseus 的服务条款与隐私政策</p>
+      <p class="auth-developer">LosAngelous/Theseus</p>
     </section>
   </main>
 </template>

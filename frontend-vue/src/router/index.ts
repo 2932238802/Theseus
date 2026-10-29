@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../store/auth'
+import AdminEventsPage from '../views/AdminEventsPage.vue'
 import AdminForumPage from '../views/AdminForumPage.vue'
 import AdminNotifyPage from '../views/AdminNotifyPage.vue'
 import AdminProblemsPage from '../views/AdminProblemsPage.vue'
@@ -9,6 +10,9 @@ import AssignmentDetailPage from '../views/AssignmentDetailPage.vue'
 import ClassDetailPage from '../views/ClassDetailPage.vue'
 import ClassesPage from '../views/ClassesPage.vue'
 import ContestPage from '../views/ContestPage.vue'
+import ContestEventDetailPage from '../views/ContestEventDetailPage.vue'
+import ContestEventsPage from '../views/ContestEventsPage.vue'
+import ContestRankedLeaderboardPage from '../views/ContestRankedLeaderboardPage.vue'
 import ContestResultPage from '../views/ContestResultPage.vue'
 import ContestsPage from '../views/ContestsPage.vue'
 import ForumComposePage from '../views/ForumComposePage.vue'
@@ -45,6 +49,9 @@ const router = createRouter({
     { path: '/profile/favorites', name: 'profile-favorites', component: ProfileFavoritesPage, meta: { requiresAuth: true } },
     { path: '/rankings', name: 'rankings', component: RankingsPage },
     { path: '/contests', name: 'contests', component: ContestsPage, meta: { requiresAuth: true } },
+    { path: '/contests/events', name: 'contest-events', component: ContestEventsPage, meta: { requiresAuth: true } },
+    { path: '/contests/rankings', name: 'contest-rankings', component: ContestRankedLeaderboardPage, meta: { requiresAuth: true } },
+    { path: '/contests/events/:eventId', name: 'contest-event-detail', component: ContestEventDetailPage, meta: { requiresAuth: true } },
     { path: '/contests/:id', name: 'contest', component: ContestPage, meta: { requiresAuth: true } },
     { path: '/contests/:id/result', name: 'contest-result', component: ContestResultPage, meta: { requiresAuth: true } },
     { path: '/forum', name: 'forum', component: ForumPage },
@@ -109,6 +116,12 @@ const router = createRouter({
       path: '/admin/problems',
       name: 'admin-problems',
       component: AdminProblemsPage,
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: '/admin/events',
+      name: 'admin-events',
+      component: AdminEventsPage,
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     {

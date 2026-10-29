@@ -1,5 +1,6 @@
 pub mod contest;
 pub mod forum;
+pub mod home;
 pub mod notification;
 pub mod problem;
 pub mod profile;

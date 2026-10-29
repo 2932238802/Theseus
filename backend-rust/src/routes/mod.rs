@@ -9,8 +9,8 @@ use crate::{
     AppState,
     handlers::{
         admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, class_handler,
-        contest_handler, forum_handler, invitation_handler, notification_handler, problem_handler,
-        profile_handler, ranking_handler, run_handler, submission_handler,
+        contest_handler, forum_handler, home_handler, invitation_handler, notification_handler,
+        problem_handler, profile_handler, ranking_handler, run_handler, submission_handler,
     },
 };
 
@@ -185,8 +185,37 @@ pub fn router(state: AppState) -> Router {
         .route("/api/contests/current", get(contest_handler::current))
         .route("/api/contests/featured", get(contest_handler::featured))
         .route(
+            "/api/contests/rankings",
+            get(contest_handler::ranked_leaderboard),
+        )
+        .route("/api/contests/events", get(contest_handler::event_list))
+        .route(
+            "/api/admin/events",
+            get(contest_handler::admin_list_events).post(contest_handler::admin_create_event),
+        )
+        .route(
+            "/api/admin/events/{id}",
+            get(contest_handler::admin_get_event).put(contest_handler::admin_update_event),
+        )
+        .route(
+            "/api/admin/events/{id}/forum",
+            post(contest_handler::sync_event_forum),
+        )
+        .route(
+            "/api/contests/events/{id}/enter",
+            post(contest_handler::enter_event),
+        )
+        .route(
+            "/api/contests/events/{id}/leaderboard",
+            get(contest_handler::event_leaderboard),
+        )
+        .route(
             "/api/contests/events/{id}",
             get(contest_handler::event_detail),
+        )
+        .route(
+            "/api/contests/events/{id}/follow",
+            post(contest_handler::follow_event).delete(contest_handler::unfollow_event),
         )
         .route(
             "/api/contests/events/{id}/register",
@@ -209,7 +238,9 @@ pub fn router(state: AppState) -> Router {
             "/api/runs/{id}",
             get(run_handler::detail).delete(run_handler::remove),
         )
+        .route("/api/home/overview", get(home_handler::overview))
         .route("/api/problems", get(problem_handler::list))
+        .route("/api/problems/random", get(home_handler::random_problem))
         .route("/api/problems/tags", get(problem_handler::tags))
         .route("/api/problems/{id}", get(problem_handler::get))
         .route("/api/stats", get(problem_handler::stats))

@@ -85,3 +85,5 @@ frontend-vue/.env.local
 # 用户上传文件
 uploads/
 backend-rust/uploads/
+.claude
+.claude/

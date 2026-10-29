@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import AvatarUploader from '../components/AvatarUploader.vue'
 import AccountSettingsDialog from '../components/AccountSettingsDialog.vue'
@@ -17,10 +18,13 @@ import type { ProfileAnalytics as ProfileAnalyticsData } from '../types/profile'
 import { formatInline } from '../utils/format'
 
 const authStore = useAuthStore()
+const route = useRoute()
 const submissionStore = useSubmissionStore()
 const runStore = useRunStore()
 const runFeatureEnabled = import.meta.env.VITE_RUN_CODE_ENABLED !== 'false'
-const activeTab = ref<'submissions' | 'runs'>('submissions')
+const activeTab = ref<'submissions' | 'runs'>(
+  route.query.tab === 'runs' ? 'runs' : 'submissions',
+)
 const selectedRun = ref<RunDetail | null>(null)
 const runDetailLoading = ref(false)
 const runDetailError = ref('')

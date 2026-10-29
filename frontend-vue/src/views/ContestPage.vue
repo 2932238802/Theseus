@@ -195,7 +195,9 @@ onBeforeUnmount(() => {
     <nav class="teaching-breadcrumb" aria-label="面包屑">
       <RouterLink to="/contests">竞赛</RouterLink>
       <span>/</span>
-      <span>{{ contestIdRef ? `排位赛 #${contestIdRef}` : '排位赛' }}</span>
+      <RouterLink v-if="detail?.event_id" :to="`/contests/events/${detail.event_id}`">赛事详情</RouterLink>
+      <span v-if="detail?.event_id">/</span>
+      <span>{{ contestIdRef ? `${detail?.event_id ? '赛事比赛' : '排位赛'} #${contestIdRef}` : '排位赛' }}</span>
     </nav>
 
     <div v-if="isLoading && !detail" class="empty-state">
@@ -206,14 +208,13 @@ onBeforeUnmount(() => {
     <template v-else-if="detail">
       <header class="teaching-page-header">
         <div>
-          <span class="eyebrow">排位赛</span>
-          <h1>排位赛 #{{ detail.id }}</h1>
+          <h1>{{ detail.event_id ? '赛事比赛' : '排位赛' }} #{{ detail.id }}</h1>
           <p class="teaching-subtle contest-header-meta">
             <span class="teaching-badge contest-status-badge" :class="statusClass">
               {{ statusLabel }}
             </span>
             <span>题目 {{ detail.problem_count }} 道</span>
-            <span>段位分 {{ detail.my_rating }}</span>
+            <span v-if="!detail.event_id">段位分 {{ detail.my_rating }}</span>
             <span>开始于 {{ formatDateTime(detail.starts_at) }}</span>
             <span>结束于 {{ formatDateTime(detail.ends_at) }}</span>
           </p>
@@ -239,7 +240,7 @@ onBeforeUnmount(() => {
         <div>
           <strong>{{ detail.my_status === 'finished' ? '你已离场' : '完成后可以提前离场' }}</strong>
           <p v-if="detail.my_status === 'finished'" class="teaching-subtle">
-            成绩将在比赛结束后公布，你可以继续留在本页查看题目与选手状态
+            成绩将在{{ detail.event_id ? '赛事结束' : '比赛结束' }}后公布，你可以继续留在本页查看题目与选手状态
           </p>
           <p v-else class="teaching-subtle">
             离场后不能再提交本场比赛的题目，比赛结束时间为

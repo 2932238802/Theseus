@@ -137,6 +137,15 @@
   text-align: center;
 }
 
+.auth-developer {
+  margin-top: var(--space-xs);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
 .spinner {
   display: inline-block;
   width: 16px;
@@ -150,7 +159,7 @@
 
 .oj-page {
   display: grid;
-  height: calc(100vh - 64px);
+  height: calc(100vh - 64px - var(--app-footer-height));
   min-height: 600px;
   grid-template-columns:
     minmax(320px, var(--problem-width, 1fr))

@@ -100,6 +100,7 @@ onBeforeUnmount(() => {
           aria-labelledby="admin-menu-button"
         >
           <RouterLink role="menuitem" to="/admin/problems" @click="closeManage">题目审核</RouterLink>
+          <RouterLink role="menuitem" to="/admin/events" @click="closeManage">赛事管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/forum" @click="closeManage">论坛管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/users" @click="closeManage">用户管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/notifications" @click="closeManage">通知管理</RouterLink>

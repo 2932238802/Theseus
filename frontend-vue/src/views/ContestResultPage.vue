@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
@@ -15,6 +15,8 @@ const result = ref<ContestResult | null>(null)
 const isLoading = ref(true)
 const notFinished = ref(false)
 const error = ref('')
+
+const isEventContest = computed(() => result.value?.contest.event_id != null)
 
 const isNotFinishedError = (exception: unknown): boolean =>
   axios.isAxiosError(exception) && exception.response?.status === 409
@@ -60,7 +62,11 @@ void load()
     <nav class="teaching-breadcrumb" aria-label="面包屑">
       <RouterLink to="/contests">竞赛</RouterLink>
       <span>/</span>
-      <RouterLink :to="`/contests/${contestId}`">排位赛 #{{ contestId }}</RouterLink>
+      <RouterLink
+        :to="isEventContest ? `/contests/events/${result?.contest.event_id}` : `/contests/${contestId}`"
+      >
+        {{ isEventContest ? '赛事详情' : `排位赛 #${contestId}` }}
+      </RouterLink>
       <span>/</span>
       <span>结果</span>
     </nav>
@@ -88,8 +94,7 @@ void load()
     <template v-else-if="result">
       <header class="teaching-page-header">
         <div>
-          <span class="eyebrow">排位赛结果</span>
-          <h1>排位赛 #{{ result.contest.id }}</h1>
+          <h1>{{ isEventContest ? '赛事比赛' : '排位赛' }} #{{ result.contest.id }} 结果</h1>
           <p class="teaching-subtle">
             <span class="teaching-badge contest-status-badge is-finished">已结束</span>
             <span>{{ result.contest.problem_count }} 道题</span>

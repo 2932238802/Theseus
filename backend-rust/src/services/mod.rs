@@ -7,6 +7,7 @@ pub mod contest_service;
 pub mod email_service;
 pub mod forum_service;
 pub mod grade_service;
+pub mod home_service;
 pub mod invitation_service;
 pub mod notification_service;
 pub mod profile_service;

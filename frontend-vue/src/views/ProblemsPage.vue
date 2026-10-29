@@ -28,8 +28,17 @@ const applyFilters = (): void => {
 const updateFromRoute = (): void => {
   const keyword = typeof route.query.keyword === 'string' ? route.query.keyword : ''
   const tag = typeof route.query.tag === 'string' ? route.query.tag : ''
+  const status = route.query.status
   store.query.keyword = keyword
   store.query.tag = tag
+  if (
+    status === 'not_started' ||
+    status === 'attempted' ||
+    status === 'accepted' ||
+    status === 'all'
+  ) {
+    store.query.status = status
+  }
 }
 const toggleSort = (sortBy: 'id' | 'difficulty' | 'acceptance'): void => {
   if (store.query.sortBy === sortBy) store.query.order = store.query.order === 'asc' ? 'desc' : 'asc'

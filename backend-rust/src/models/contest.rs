@@ -22,6 +22,7 @@ pub const RATING_GAIN_SECOND: i32 = 10;
 pub const RATING_LOSS_FOURTH: i32 = 20;
 
 pub const CAMERA_PERMISSIONS: [&str; 3] = ["granted", "denied", "unavailable"];
+pub const SCREEN_PERMISSIONS: [&str; 3] = ["granted", "denied", "unavailable"];
 pub const CONTEST_EVENT_TYPES: [&str; 5] = [
     "camera_permission",
     "visibility_hidden",
@@ -34,11 +35,15 @@ pub const CONTEST_EVENT_TYPES: [&str; 5] = [
 pub struct MatchRequest {
     #[serde(default)]
     pub camera_permission: Option<String>,
+    #[serde(default)]
+    pub screen_permission: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ContestSummary {
     pub id: i32,
+    /// Non-null when the contest was generated from a limited-time event.
+    pub event_id: Option<i32>,
     pub status: String,
     pub duration_seconds: i32,
     pub problem_count: i32,
@@ -106,6 +111,7 @@ pub struct ContestParticipantView {
 #[derive(Debug, Serialize)]
 pub struct ContestDetailResponse {
     pub id: i32,
+    pub event_id: Option<i32>,
     pub status: String,
     pub duration_seconds: i32,
     pub problem_count: i32,
@@ -209,6 +215,7 @@ pub struct ContestScoreDetail {
 #[derive(Debug, Serialize)]
 pub struct ContestResultContest {
     pub id: i32,
+    pub event_id: Option<i32>,
     pub status: String,
     pub duration_seconds: i32,
     pub problem_count: i32,
@@ -258,6 +265,7 @@ pub struct ContestEventsResponse {
 #[derive(Debug, FromRow)]
 pub struct ContestRow {
     pub id: i32,
+    pub official_event_id: Option<i32>,
     pub status: String,
     pub duration_seconds: i32,
     pub problem_count: i32,
@@ -321,6 +329,7 @@ pub struct ContestEventCard {
     pub capacity: Option<i32>,
     pub registered_count: i64,
     pub is_registered: bool,
+    pub is_followed: bool,
     pub eligible: bool,
     pub ineligible_reason: Option<String>,
     pub action: String,
@@ -331,7 +340,38 @@ pub struct ContestEventCard {
 pub struct FeaturedContestsResponse {
     pub ranked: RankedConfig,
     pub events: Vec<ContestEventCard>,
+    pub events_total: i64,
     pub server_time: DateTime<Utc>,
+}
+
+/// Filters for the standalone "all events" page. `type` is `official`,
+/// `teacher` or `school`; `status` uses the computed event status.
+#[derive(Debug, Deserialize, Default)]
+pub struct ContestEventListQuery {
+    #[serde(rename = "type", default)]
+    pub event_type: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub following: Option<bool>,
+    #[serde(default)]
+    pub page: Option<i64>,
+    #[serde(default)]
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContestEventListResponse {
+    pub events: Vec<ContestEventCard>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub server_time: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FollowEventResponse {
+    pub is_followed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -352,4 +392,130 @@ pub struct ContestParticipantRow {
     pub total_score: Option<f64>,
     pub rank: Option<i32>,
     pub solved_count: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EnterEventResponse {
+    pub event_id: i32,
+    pub contest_id: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EventLeaderboardEntry {
+    pub rank: Option<i32>,
+    pub user_id: i32,
+    pub username: String,
+    pub solved_count: i32,
+    pub total_score: Option<f64>,
+    pub is_me: bool,
+}
+
+/// Event detail leaderboard. `state` is `pending` before the first entrant,
+/// otherwise the linked contest status (`running`, `settling`, `finished`).
+#[derive(Debug, Serialize)]
+pub struct EventLeaderboardResponse {
+    pub event_id: i32,
+    pub state: String,
+    pub contest_id: Option<i32>,
+    pub entries: Vec<EventLeaderboardEntry>,
+    pub server_time: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RankedLeaderboardEntry {
+    pub rank: i64,
+    pub user_id: i32,
+    pub username: String,
+    pub rating: i32,
+    pub played: i64,
+    pub wins: i64,
+    pub is_me: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RankedLeaderboardResponse {
+    pub entries: Vec<RankedLeaderboardEntry>,
+    pub my_rank: Option<i64>,
+    pub my_rating: i32,
+    pub total: i64,
+    pub server_time: DateTime<Utc>,
+}
+
+/// Admin create/update payload. Missing timestamps are rejected at the service
+/// layer so validation messages stay in one place.
+#[derive(Debug, Deserialize)]
+pub struct AdminEventInput {
+    pub title: String,
+    pub organizer: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    #[serde(default)]
+    pub scope: Option<String>,
+    #[serde(default)]
+    pub capacity: Option<i32>,
+    #[serde(default)]
+    pub registration_mode: Option<String>,
+    #[serde(default)]
+    pub class_id: Option<i32>,
+    #[serde(default)]
+    pub registration_url: Option<String>,
+    #[serde(default)]
+    pub registration_opens_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub registration_closes_at: Option<DateTime<Utc>>,
+    pub starts_at: DateTime<Utc>,
+    pub ends_at: DateTime<Utc>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub rules: Vec<EventRuleGroup>,
+    #[serde(default)]
+    pub problem_ids: Vec<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminEventView {
+    pub id: i32,
+    pub title: String,
+    pub organizer: String,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub description: Option<String>,
+    pub scope: Option<String>,
+    pub capacity: Option<i32>,
+    pub registration_mode: String,
+    pub class_id: Option<i32>,
+    pub registration_url: Option<String>,
+    pub registration_opens_at: Option<DateTime<Utc>>,
+    pub registration_deadline: Option<DateTime<Utc>>,
+    pub starts_at: DateTime<Utc>,
+    pub ends_at: DateTime<Utc>,
+    pub status: String,
+    pub rules: Vec<EventRuleGroup>,
+    pub problem_ids: Vec<i32>,
+    pub registered_count: i64,
+    pub contest_id: Option<i32>,
+    pub forum_post_id: Option<i64>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminEventListResponse {
+    pub events: Vec<AdminEventView>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct RankedLeaderboardQuery {
+    #[serde(default)]
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EventForumSyncResponse {
+    pub event_id: i32,
+    pub forum_post_id: i64,
+    pub pinned: bool,
+    pub message: String,
 }

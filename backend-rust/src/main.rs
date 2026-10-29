@@ -117,6 +117,11 @@ async fn contest_settlement_loop(state: AppState) {
             Ok(count) => tracing::info!(count, "settled due contests"),
             Err(error) => tracing::error!(error = %error, "failed to settle contests"),
         }
+        match contest_service::expire_event_forum_pins(&state.pool).await {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "expired event forum pins"),
+            Err(error) => tracing::error!(error = %error, "failed to expire event forum pins"),
+        }
     }
 }
 

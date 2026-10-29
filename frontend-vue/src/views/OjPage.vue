@@ -24,6 +24,7 @@ import type { Language } from '../types/oj'
 import type { RunMode } from '../types/run'
 import { formatArgs, formatInline } from '../utils/format'
 import { useContestEvents } from '../utils/contestEvents'
+import { clearDraftMeta, saveDraftMeta } from '../utils/problemDrafts'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +35,13 @@ const submissionStore = useSubmissionStore()
 const runStore = useRunStore()
 const problemId = computed(() => Number(route.params.id))
 const language = ref<Language>('javascript')
+const queryLanguage = route.query.language
+if (
+  typeof queryLanguage === 'string' &&
+  LANGUAGE_OPTIONS.some((option) => option.value === queryLanguage)
+) {
+  language.value = queryLanguage as Language
+}
 const code = ref('')
 const fontSize = ref(14)
 const isOutputOpen = ref(true)
@@ -128,10 +136,23 @@ const restoreDraft = (): void => {
 }
 const saveDraft = (): void => {
   if (code.value) localStorage.setItem(draftKey.value, code.value)
+  const problem = problemStore.currentProblem
+  if (!problem) return
+  if (code.value && code.value !== templateFor(language.value)) {
+    saveDraftMeta({
+      problemId: problem.id,
+      title: problem.title,
+      difficulty: problem.difficulty,
+      language: language.value,
+    })
+  } else {
+    clearDraftMeta(problem.id)
+  }
 }
 const resetCode = (): void => {
   code.value = templateFor(language.value)
   saveDraft()
+  if (problemStore.currentProblem) clearDraftMeta(problemStore.currentProblem.id)
 }
 const loadAssignmentContext = async (): Promise<void> => {
   assignment.value = null
@@ -581,6 +602,14 @@ watch(language, () => {
   isRunDialogOpen.value = false
 })
 watch(code, saveDraft)
+watch(
+  () => submissionStore.latest?.status,
+  (status) => {
+    if (status === 'Accepted' && problemStore.currentProblem) {
+      clearDraftMeta(problemStore.currentProblem.id)
+    }
+  },
+)
 watch([() => route.params.id, contestId], () => { void loadPage() })
 watch(assignmentId, () => { void loadAssignmentContext() })
 onBeforeUnmount(() => {

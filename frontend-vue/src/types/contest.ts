@@ -10,6 +10,8 @@ export type ContestCurrentState = 'idle' | 'queued' | 'contest'
 
 export type CameraPermission = 'granted' | 'denied' | 'unavailable'
 
+export type ScreenPermission = CameraPermission
+
 export type ContestEventStatus = 'registration' | 'upcoming' | 'running' | 'finished' | 'full'
 
 export type ContestEventAction =
@@ -41,6 +43,7 @@ export interface ContestEventCard {
   capacity?: number | null
   registered_count: number
   is_registered: boolean
+  is_followed: boolean
   eligible: boolean
   ineligible_reason?: string | null
   action: ContestEventAction
@@ -67,11 +70,29 @@ export interface RankedContestConfig {
 export interface ContestFeatured {
   ranked: RankedContestConfig
   events: ContestEventCard[]
+  events_total: number
+  server_time: string
+}
+
+export interface ContestEventListQuery {
+  type?: ContestEventType
+  status?: ContestEventStatus
+  following?: boolean
+  page?: number
+  page_size?: number
+}
+
+export interface ContestEventList {
+  events: ContestEventCard[]
+  total: number
+  page: number
+  page_size: number
   server_time: string
 }
 
 export interface ContestSummary {
   id: number
+  event_id?: number | null
   status: ContestStatus
   duration_seconds: number
   problem_count: number
@@ -123,6 +144,7 @@ export interface ContestParticipant {
 
 export interface ContestDetail {
   id: number
+  event_id: number | null
   status: ContestStatus
   duration_seconds: number
   problem_count: number
@@ -173,6 +195,7 @@ export interface ContestMine extends ContestRankingItem {
 export interface ContestResult {
   contest: {
     id: number
+    event_id: number | null
     status: ContestStatus
     duration_seconds: number
     problem_count: number
@@ -196,4 +219,87 @@ export interface ContestEventResult {
   accepted: number
   duplicates: number
   message: string
+}
+
+export interface EnterContestEvent {
+  event_id: number
+  contest_id: number
+}
+
+export interface EventLeaderboardEntry {
+  rank: number | null
+  user_id: number
+  username: string
+  solved_count: number
+  total_score: number | null
+  is_me: boolean
+}
+
+export interface EventLeaderboard {
+  event_id: number
+  state: 'pending' | ContestStatus
+  contest_id: number | null
+  entries: EventLeaderboardEntry[]
+  server_time: string
+}
+
+export interface RankedLeaderboardEntry {
+  rank: number
+  user_id: number
+  username: string
+  rating: number
+  played: number
+  wins: number
+  is_me: boolean
+}
+
+export interface RankedLeaderboard {
+  entries: RankedLeaderboardEntry[]
+  my_rank: number | null
+  my_rating: number
+  total: number
+  server_time: string
+}
+
+export interface AdminEventView {
+  id: number
+  title: string
+  organizer: string
+  type: ContestEventType
+  description: string | null
+  scope: string | null
+  capacity: number | null
+  registration_mode: 'open' | 'invite' | 'external'
+  class_id: number | null
+  registration_url: string | null
+  registration_opens_at: string | null
+  registration_deadline: string | null
+  starts_at: string
+  ends_at: string
+  status: 'draft' | 'published' | 'cancelled'
+  rules: EventRuleGroup[]
+  problem_ids: number[]
+  registered_count: number
+  contest_id: number | null
+  forum_post_id: number | null
+  created_at: string
+}
+
+export interface AdminEventInput {
+  title: string
+  organizer: string
+  description: string | null
+  type: ContestEventType
+  scope: string | null
+  capacity: number | null
+  registration_mode: 'open' | 'invite' | 'external'
+  class_id: number | null
+  registration_url: string | null
+  registration_opens_at: string | null
+  registration_closes_at: string | null
+  starts_at: string
+  ends_at: string
+  status: 'draft' | 'published' | 'cancelled'
+  rules: EventRuleGroup[]
+  problem_ids: number[]
 }

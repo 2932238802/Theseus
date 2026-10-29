@@ -41,4 +41,5 @@ onBeforeUnmount(() => {
     <RouterLink to="/verify-email">去验证</RouterLink>
   </div>
   <RouterView />
+  <footer class="app-footer" aria-label="站点信息">LosAngelous/Theseus</footer>
 </template>
