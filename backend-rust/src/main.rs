@@ -43,13 +43,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     tokio::spawn(email_dispatch_loop(state.clone()));
     tokio::spawn(contest_settlement_loop(state.clone()));
+    tokio::spawn(realtime_fanout_loop(state.clone()));
     if state.config.run_code_enabled || state.config.submit_judge_enabled {
         tokio::spawn(reaper_loop(state.clone()));
     }
     let listener = tokio::net::TcpListener::bind(bind_address).await?;
     tracing::info!(%bind_address, "Theseus backend listening");
+    let shutdown_state = state.clone();
     axum::serve(listener, routes::router(state))
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            // 长连接不会自己结束，先关闭实时频道再等待 axum 收尾。
+            shutdown_state.realtime.shutdown();
+        })
         .await?;
     Ok(())
 }
@@ -108,6 +114,39 @@ async fn email_dispatch_loop(state: AppState) {
             Ok(0) => {}
             Ok(count) => tracing::info!(count, "delivered queued emails"),
             Err(error) => tracing::error!(error = %error, "email dispatcher failed"),
+        }
+    }
+}
+
+/// 按通知表尾差量推送 `notification.new`。通知有多种写入路径（单条、群发、
+/// 班级批量 INSERT），统一从表尾读取可以全部覆盖，而且只在事务提交后可见。
+/// 客户端断线期间漏掉的通知由重新拉取未读数补齐。
+async fn realtime_fanout_loop(state: AppState) {
+    let mut cursor: Option<i64> = None;
+    let mut ticker = tokio::time::interval(Duration::from_secs(2));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        ticker.tick().await;
+        if cursor.is_none() {
+            match notification_service::latest_notification_id(&state.pool).await {
+                Ok(id) => cursor = Some(id),
+                Err(error) => {
+                    tracing::error!(error = %error, "failed to initialize notification fanout cursor");
+                    continue;
+                }
+            }
+        }
+        let after_id = cursor.unwrap_or_default();
+        match notification_service::fanout_notifications(&state.pool, after_id, 200).await {
+            Ok(items) => {
+                let mut last = after_id;
+                for (user_id, item) in items {
+                    last = last.max(item.id);
+                    state.realtime.publish_notification(user_id, &item);
+                }
+                cursor = Some(last);
+            }
+            Err(error) => tracing::error!(error = %error, "failed to fan out notifications"),
         }
     }
 }

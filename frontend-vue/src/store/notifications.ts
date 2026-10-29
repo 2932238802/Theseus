@@ -4,10 +4,12 @@ import { toErrorMessage } from '../api/client'
 import {
   fetchNotifications,
   fetchUnreadCount,
+  mapNotificationPayload,
   markAllNotificationsRead,
   markNotificationRead,
 } from '../api/notifications'
 import type { ForumNotification } from '../types/forum'
+import { onRealtime, type RealtimePayload } from '../utils/realtime'
 
 const POLL_INTERVAL_MS = 60_000
 
@@ -22,6 +24,8 @@ export const useNotificationStore = defineStore('notifications', () => {
 
   let timer: number | undefined
   let visibilityHandler: (() => void) | undefined
+  let realtimeUnsubscribers: Array<() => void> = []
+  let hasLoaded = false
   let sequence = 0
   let unreadSequence = 0
 
@@ -33,6 +37,16 @@ export const useNotificationStore = defineStore('notifications', () => {
     } catch {
       // 未读数轮询失败不打断页面；下一次轮询会重试
     }
+  }
+
+  const ingestNotification = (payload: RealtimePayload): void => {
+    const item = mapNotificationPayload(payload)
+    if (!Number.isFinite(item.id) || item.id <= 0) return
+    if (notifications.value.some((notification) => notification.id === item.id)) return
+    if (!item.read) unread.value += 1
+    if (!hasLoaded) return
+    notifications.value = [item, ...notifications.value]
+    total.value += 1
   }
 
   const loadNotifications = async (targetPage = 1, append = false): Promise<void> => {
@@ -51,6 +65,7 @@ export const useNotificationStore = defineStore('notifications', () => {
       total.value = result.total
       unread.value = result.unread
       page.value = result.page
+      hasLoaded = true
     } catch (exception: unknown) {
       if (requestId !== sequence) return
       error.value = toErrorMessage(exception)
@@ -98,6 +113,14 @@ export const useNotificationStore = defineStore('notifications', () => {
       if (document.visibilityState === 'visible') void refreshUnread()
     }
     document.addEventListener('visibilitychange', visibilityHandler)
+    // WebSocket 只负责低延迟提醒；60 秒轮询与重连后的全量刷新仍是兜底。
+    realtimeUnsubscribers = [
+      onRealtime('notification.new', ingestNotification),
+      onRealtime('ready', () => {
+        void refreshUnread()
+        if (hasLoaded) void loadNotifications(1)
+      }),
+    ]
   }
 
   const stopPolling = (): void => {
@@ -109,6 +132,8 @@ export const useNotificationStore = defineStore('notifications', () => {
       document.removeEventListener('visibilitychange', visibilityHandler)
       visibilityHandler = undefined
     }
+    realtimeUnsubscribers.forEach((unsubscribe) => unsubscribe())
+    realtimeUnsubscribers = []
   }
 
   const clear = (): void => {
@@ -119,6 +144,7 @@ export const useNotificationStore = defineStore('notifications', () => {
     total.value = 0
     unread.value = 0
     page.value = 1
+    hasLoaded = false
     error.value = ''
   }
 

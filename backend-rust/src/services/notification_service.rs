@@ -182,6 +182,69 @@ pub async fn unread_count(pool: &sqlx::PgPool, user_id: i32) -> Result<i64, AppE
     .map_err(AppError::Database)
 }
 
+/// 实时推送游标的起点。服务启动时从当前最大 ID 开始，
+/// 不补推历史通知；离线期间的通知由客户端重新拉取未读数补齐。
+pub async fn latest_notification_id(pool: &sqlx::PgPool) -> Result<i64, AppError> {
+    sqlx::query_scalar("SELECT COALESCE(MAX(id), 0) FROM notifications")
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::Database)
+}
+
+#[derive(Debug, FromRow)]
+struct FanoutNotificationRow {
+    id: i64,
+    user_id: i32,
+    notification_type: String,
+    title: String,
+    body: Option<String>,
+    link: Option<String>,
+    read: bool,
+    created_at: DateTime<Utc>,
+    related_type: Option<String>,
+    related_id: Option<i64>,
+}
+
+/// 读取 `id > after_id` 的通知。所有写入路径（包括批量 INSERT）都会经过这张表，
+/// 因此按表尾差量推送可以覆盖 `create`、`send_custom`、班级/成绩群发，
+/// 且天然发生在事务提交之后。
+pub async fn fanout_notifications(
+    pool: &sqlx::PgPool,
+    after_id: i64,
+    limit: i64,
+) -> Result<Vec<(i32, NotificationItem)>, AppError> {
+    let rows: Vec<FanoutNotificationRow> = sqlx::query_as(
+        "SELECT id, user_id, type AS notification_type, title, body, link, \
+         (read_at IS NOT NULL) AS read, created_at, related_type, related_id \
+         FROM notifications WHERE id > $1 ORDER BY id ASC LIMIT $2",
+    )
+    .bind(after_id)
+    .bind(limit.clamp(1, 500))
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.user_id,
+                NotificationItem {
+                    id: row.id,
+                    notification_type: row.notification_type,
+                    title: row.title,
+                    body: row.body,
+                    link: row.link,
+                    read: row.read,
+                    created_at: row.created_at,
+                    related_type: row.related_type,
+                    related_id: row.related_id,
+                    invitation_status: None,
+                },
+            )
+        })
+        .collect())
+}
+
 pub async fn unread(pool: &sqlx::PgPool, user_id: i32) -> Result<UnreadCountResponse, AppError> {
     Ok(UnreadCountResponse {
         unread: unread_count(pool, user_id).await?,

@@ -31,6 +31,9 @@ const mapNotification = (value: unknown): ForumNotification => {
   }
 }
 
+/** WebSocket `notification.new` 的 payload 与列表项同构，复用同一套字段解析。 */
+export const mapNotificationPayload = mapNotification
+
 export const fetchNotifications = async (
   query: NotificationListQuery,
 ): Promise<NotificationListResult> => {

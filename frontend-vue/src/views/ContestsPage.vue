@@ -23,6 +23,7 @@ import type {
   ScreenPermission,
 } from '../types/contest'
 import { EVENT_STATUS_LABELS, EVENT_TYPE_LABELS, eventCapacityLabel } from '../utils/contestEventUi'
+import { onRealtime } from '../utils/realtime'
 import { formatDateTime } from '../utils/teaching'
 
 const router = useRouter()
@@ -68,6 +69,7 @@ let featuredSyncing = false
 let epoch = 0
 let restoreFocus: HTMLElement | null = null
 let lastBoundaryRefresh = 0
+let unsubscribeMatchFound: (() => void) | null = null
 
 const stopPolling = (): void => {
   if (pollTimer !== null) {
@@ -536,6 +538,14 @@ onMounted(() => {
     void loadFeatured(true)
   }, 60_000)
   window.addEventListener('keydown', onKeydown)
+  // 匹配成局只有发起请求的人能同步拿到结果，其余选手靠这条推送立即进入比赛页。
+  unsubscribeMatchFound = onRealtime('match.found', (data) => {
+    if (phase.value !== 'queued') return
+    const contestId = Number(data.contest_id)
+    if (!Number.isFinite(contestId) || contestId <= 0) return
+    stopPolling()
+    void router.push(`/contests/${contestId}`)
+  })
   void loadCurrent(false).finally(() => {
     if (phase.value === 'loading') phase.value = 'idle'
   })
@@ -543,6 +553,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  unsubscribeMatchFound?.()
+  unsubscribeMatchFound = null
   stopPolling()
   if (tickTimer !== null) {
     window.clearInterval(tickTimer)

@@ -196,6 +196,18 @@ pub async fn match_user(
     })
 }
 
+/// 比赛内的选手 ID，用于匹配成功后向所有参赛者推送实时事件。
+pub async fn participant_user_ids(pool: &PgPool, contest_id: i32) -> Result<Vec<i32>, AppError> {
+    let rows: Vec<(i32,)> = sqlx::query_as(
+        "SELECT user_id FROM contest_participants WHERE contest_id = $1 ORDER BY user_id",
+    )
+    .bind(contest_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(rows.into_iter().map(|(user_id,)| user_id).collect())
+}
+
 pub async fn cancel_match(pool: &PgPool, user_id: i32) -> Result<CancelMatchResponse, AppError> {
     if let Some(contest_id) = active_contest_id(pool, user_id).await? {
         let status: String = sqlx::query_scalar("SELECT status FROM contests WHERE id = $1")

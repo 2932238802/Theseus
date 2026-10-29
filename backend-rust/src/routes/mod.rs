@@ -11,13 +11,15 @@ use crate::{
         admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, badge_handler,
         class_handler, contest_handler, draft_handler, favorite_handler, forum_handler,
         home_handler, invitation_handler, notification_handler, problem_handler, profile_handler,
-        ranking_handler, run_handler, submission_handler,
+        ranking_handler, run_handler, submission_handler, ws_handler,
     },
 };
 
 pub fn router(state: AppState) -> Router {
     let upload_dir = state.config.upload_dir.clone();
     Router::new()
+        .route("/api/ws/ticket", post(ws_handler::issue_ticket))
+        .route("/api/ws", get(ws_handler::connect))
         .route("/api/auth/register", post(auth_handler::register))
         .route("/api/auth/login", post(auth_handler::login))
         .route("/api/auth/me", get(auth_handler::me))

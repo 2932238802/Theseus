@@ -24,6 +24,28 @@ pub async fn start_match(
     let user = authenticate(&state.pool, &headers, &state.config).await?;
     require_verified_email(&user)?;
     let response = contest_service::match_user(&state.pool, user.id, &request).await?;
+    if response.state == "matched"
+        && let Some(contest) = &response.contest
+    {
+        // 匹配只发生在调用者的请求里，其余选手没有同步返回路径，
+        // 因此在这里向房间内所有人推送 match.found；客户端收到后自行拉取详情。
+        match contest_service::participant_user_ids(&state.pool, contest.id).await {
+            Ok(participants) => {
+                let payload = serde_json::json!({
+                    "contest_id": contest.id,
+                    "starts_at": contest.starts_at,
+                    "ends_at": contest.ends_at,
+                    "participant_count": contest.participant_count,
+                });
+                state
+                    .realtime
+                    .publish_to(&participants, "match.found", &payload);
+            }
+            Err(error) => {
+                tracing::warn!(error = %error, contest_id = contest.id, "failed to load match participants for realtime push");
+            }
+        }
+    }
     Ok(ok(response))
 }
 

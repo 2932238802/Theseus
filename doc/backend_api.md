@@ -75,6 +75,8 @@ cargo run
 | POST | `/api/contests/events/{id}/enter` | 用户 | 进入赛事比赛，返回 `{event_id,contest_id}` |
 | GET | `/api/contests/events/{id}/leaderboard` | 用户 | 赛事排行榜 |
 | GET | `/api/contests/rankings` | 用户 | 排位榜，`limit` 默认 20 |
+| POST | `/api/ws/ticket` | 用户 | 换取一次性 WebSocket 连接票据 |
+| GET | `/api/ws?ticket=...` | 票据 | WebSocket 升级，见「实时推送」一节 |
 | GET | `/api/admin/events` | 管理员 | 赛事管理列表 |
 | POST | `/api/admin/events` | 管理员 | 创建赛事 |
 | GET | `/api/admin/events/{id}` | 管理员 | 赛事管理详情 |
@@ -404,6 +406,42 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 - 已生成比赛的赛事不能修改开始/结束时间（允许 60 秒内的时间精度误差）和题目，可修改其他信息；把状态改为 `cancelled` 会同时取消进行中的比赛。
 
 `POST /api/admin/events/{id}/forum` 要求赛事已发布。首次调用会创建校园墙帖子并置顶，返回 `{event_id,forum_post_id,pinned,message}`；已同步过的赛事返回原帖子且 `pinned=false`。置顶位已满时帖子创建成功但不置顶。赛事结束或取消后后台任务自动取消置顶。
+
+## 实时推送（WebSocket）
+
+完整设计见 `doc/2610295_实时推送设计方案.md`。WebSocket 只做传输增强，比赛详情、通知列表与未读数仍以 REST 接口为准。
+
+### 连接票据
+
+`POST /api/ws/ticket` 需要登录，返回：
+
+```json
+{"ticket": "48位随机串", "expires_in_seconds": 60}
+```
+
+票据一次性使用，60 秒内有效。浏览器不能为 WebSocket 设置 `Authorization` 头，因此用它连接 `GET /api/ws?ticket=...`。开发环境 Vite 的 `/api` 代理需要开启 `ws: true`。
+
+### 消息格式
+
+连接后客户端发送 `{"type":"hello"}`，服务端返回 `ready`。统一信封：
+
+```json
+{"id": 17, "type": "notification.new", "data": {}, "server_time": "2026-10-29T12:00:00Z"}
+```
+
+| 类型 | 方向 | 说明 |
+|---|---|---|
+| `hello` | 客户端 → 服务端 | 握手，收到 `ready` |
+| `pong` | 客户端 → 服务端 | 响应服务端的 `ping` |
+| `ready` | 服务端 → 客户端 | `{user_id, server_time}` |
+| `ping` | 服务端 → 客户端 | 每 30 秒一次；90 秒无客户端消息断开 |
+| `notification.new` | 服务端 → 客户端 | 新站内信，`data` 与通知列表项同构 |
+| `match.found` | 服务端 → 客户端 | `{contest_id, starts_at, ends_at, participant_count}` |
+| `resync` | 服务端 → 客户端 | 事件积压被丢弃，客户端应重新拉取快照 |
+
+- 匹配成局后房间内所有选手都会收到 `match.found`，客户端随后调用 `GET /api/contests/{id}` 获取题目与时间。
+- 通知在写入数据库后约 2 秒内推送；离线期间的通知不补推，重连后通过 `GET /api/notifications/unread-count` 与列表接口恢复。
+- v1 不支持通过 WebSocket 加入/取消匹配，也不支持 `last_event_id` 重放。
 
 ## 题目草稿接口
 

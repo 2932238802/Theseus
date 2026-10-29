@@ -5,6 +5,7 @@ pub mod handlers;
 pub mod judge;
 pub mod middleware;
 pub mod models;
+pub mod realtime;
 pub mod routes;
 pub mod services;
 pub mod utils;
@@ -16,6 +17,7 @@ use sqlx::PgPool;
 
 use crate::{
     config::Config,
+    realtime::RealtimeHub,
     services::{run_service::RunService, submission_service::SubmissionService},
 };
 
@@ -25,6 +27,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub submission_service: SubmissionService,
     pub run_service: RunService,
+    pub realtime: RealtimeHub,
 }
 
 impl AppState {
@@ -35,6 +38,7 @@ impl AppState {
             submission_service: SubmissionService::new(config.clone(), redis.clone()),
             run_service: RunService::new(config.clone(), redis),
             config,
+            realtime: RealtimeHub::new(),
         }
     }
 }
