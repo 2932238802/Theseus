@@ -32,8 +32,23 @@ pub struct HomeActivity {
 }
 
 #[derive(Debug, Serialize)]
+pub struct HomeCheckin {
+    pub checked_in_today: bool,
+    pub reputation_score: f64,
+}
+
+#[derive(Debug, Serialize)]
 pub struct HomeOverviewResponse {
     pub continue_learning: Option<HomeContinue>,
     pub stats: HomeStats,
     pub recent_activity: Vec<HomeActivity>,
+    pub checkin: HomeCheckin,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CheckinResponse {
+    pub checked_in: bool,
+    pub reputation_score: f64,
+    pub checkin_streak: i64,
+    pub message: String,
 }

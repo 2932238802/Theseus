@@ -26,7 +26,8 @@ cargo run
 |---|---|---|---|
 | POST | `/api/auth/register` | 否 | 注册，返回 `{message}` |
 | POST | `/api/auth/login` | 否 | 登录，`username` 字段可传用户名或邮箱，返回 `{token,user}` |
-| GET | `/api/home/overview` | 用户 | 首页学习工作台：继续学习、统计与最近活动 |
+| GET | `/api/home/overview` | 用户 | 首页学习工作台：继续学习、统计、最近活动、今日签到与信誉分 |
+| POST | `/api/home/check-in` | 用户 | 每日签到，信誉分 +0.1（上限 100） |
 | GET | `/api/problems` | 可选 | 分页题库，见下方查询参数 |
 | GET | `/api/problems/random` | 否 | 随机返回一道已通过审核的题目 `{problem_id}` |
 | GET | `/api/problems/tags` | 否 | 已审核题目的去重标签数组 |
@@ -50,7 +51,9 @@ cargo run
 | DELETE | `/api/profile` | 用户 | 注销账号并匿名化 |
 | POST | `/api/profile/avatar` | 用户 | 上传头像（multipart） |
 | DELETE | `/api/profile/avatar` | 用户 | 删除头像 |
-| GET | `/api/profile/analytics` | 用户 | 个人学习分析 |
+| GET | `/api/profile/analytics` | 用户 | 个人学习分析，含信誉分与连续签到天数 |
+| GET | `/api/profile/badges` | 用户 | 当前有效徽章列表 |
+| PUT | `/api/profile/badges/{code}/visibility` | 用户 | 设置徽章是否在公开位置展示 `{hidden}` |
 | GET | `/api/forum/favorites` | 用户 | 当前用户论坛收藏列表 |
 | GET | `/api/contests/featured` | 用户 | 竞赛首页：排位赛配置、规则分组与限时赛事列表 |
 | GET | `/api/contests/events` | 用户 | 赛事列表，支持 `type`、`status`、`following`、`page`、`page_size` |
@@ -67,6 +70,9 @@ cargo run
 | GET | `/api/admin/events/{id}` | 管理员 | 赛事管理详情 |
 | PUT | `/api/admin/events/{id}` | 管理员 | 更新赛事 |
 | POST | `/api/admin/events/{id}/forum` | 管理员 | 同步赛事到校园墙并置顶 |
+| GET | `/api/admin/contests/{id}/proctor-events` | 管理员 | 疑似粘贴事件与复核状态 |
+| POST | `/api/admin/contests/{id}/proctor-events/{event_id}/review` | 管理员 | 提交复核结论 `{status,note}`；确认后扣分并重新结算 |
+| PUT | `/api/admin/users/{id}/reputation` | 管理员 | 定量恢复信誉分 `{score,note}`；恢复到 0 分以上自动解封 |
 | PUT | `/api/assignments/{id}` | 教师 | 修改作业；发布后仅允许延长截止时间 |
 | POST | `/api/assignments/{id}/solutions/publish` | 教师 | 发布答案解析，要求作业已截止 |
 | GET | `/api/assignments/{id}/overrides` | 教师 | 查询学生补交/免修例外 |
@@ -240,6 +246,41 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 
 `POST|DELETE /api/contests/events/{id}/follow` 返回 `{is_followed}`，重复调用幂等。
 
+`GET /api/admin/contests/{id}/proctor-events` 返回该场比赛的 `paste_suspicious` 事件：
+
+```json
+{
+  "contest": { "id": 12, "event_id": 3, "event_title": "校园算法挑战赛", "status": "finished", "starts_at": "...", "ends_at": "..." },
+  "items": [{
+    "id": 88,
+    "user_id": 7,
+    "username": "alice",
+    "event_type": "paste_suspicious",
+    "payload": { "length": 420, "lines": 18, "code_similarity": 0.03, "problem_similarity": 0.05, "preview": "...", "preview_truncated": true, "language": "cpp" },
+    "client_time": "...",
+    "received_at": "...",
+    "review_status": "pending",
+    "review_note": null,
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "assigned_admin": "admin1",
+    "assigned_to_me": true
+  }],
+  "pending_count": 1
+}
+```
+
+`review_status` 取 `pending|cleared|confirmed`。新事件按「待复核数量最少」自动分配给在线管理员，`assigned_admin` 为负责管理员，`assigned_to_me` 表示当前管理员是否可以处理；无管理员可分或负责管理员已停用时，事件保持可被任意管理员接管。管理员可以滞后审批。
+
+`POST .../review` 请求体 `{status,note}`，`status` 只能是 `cleared` 或 `confirmed`，备注不超过 500 字；只能由负责管理员或无人负责时提交。确认作弊会：
+
+1. 固定扣除 25 信誉分，同一事件只扣一次；
+2. 取消该用户本场成绩，并在比赛已结束时立即重新结算排名；
+3. 排位赛按新名次重新计算段位分，只把新旧结果的差额应用到用户当前段位分，保证后续比赛不被覆盖；
+4. 返回 `{message,review_status,reputation_score,disqualified,rating_reranked}`。
+
+已确认的记录不能改回 `cleared`，重复确认不会重复扣分。信誉分低于 0 时账号自动变为 `banned`、当前登录失效，邮箱加入黑名单；低于 40 时禁止参与排位赛、赛事报名/进入和论坛发言。已确认作弊的处罚没有公开论坛通报。`GET /api/contests/{id}/result` 的排名项新增 `disqualified` 字段，被取消成绩的选手排在最后并标记「成绩已取消」。
+
 ### 赛事内答题
 
 `POST /api/contests/events/{id}/enter` 要求赛事已发布、当前时间在 `[starts_at,ends_at)` 内且用户已报名。首次进入时按 `official_event_problems` 冻结题目快照并创建赛事比赛，然后把该用户从 `queued` 提升为 `active`，返回 `{event_id,contest_id}`。前端随后使用常规比赛接口 `GET /api/contests/{id}`、`/problems/{problem_id}`、`/events`、`/finish`、`/result`。
@@ -353,9 +394,27 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
       "status": "accepted",
       "submitted_at": "2026-10-29T06:35:00Z"
     }
-  ]
+  ],
+  "checkin": {
+    "checked_in_today": false,
+    "reputation_score": 98.5
+  }
 }
 ```
+
+`POST /api/home/check-in` 每个 UTC 自然日只能成功一次，返回 `{checked_in,reputation_score,checkin_streak,message}`；首次签到信誉分 +0.1，上限 100，已经签到或已满时 `checked_in=false` 或分数不变。签到成功提示会显示连续签到天数，个人界面展示「连续签到 N 天」。信誉分只能通过每日签到和管理员定量恢复，退款、上诉等人工复核结果由管理员通过 `PUT /api/admin/users/{id}/reputation` 处理。
+
+### 徽章
+
+当前只发放签到里程碑徽章，连续签到达到门槛后自动获得并续期：
+
+| 徽章 | 门槛 | 有效期 |
+|---|---|---|
+| 七日精进 | 连续签到 7 天 | 30 天 |
+| 月度坚持 | 连续签到 30 天 | 30 天 |
+| 百日不辍 | 连续签到 100 天 | 30 天 |
+
+`GET /api/profile/badges` 返回徽章目录及获得状态 `{badges:[{code,name,description,category,threshold_days,earned,awarded_at,expires_at,hidden}]}`；未获得的徽章 `earned=false`，`awarded_at` 和 `expires_at` 为 `null`。每次签到会刷新已获得徽章的有效期，停止签到后徽章在有效期结束时失效。`PUT /api/profile/badges/{code}/visibility` 请求体 `{hidden}`，用于按徽章选择性隐藏；隐藏只影响论坛、排行榜等公开位置的展示，个人界面仍会标记「已隐藏」。徽章设计支持多个并存，后续可以扩展其他类别。
 
 - `continue_learning.action`：`resume` 表示最近有未通过且尚未通过的题目，`review` 表示没有未完成题目时回看最近一题
 - `review_problems`：尝试过但未通过的题目数

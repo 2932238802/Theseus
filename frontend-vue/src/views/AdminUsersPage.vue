@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
-import { changeUserRole, changeUserStatus, deleteAdminUser, fetchAdminUsers } from '../api/adminUsers'
+import { changeUserRole, changeUserStatus, deleteAdminUser, fetchAdminUsers, restoreUserReputation } from '../api/adminUsers'
 import { useAuthStore } from '../store/auth'
 import type { AccountStatus, AdminUser, Role } from '../types/teaching'
 import { formatDateTime } from '../utils/teaching'
@@ -18,6 +18,7 @@ const STATUS_LABELS: Record<AccountStatus, string> = {
   active: '正常',
   disabled: '已禁用',
   deleted: '已删除',
+  banned: '已封禁',
 }
 const ROLE_OPTIONS: Role[] = ['student', 'teacher', 'admin']
 const ROLE_FILTERS: Array<{ value: RoleFilter; label: string }> = [
@@ -45,10 +46,18 @@ const archiveOwnedClasses = ref(false)
 const demoteError = ref('')
 const demoteSubmitting = ref(false)
 
+const restoreTarget = ref<AdminUser | null>(null)
+const restoreScore = ref(50)
+const restoreNote = ref('')
+const restoreError = ref('')
+const restoreSubmitting = ref(false)
+
 let listSequence = 0
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
 const isSelf = (user: AdminUser): boolean => user.id === authStore.user?.id
+const reputationClass = (score: number): string =>
+  score < 40 ? 'is-low' : score <= 70 ? 'is-warn' : ''
 
 const load = async (targetPage = page.value): Promise<void> => {
   const sequence = ++listSequence
@@ -164,6 +173,59 @@ const toggleStatus = async (user: AdminUser): Promise<void> => {
   }
 }
 
+const openRestore = (user: AdminUser): void => {
+  if (busyUserId.value !== null || isSelf(user) || user.status === 'deleted') return
+  restoreTarget.value = user
+  restoreScore.value =
+    user.status === 'banned'
+      ? 50
+      : Math.min(100, Math.round((user.reputationScore + 25) * 10) / 10)
+  restoreNote.value = ''
+  restoreError.value = ''
+}
+
+const closeRestore = (): void => {
+  if (restoreSubmitting.value) return
+  restoreTarget.value = null
+}
+
+const confirmRestore = async (): Promise<void> => {
+  const target = restoreTarget.value
+  if (!target || restoreSubmitting.value) return
+  const score = Number(restoreScore.value)
+  if (!Number.isFinite(score) || score <= target.reputationScore) {
+    restoreError.value = '恢复后的信誉分需高于当前分数'
+    return
+  }
+  if (score > 100) {
+    restoreError.value = '信誉分不能超过 100'
+    return
+  }
+  if (target.status === 'banned' && score <= 0) {
+    restoreError.value = '解除封禁需要恢复到 0 分以上'
+    return
+  }
+
+  restoreSubmitting.value = true
+  restoreError.value = ''
+  actionError.value = ''
+  notice.value = ''
+  try {
+    const result = await restoreUserReputation(
+      target.id,
+      score,
+      restoreNote.value.trim() || undefined,
+    )
+    notice.value = result.message
+    restoreTarget.value = null
+  } catch (exception: unknown) {
+    restoreError.value = toErrorMessage(exception)
+  } finally {
+    restoreSubmitting.value = false
+    await load()
+  }
+}
+
 const removeUser = async (user: AdminUser): Promise<void> => {
   if (busyUserId.value !== null || isSelf(user) || user.status === 'deleted') return
   if (
@@ -261,6 +323,7 @@ onMounted(() => {
               <th>邮箱</th>
               <th>角色</th>
               <th>状态</th>
+              <th>信誉分</th>
               <th>班级</th>
               <th>注册时间</th>
               <th>操作</th>
@@ -279,6 +342,11 @@ onMounted(() => {
               <td>
                 <span :class="['teaching-badge', `status-${user.status}`]">{{ STATUS_LABELS[user.status] }}</span>
               </td>
+              <td>
+                <span :class="['reputation-score', reputationClass(user.reputationScore)]">
+                  {{ user.reputationScore.toFixed(1) }}
+                </span>
+              </td>
               <td class="admin-user-classes">
                 <span v-if="user.role === 'student'">加入 {{ user.activeMembershipCount }}</span>
                 <span v-else-if="user.role === 'teacher'">拥有 {{ user.ownedActiveClassCount }}</span>
@@ -289,8 +357,8 @@ onMounted(() => {
                 <div class="admin-user-actions">
                   <select
                     :value="user.role"
-                    :disabled="isSelf(user) || busyUserId === user.id || user.status === 'deleted'"
-                    :title="isSelf(user) ? '不能修改自己的角色' : user.status === 'deleted' ? '账号已删除' : ''"
+                    :disabled="isSelf(user) || busyUserId === user.id || user.status === 'deleted' || user.status === 'banned'"
+                    :title="isSelf(user) ? '不能修改自己的角色' : user.status === 'deleted' ? '账号已删除' : user.status === 'banned' ? '请先恢复信誉分' : ''"
                     @change="requestRole(user, $event)"
                   >
                     <option v-for="role in ROLE_OPTIONS" :key="role" :value="role">
@@ -298,13 +366,22 @@ onMounted(() => {
                     </option>
                   </select>
                   <button
-                    v-if="user.status !== 'deleted'"
+                    v-if="user.status === 'active' || user.status === 'disabled'"
                     type="button"
                     class="forum-secondary-button"
                     :disabled="isSelf(user) || busyUserId === user.id"
                     @click="toggleStatus(user)"
                   >
                     {{ user.status === 'disabled' ? '恢复' : '禁用' }}
+                  </button>
+                  <button
+                    v-if="user.status !== 'deleted' && !isSelf(user)"
+                    type="button"
+                    :class="user.status === 'banned' ? 'primary-button' : 'forum-secondary-button'"
+                    :disabled="busyUserId === user.id || (user.status !== 'banned' && user.reputationScore >= 100)"
+                    @click="openRestore(user)"
+                  >
+                    {{ user.status === 'banned' ? '解除封禁' : '恢复信誉' }}
                   </button>
                   <button
                     v-if="user.status !== 'deleted'"
@@ -358,6 +435,42 @@ onMounted(() => {
             @click="confirmDemote"
           >
             {{ demoteSubmitting ? '降级中' : '确认降级' }}
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div v-if="restoreTarget" class="modal-backdrop" @click.self="closeRestore">
+    <section class="run-dialog gradebook-dialog" role="dialog" aria-modal="true" aria-labelledby="restore-reputation-title">
+      <header>
+        <div>
+          <h2 id="restore-reputation-title">恢复「{{ restoreTarget.username }}」的信誉分</h2>
+          <p>
+            当前 {{ restoreTarget.reputationScore.toFixed(1) }} 分
+            <template v-if="restoreTarget.status === 'banned'"> · 账号已封禁</template>
+          </p>
+        </div>
+        <button type="button" aria-label="关闭" @click="closeRestore">×</button>
+      </header>
+      <div class="run-dialog-body">
+        <p class="teaching-subtle">
+          信誉分只能通过管理员上调；恢复到 0 分以上会同时解除账号与邮箱封禁
+        </p>
+        <label class="reputation-dialog-field">
+          <span>恢复至</span>
+          <input v-model.number="restoreScore" type="number" min="0" max="100" step="0.1" />
+        </label>
+        <label class="reputation-dialog-field">
+          <span>恢复原因</span>
+          <input v-model="restoreNote" type="text" maxlength="500" placeholder="例如 申诉复核通过（可选）" />
+        </label>
+        <p v-if="restoreError" class="form-error" role="alert">{{ restoreError }}</p>
+        <div class="teaching-form-actions">
+          <button class="teaching-secondary-button" type="button" :disabled="restoreSubmitting" @click="closeRestore">
+            取消
+          </button>
+          <button class="primary-button" type="button" :disabled="restoreSubmitting" @click="confirmRestore">
+            {{ restoreSubmitting ? '保存中' : '确认恢复' }}
           </button>
         </div>
       </div>

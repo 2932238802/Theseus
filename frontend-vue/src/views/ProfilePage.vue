@@ -6,7 +6,7 @@ import AvatarUploader from '../components/AvatarUploader.vue'
 import AccountSettingsDialog from '../components/AccountSettingsDialog.vue'
 import ProfileAnalytics from '../components/ProfileAnalytics.vue'
 import { toErrorMessage } from '../api/client'
-import { fetchAnalytics } from '../api/profile'
+import { fetchAnalytics, fetchBadges } from '../api/profile'
 import { fetchSubmission } from '../api/submissions'
 import { useAuthStore } from '../store/auth'
 import { useRunStore } from '../store/runs'
@@ -14,7 +14,7 @@ import { useSubmissionStore } from '../store/submissions'
 import { RUN_CASE_STATUS_LABELS, RUN_STATUS_LABELS } from '../utils/constants'
 import type { RunDetail, RunSummary } from '../types/run'
 import type { Submission } from '../types/oj'
-import type { ProfileAnalytics as ProfileAnalyticsData } from '../types/profile'
+import type { ProfileAnalytics as ProfileAnalyticsData, ProfileBadge } from '../types/profile'
 import { formatInline } from '../utils/format'
 
 const authStore = useAuthStore()
@@ -35,6 +35,8 @@ const submissionDetailError = ref('')
 const analytics = ref<ProfileAnalyticsData | null>(null)
 const analyticsLoading = ref(true)
 const analyticsError = ref('')
+const badges = ref<ProfileBadge[]>([])
+const earnedBadges = computed(() => badges.value.filter((badge) => badge.earned))
 const showSettings = ref(false)
 
 const roleLabel = computed(() => {
@@ -42,6 +44,18 @@ const roleLabel = computed(() => {
   if (authStore.isAdmin) return '管理员'
   return '学生'
 })
+
+const reputationScore = computed(() => analytics.value?.summary.reputationScore ?? 100)
+const checkinStreak = computed(() => analytics.value?.summary.checkinStreak ?? 0)
+const reputationTone = computed(() => {
+  if (reputationScore.value < 40) return 'is-low'
+  if (reputationScore.value <= 70) return 'is-warn'
+  return 'is-good'
+})
+const reputationHint = computed(() =>
+  reputationScore.value < 40 ? '排位与论坛受限' : reputationScore.value <= 70 ? '请注意比赛规范' : '',
+)
+const reputationTooltip = '信誉分很难恢复，要诚信比赛，相信自己！'
 
 const formatTime = (value: string): string => new Date(value).toLocaleString('zh-CN')
 const formatMemory = (value: number | null): string => {
@@ -60,6 +74,19 @@ const loadAnalytics = async (): Promise<void> => {
   } finally {
     analyticsLoading.value = false
   }
+}
+
+const loadBadges = async (): Promise<void> => {
+  try {
+    badges.value = await fetchBadges()
+  } catch {
+    badges.value = []
+  }
+}
+
+const closeSettings = (): void => {
+  showSettings.value = false
+  void loadBadges()
 }
 
 const openRunDetail = async (record: RunSummary): Promise<void> => {
@@ -119,6 +146,7 @@ const selectTab = (tab: 'submissions' | 'runs'): void => {
 
 onMounted(() => {
   void loadAnalytics()
+  void loadBadges()
   void submissionStore.loadSubmissions({ page: 1, size: 50 })
   if (runFeatureEnabled) {
     void runStore.loadRecords({ page: 1, size: 20 })
@@ -136,6 +164,9 @@ onMounted(() => {
         <p>{{ authStore.user?.email ?? '登录后同步你的练习进度' }}</p>
         <div class="profile-badges">
           <span class="teaching-badge">{{ roleLabel }}</span>
+          <span v-if="analytics && checkinStreak > 0" class="profile-checkin-streak">
+            连续签到 {{ checkinStreak }} 天
+          </span>
           <span v-if="authStore.user?.emailVerified" class="teaching-badge">邮箱已验证</span>
           <span v-else class="teaching-badge">邮箱未验证</span>
           <span v-if="authStore.user?.pendingEmail" class="teaching-badge">待验证 {{ authStore.user.pendingEmail }}</span>
@@ -144,9 +175,19 @@ onMounted(() => {
           </span>
         </div>
       </div>
-      <button class="teaching-secondary-button" type="button" @click="showSettings = true">
-        账号设置
-      </button>
+      <div class="profile-hero-actions">
+        <span
+          v-if="analytics"
+          :class="['profile-reputation', reputationTone]"
+          :title="reputationTooltip"
+        >
+          信誉分 {{ reputationScore.toFixed(1) }}
+          <small v-if="reputationHint"> · {{ reputationHint }}</small>
+        </span>
+        <button class="teaching-secondary-button" type="button" @click="showSettings = true">
+          账号设置
+        </button>
+      </div>
     </section>
 
     <section class="profile-stats">
@@ -156,6 +197,29 @@ onMounted(() => {
       <article><strong>{{ analytics?.summary.attemptedProblems ?? 0 }}</strong><span>已尝试题目</span></article>
       <article><strong>{{ analytics?.summary.activeClasses ?? 0 }}</strong><span>活跃班级</span></article>
       <article><strong>{{ analytics?.summary.streakDays ?? 0 }}</strong><span>连续通过天数</span></article>
+    </section>
+
+    <section v-if="earnedBadges.length" class="profile-badge-section" aria-label="我的徽章">
+      <div class="section-heading">
+        <h2>徽章</h2>
+        <span class="teaching-subtle">连续签到获得，可在账号设置中选择隐藏</span>
+      </div>
+      <ul class="profile-badge-list">
+        <li
+          v-for="badge in earnedBadges"
+          :key="badge.code"
+          :class="{ 'is-hidden': badge.hidden }"
+          :title="badge.description"
+        >
+          <strong>{{ badge.name }}</strong>
+          <small>{{ badge.description }}</small>
+          <span class="profile-badge-meta">
+            有效期至
+            {{ new Date(badge.expiresAt ?? '').toLocaleDateString('zh-CN') }}
+            <template v-if="badge.hidden"> · 已隐藏</template>
+          </span>
+        </li>
+      </ul>
     </section>
 
     <div>
@@ -213,7 +277,7 @@ onMounted(() => {
     </section>
   </main>
 
-  <AccountSettingsDialog v-if="showSettings" @close="showSettings = false" />
+  <AccountSettingsDialog v-if="showSettings" @close="closeSettings" />
 
   <div v-if="selectedSubmission" class="modal-backdrop" @click.self="closeSubmissionDetail">
     <section class="run-dialog run-record-dialog" role="dialog" aria-modal="true" aria-labelledby="submission-record-title">

@@ -24,9 +24,10 @@ use crate::{
         EVENT_STATUS_UPCOMING, EnterEventResponse, EventForumSyncResponse, EventLeaderboardEntry,
         EventLeaderboardResponse, EventRuleGroup, FeaturedContestsResponse, FinishContestResponse,
         FollowEventResponse, MatchRequest, MatchResponse, PARTICIPANT_STATUS_ACTIVE,
-        PARTICIPANT_STATUS_FINISHED, RATING_GAIN_FIRST, RATING_GAIN_SECOND, RATING_LOSS_FOURTH,
-        RATING_WINDOW, RankedConfig, RankedLeaderboardEntry, RankedLeaderboardResponse,
-        SCREEN_PERMISSIONS,
+        PARTICIPANT_STATUS_FINISHED, ProctorContestInfo, ProctorEventItem,
+        ProctorEventListResponse, ProctorReviewInput, ProctorReviewResponse, RATING_GAIN_FIRST,
+        RATING_GAIN_SECOND, RATING_LOSS_FOURTH, RATING_WINDOW, RankedConfig,
+        RankedLeaderboardEntry, RankedLeaderboardResponse, SCREEN_PERMISSIONS,
     },
     models::forum::{AdminPinRequest, CreatePostRequest, MAX_TITLE_CHARS},
     services::{forum_service, notification_service},
@@ -44,6 +45,8 @@ const SETTLE_GRACE_SECONDS: i64 = 20;
 const MATCH_FALLBACK_THREE_SECONDS: i64 = 180;
 const MATCH_FALLBACK_TWO_SECONDS: i64 = 300;
 const FALLBACK_RATING_WINDOW: i32 = 150;
+const REPUTATION_PENALTY: f64 = 25.0;
+const REPUTATION_RESTRICT_BELOW: f64 = 40.0;
 const FEATURED_EVENT_LIMIT: usize = 3;
 const EVENT_PAGE_SIZE_DEFAULT: i64 = 12;
 const EVENT_PAGE_SIZE_MAX: i64 = 50;
@@ -132,6 +135,8 @@ pub async fn match_user(
             message: "你已在一场比赛中".to_owned(),
         });
     }
+
+    ensure_reputation_for_ranked(pool, user_id).await?;
 
     if camera.as_deref() != Some("granted") {
         return Err(AppError::BadRequest(
@@ -460,6 +465,7 @@ pub async fn result(
         finished_at: Option<DateTime<Utc>>,
         rank: Option<i32>,
         detail: Option<Value>,
+        disqualified: bool,
         rating_before: Option<i32>,
         rating_after: Option<i32>,
         rating_delta: Option<i32>,
@@ -467,8 +473,9 @@ pub async fn result(
 
     let rows = sqlx::query_as::<_, ResultRow>(
         "SELECT p.user_id, u.username, p.total_score, p.solved_count, p.speed_score, \
-         p.coding_score, p.finished_at, p.rank, p.detail, p.rating_before, p.rating_after, \
-         p.rating_delta \
+         p.coding_score, p.finished_at, p.rank, p.detail, \
+         (p.disqualified_at IS NOT NULL) AS disqualified, \
+         p.rating_before, p.rating_after, p.rating_delta \
          FROM contest_participants p JOIN users u ON u.id = p.user_id \
          WHERE p.contest_id = $1 AND p.status IN ('active', 'finished') \
          ORDER BY p.rank NULLS LAST, p.total_score DESC NULLS LAST, p.user_id",
@@ -491,6 +498,7 @@ pub async fn result(
             coding_score: round2(row.coding_score),
             finished_at: row.finished_at,
             is_me: row.user_id == user_id,
+            disqualified: row.disqualified,
             rating_before: row.rating_before,
             rating_after: row.rating_after,
             rating_delta: row.rating_delta,
@@ -550,10 +558,10 @@ pub async fn record_events(
     for event in &request.events {
         validate_event(event)?;
         let payload = event.payload.clone().unwrap_or_else(|| json!({}));
-        let inserted = sqlx::query(
+        let inserted: Option<i64> = sqlx::query_scalar(
             "INSERT INTO contest_events \
              (contest_id, user_id, event_id, event_type, payload, client_time, session_id) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING",
+             VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING RETURNING id",
         )
         .bind(contest_id)
         .bind(user_id)
@@ -562,11 +570,15 @@ pub async fn record_events(
         .bind(payload)
         .bind(event.client_time)
         .bind(event.session_id.as_deref().map(str::trim))
-        .execute(&mut *transaction)
+        .fetch_optional(&mut *transaction)
         .await
-        .map_err(AppError::Database)?
-        .rows_affected();
-        accepted += inserted;
+        .map_err(AppError::Database)?;
+        if let Some(event_row_id) = inserted {
+            accepted += 1;
+            if event.event_type.trim() == "paste_suspicious" {
+                assign_proctor_event(&mut transaction, event_row_id).await?;
+            }
+        }
     }
     transaction.commit().await.map_err(AppError::Database)?;
 
@@ -575,6 +587,635 @@ pub async fn record_events(
         duplicates: request.events.len() as u64 - accepted,
         message: "事件已记录".to_owned(),
     })
+}
+
+/// Assigns a paste review to the active admin with the fewest pending reviews.
+/// When there is no active admin the event stays unassigned and any admin can take it.
+async fn assign_proctor_event(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    event_id: i64,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO contest_proctor_assignments (event_id, assigned_admin_id) \
+         SELECT $1, u.id FROM users u \
+         WHERE u.role = 'admin' AND u.status = 'active' \
+         ORDER BY ( \
+             SELECT COUNT(*) FROM contest_proctor_assignments a \
+             LEFT JOIN contest_event_reviews r ON r.event_id = a.event_id \
+             WHERE a.assigned_admin_id = u.id AND r.event_id IS NULL \
+         ) ASC, u.id \
+         LIMIT 1 \
+         ON CONFLICT (event_id) DO NOTHING",
+    )
+    .bind(event_id)
+    .execute(&mut **transaction)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(())
+}
+
+#[derive(FromRow)]
+struct ProctorContestRow {
+    id: i32,
+    official_event_id: Option<i32>,
+    status: String,
+    starts_at: DateTime<Utc>,
+    ends_at: DateTime<Utc>,
+    event_title: Option<String>,
+}
+
+#[derive(FromRow)]
+struct ProctorEventRow {
+    id: i64,
+    user_id: i32,
+    username: String,
+    event_type: String,
+    payload: Value,
+    client_time: Option<DateTime<Utc>>,
+    received_at: DateTime<Utc>,
+    review_status: String,
+    review_note: Option<String>,
+    reviewed_by: Option<String>,
+    reviewed_at: Option<DateTime<Utc>>,
+    assigned_admin: Option<String>,
+    assigned_to_me: bool,
+}
+
+pub async fn proctor_events(
+    pool: &PgPool,
+    admin_id: i32,
+    contest_id: i32,
+) -> Result<ProctorEventListResponse, AppError> {
+    let contest = sqlx::query_as::<_, ProctorContestRow>(
+        "SELECT c.id, c.official_event_id, c.status, c.starts_at, c.ends_at, oe.title AS event_title \
+         FROM contests c LEFT JOIN official_events oe ON oe.id = c.official_event_id \
+         WHERE c.id = $1",
+    )
+    .bind(contest_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or_else(|| AppError::NotFound("比赛不存在".to_owned()))?;
+
+    let rows = sqlx::query_as::<_, ProctorEventRow>(
+        "SELECT e.id, e.user_id, u.username, e.event_type, e.payload, e.client_time, e.received_at, \
+         COALESCE(r.review_status, 'pending') AS review_status, r.review_note, \
+         ru.username AS reviewed_by, r.reviewed_at, aa.username AS assigned_admin, \
+         (a.assigned_admin_id IS NULL OR a.assigned_admin_id = $2 \
+          OR aa.status IS DISTINCT FROM 'active') AS assigned_to_me \
+         FROM contest_events e \
+         JOIN users u ON u.id = e.user_id \
+         LEFT JOIN contest_event_reviews r ON r.event_id = e.id \
+         LEFT JOIN users ru ON ru.id = r.reviewed_by \
+         LEFT JOIN contest_proctor_assignments a ON a.event_id = e.id \
+         LEFT JOIN users aa ON aa.id = a.assigned_admin_id \
+         WHERE e.contest_id = $1 AND e.event_type = 'paste_suspicious' \
+         ORDER BY (r.event_id IS NOT NULL), e.received_at DESC",
+    )
+    .bind(contest_id)
+    .bind(admin_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    let pending_count = rows
+        .iter()
+        .filter(|row| row.review_status == "pending")
+        .count() as i64;
+    let items = rows
+        .into_iter()
+        .map(|row| ProctorEventItem {
+            id: row.id,
+            user_id: row.user_id,
+            username: row.username,
+            event_type: row.event_type,
+            payload: row.payload,
+            client_time: row.client_time,
+            received_at: row.received_at,
+            review_status: row.review_status,
+            review_note: row.review_note,
+            reviewed_by: row.reviewed_by,
+            reviewed_at: row.reviewed_at,
+            assigned_admin: row.assigned_admin,
+            assigned_to_me: row.assigned_to_me,
+        })
+        .collect();
+
+    Ok(ProctorEventListResponse {
+        contest: ProctorContestInfo {
+            id: contest.id,
+            event_id: contest.official_event_id,
+            event_title: contest.event_title,
+            status: contest.status,
+            starts_at: contest.starts_at,
+            ends_at: contest.ends_at,
+        },
+        items,
+        pending_count,
+    })
+}
+
+#[derive(FromRow)]
+struct ReviewEventRow {
+    user_id: i32,
+    contest_status: String,
+    official_event_id: Option<i32>,
+    assigned_admin_id: Option<i32>,
+    assigned_admin_status: Option<String>,
+}
+
+pub async fn review_proctor_event(
+    pool: &PgPool,
+    contest_id: i32,
+    event_id: i64,
+    reviewer_id: i32,
+    input: &ProctorReviewInput,
+) -> Result<ProctorReviewResponse, AppError> {
+    let status = input.status.trim();
+    if !matches!(status, "cleared" | "confirmed") {
+        return Err(AppError::BadRequest(
+            "复核结论只能是 cleared 或 confirmed".to_owned(),
+        ));
+    }
+    let note = input
+        .note
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(note) = note
+        && note.chars().count() > 500
+    {
+        return Err(AppError::BadRequest("复核备注不能超过 500 字".to_owned()));
+    }
+
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let event = sqlx::query_as::<_, ReviewEventRow>(
+        "SELECT e.user_id, c.status AS contest_status, \
+                c.official_event_id, a.assigned_admin_id, aa.status AS assigned_admin_status \
+         FROM contest_events e \
+         JOIN contests c ON c.id = e.contest_id \
+         LEFT JOIN contest_proctor_assignments a ON a.event_id = e.id \
+         LEFT JOIN users aa ON aa.id = a.assigned_admin_id \
+         WHERE e.id = $1 AND e.contest_id = $2 AND e.event_type = 'paste_suspicious' \
+         FOR UPDATE OF e, c",
+    )
+    .bind(event_id)
+    .bind(contest_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or_else(|| AppError::NotFound("复核事件不存在".to_owned()))?;
+
+    if let Some(assigned_admin_id) = event.assigned_admin_id
+        && assigned_admin_id != reviewer_id
+        && event.assigned_admin_status.as_deref() == Some("active")
+    {
+        return Err(AppError::ForbiddenWith(
+            "该记录已分配给其他管理员".to_owned(),
+        ));
+    }
+
+    let existing: Option<(String, Option<DateTime<Utc>>)> = sqlx::query_as(
+        "SELECT review_status, penalty_applied_at FROM contest_event_reviews \
+         WHERE event_id = $1 FOR UPDATE",
+    )
+    .bind(event_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    if status == "cleared" {
+        if existing
+            .as_ref()
+            .is_some_and(|(review_status, _)| review_status == "confirmed")
+        {
+            return Err(AppError::ConflictWith(
+                "已确认作弊的记录不能改为排除".to_owned(),
+            ));
+        }
+        sqlx::query(
+            "INSERT INTO contest_event_reviews \
+             (event_id, review_status, reviewed_by, review_note, reviewed_at) \
+             VALUES ($1, 'cleared', $2, $3, CURRENT_TIMESTAMP) \
+             ON CONFLICT (event_id) DO UPDATE SET \
+               review_status = EXCLUDED.review_status, \
+               reviewed_by = EXCLUDED.reviewed_by, \
+               review_note = EXCLUDED.review_note, \
+               reviewed_at = EXCLUDED.reviewed_at",
+        )
+        .bind(event_id)
+        .bind(reviewer_id)
+        .bind(note)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        sqlx::query(
+            "INSERT INTO contest_proctor_assignments (event_id, assigned_admin_id) \
+             VALUES ($1, $2) ON CONFLICT (event_id) DO UPDATE \
+             SET assigned_admin_id = EXCLUDED.assigned_admin_id, assigned_at = CURRENT_TIMESTAMP",
+        )
+        .bind(event_id)
+        .bind(reviewer_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        let reputation_score: f64 =
+            sqlx::query_scalar("SELECT reputation_score::float8 FROM users WHERE id = $1")
+                .bind(event.user_id)
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(AppError::Database)?;
+        transaction.commit().await.map_err(AppError::Database)?;
+        return Ok(ProctorReviewResponse {
+            message: "已排除该粘贴记录".to_owned(),
+            review_status: status.to_owned(),
+            reputation_score: Some(reputation_score),
+            disqualified: false,
+            rating_reranked: false,
+        });
+    }
+
+    // Confirmed, but the penalty was already applied. Keep it idempotent.
+    if existing
+        .as_ref()
+        .is_some_and(|(review_status, penalty)| review_status == "confirmed" && penalty.is_some())
+    {
+        sqlx::query(
+            "UPDATE contest_event_reviews SET reviewed_by = $2, review_note = $3, \
+             reviewed_at = CURRENT_TIMESTAMP WHERE event_id = $1",
+        )
+        .bind(event_id)
+        .bind(reviewer_id)
+        .bind(note)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        let reputation_score: f64 =
+            sqlx::query_scalar("SELECT reputation_score::float8 FROM users WHERE id = $1")
+                .bind(event.user_id)
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(AppError::Database)?;
+        let disqualified: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM contest_participants \
+                            WHERE contest_id = $1 AND user_id = $2 AND disqualified_at IS NOT NULL)",
+        )
+        .bind(contest_id)
+        .bind(event.user_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        transaction.commit().await.map_err(AppError::Database)?;
+        return Ok(ProctorReviewResponse {
+            message: "该记录已确认，扣分与排名不会重复计算".to_owned(),
+            review_status: status.to_owned(),
+            reputation_score: Some(reputation_score),
+            disqualified,
+            rating_reranked: false,
+        });
+    }
+
+    // Lock the user before changing reputation so concurrent confirmations serialize.
+    let (score_before, email, user_status): (f64, String, String) = sqlx::query_as(
+        "SELECT reputation_score::float8, email, status FROM users WHERE id = $1 FOR UPDATE",
+    )
+    .bind(event.user_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or_else(|| AppError::NotFound("用户不存在".to_owned()))?;
+    let score_after = round1(score_before - REPUTATION_PENALTY);
+    let banned = score_after < 0.0;
+
+    sqlx::query(
+        "UPDATE users SET reputation_score = $2::float8::numeric(6, 1), \
+         status = CASE WHEN $3 THEN 'banned' ELSE status END, \
+         token_version = token_version + CASE WHEN $3 THEN 1 ELSE 0 END, \
+         updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+    )
+    .bind(event.user_id)
+    .bind(score_after)
+    .bind(banned)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    if score_after < REPUTATION_RESTRICT_BELOW {
+        sqlx::query("DELETE FROM contest_queue WHERE user_id = $1")
+            .bind(event.user_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?;
+    }
+
+    sqlx::query(
+        "INSERT INTO reputation_events \
+         (user_id, delta, score_before, score_after, reason, proctor_event_id, contest_id, actor_id, note) \
+         VALUES ($1, $2::float8::numeric(6, 1), $3::float8::numeric(6, 1), \
+                 $4::float8::numeric(6, 1), 'paste_cheating', $5, $6, $7, $8)",
+    )
+    .bind(event.user_id)
+    .bind(round1(-REPUTATION_PENALTY))
+    .bind(score_before)
+    .bind(score_after)
+    .bind(event_id)
+    .bind(contest_id)
+    .bind(reviewer_id)
+    .bind(note)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    let notification = if banned {
+        sqlx::query(
+            "INSERT INTO email_blacklist (email, user_id, reason, created_by) \
+             VALUES (LOWER($1), $2, '信誉分低于 0，自动封禁', $3) \
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(&email)
+        .bind(event.user_id)
+        .bind(reviewer_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        (
+            "账号已封禁",
+            format!(
+                "比赛粘贴作弊复核成立，信誉分 {:.1} → {:.1}。账号与邮箱已加入黑名单，如需申诉请联系管理员",
+                score_before, score_after
+            ),
+        )
+    } else if score_after < REPUTATION_RESTRICT_BELOW {
+        (
+            "账号权限受限",
+            format!(
+                "比赛粘贴作弊复核成立，信誉分 {:.1} → {:.1}。信誉分低于 40，暂不能参与排位赛与论坛发言",
+                score_before, score_after
+            ),
+        )
+    } else {
+        (
+            "信誉分扣除",
+            format!(
+                "比赛粘贴作弊复核成立，信誉分 {:.1} → {:.1}。请遵守比赛规范",
+                score_before, score_after
+            ),
+        )
+    };
+    notification_service::create(
+        &mut transaction,
+        event.user_id,
+        "reputation_notice",
+        None,
+        notification.0,
+        Some(&notification.1),
+        Some(&format!("/contests/{contest_id}/result")),
+        Some("contest"),
+        Some(i64::from(contest_id)),
+    )
+    .await?;
+
+    let disqualified_rows = sqlx::query(
+        "UPDATE contest_participants SET disqualified_at = COALESCE(disqualified_at, CURRENT_TIMESTAMP), \
+         disqualified_by = $3, disqualify_reason = 'paste_cheating' \
+         WHERE contest_id = $1 AND user_id = $2",
+    )
+    .bind(contest_id)
+    .bind(event.user_id)
+    .bind(reviewer_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?
+    .rows_affected();
+
+    let mut rating_reranked = false;
+    if event.contest_status == CONTEST_STATUS_FINISHED {
+        rating_reranked = rerank_contest(
+            &mut transaction,
+            contest_id,
+            event.official_event_id.is_some(),
+        )
+        .await?;
+    }
+
+    sqlx::query(
+        "INSERT INTO contest_event_reviews \
+         (event_id, review_status, reviewed_by, review_note, reviewed_at, penalty_applied_at) \
+         VALUES ($1, 'confirmed', $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) \
+         ON CONFLICT (event_id) DO UPDATE SET \
+           review_status = 'confirmed', \
+           reviewed_by = EXCLUDED.reviewed_by, \
+           review_note = EXCLUDED.review_note, \
+           reviewed_at = EXCLUDED.reviewed_at, \
+           penalty_applied_at = EXCLUDED.penalty_applied_at",
+    )
+    .bind(event_id)
+    .bind(reviewer_id)
+    .bind(note)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    sqlx::query(
+        "INSERT INTO contest_proctor_assignments (event_id, assigned_admin_id) \
+         VALUES ($1, $2) ON CONFLICT (event_id) DO UPDATE \
+         SET assigned_admin_id = EXCLUDED.assigned_admin_id, assigned_at = CURRENT_TIMESTAMP",
+    )
+    .bind(event_id)
+    .bind(reviewer_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    transaction.commit().await.map_err(AppError::Database)?;
+    tracing::info!(
+        contest_id,
+        event_id,
+        reviewer_id,
+        user_id = event.user_id,
+        user_status = %user_status,
+        score_before,
+        score_after,
+        banned,
+        "proctor event confirmed"
+    );
+
+    Ok(ProctorReviewResponse {
+        message: if rating_reranked {
+            "已确认作弊，信誉分已扣除，比赛排名已重新结算".to_owned()
+        } else {
+            "已确认作弊，信誉分已扣除".to_owned()
+        },
+        review_status: status.to_owned(),
+        reputation_score: Some(score_after),
+        disqualified: disqualified_rows > 0,
+        rating_reranked,
+    })
+}
+
+/// Recomputes ranks after a participant is disqualified. `contest_rating` is
+/// adjusted by the difference between the old and the new result, so later
+/// contests are not overwritten (多还少补).
+async fn rerank_contest(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    contest_id: i32,
+    is_event_contest: bool,
+) -> Result<bool, AppError> {
+    #[derive(FromRow)]
+    struct RerankRow {
+        user_id: i32,
+        total_score: Option<f64>,
+        solved_count: i32,
+        last_accepted_at: Option<DateTime<Utc>>,
+        finished_at: Option<DateTime<Utc>>,
+        rating_before: i32,
+        rating_after: Option<i32>,
+        rank: Option<i32>,
+        disqualified_at: Option<DateTime<Utc>>,
+    }
+
+    let rows: Vec<RerankRow> = sqlx::query_as(
+        "SELECT p.user_id, p.total_score, p.solved_count, p.last_accepted_at, p.finished_at, \
+                COALESCE(p.rating_before, u.contest_rating) AS rating_before, \
+                p.rating_after, p.rank, p.disqualified_at \
+         FROM contest_participants p JOIN users u ON u.id = p.user_id \
+         WHERE p.contest_id = $1 AND p.status IN ('active', 'finished')",
+    )
+    .bind(contest_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    let (mut active, disqualified): (Vec<RerankRow>, Vec<RerankRow>) = rows
+        .into_iter()
+        .partition(|row| row.disqualified_at.is_none());
+    active.sort_by(|left, right| {
+        right
+            .total_score
+            .unwrap_or(0.0)
+            .partial_cmp(&left.total_score.unwrap_or(0.0))
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| right.solved_count.cmp(&left.solved_count))
+            .then_with(|| match (left.last_accepted_at, right.last_accepted_at) {
+                (Some(a), Some(b)) => a.cmp(&b),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            })
+            .then_with(|| match (left.finished_at, right.finished_at) {
+                (Some(a), Some(b)) => a.cmp(&b),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            })
+            .then_with(|| left.user_id.cmp(&right.user_id))
+    });
+
+    let mut changed = false;
+    for (index, participant) in active.iter().enumerate() {
+        let rank = (index + 1) as i32;
+        let expected_delta = if is_event_contest {
+            0
+        } else {
+            rating_delta_for_rank(rank, active.len())
+        };
+        let rating_after = (participant.rating_before + expected_delta).max(0);
+        let old_after = participant
+            .rating_after
+            .unwrap_or(participant.rating_before);
+        let diff = rating_after - old_after;
+        let rank_changed = participant.rank != Some(rank);
+
+        sqlx::query(
+            "UPDATE contest_participants SET rank = $3, rating_after = $4, \
+             rating_delta = $5 WHERE contest_id = $1 AND user_id = $2",
+        )
+        .bind(contest_id)
+        .bind(participant.user_id)
+        .bind(rank)
+        .bind(rating_after)
+        .bind(rating_after - participant.rating_before)
+        .execute(&mut **transaction)
+        .await
+        .map_err(AppError::Database)?;
+
+        if !is_event_contest && diff != 0 {
+            sqlx::query(
+                "UPDATE users SET contest_rating = GREATEST(0, contest_rating + $2), \
+                 updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+            )
+            .bind(participant.user_id)
+            .bind(diff)
+            .execute(&mut **transaction)
+            .await
+            .map_err(AppError::Database)?;
+        }
+
+        if rank_changed || diff != 0 {
+            changed = true;
+            let (title, body, link) = if is_event_contest {
+                (
+                    format!("赛事排名更新：第 {rank} 名"),
+                    "有选手因作弊被取消成绩，你的排名已重新结算".to_owned(),
+                    format!("/contests/{contest_id}/result"),
+                )
+            } else {
+                (
+                    format!("排位赛重新结算：第 {rank} 名"),
+                    format!(
+                        "有选手因作弊被取消成绩，段位分 {} → {} ({:+})",
+                        old_after, rating_after, diff
+                    ),
+                    format!("/contests/{contest_id}/result"),
+                )
+            };
+            notification_service::create(
+                transaction,
+                participant.user_id,
+                "contest_result",
+                None,
+                &title,
+                Some(&body),
+                Some(&link),
+                Some("contest"),
+                Some(i64::from(contest_id)),
+            )
+            .await?;
+        }
+    }
+
+    for participant in &disqualified {
+        let old_after = participant
+            .rating_after
+            .unwrap_or(participant.rating_before);
+        let diff = participant.rating_before - old_after;
+        if participant.rank.is_some() || diff != 0 {
+            changed = true;
+        }
+        sqlx::query(
+            "UPDATE contest_participants SET rank = NULL, rating_after = $3, rating_delta = 0 \
+             WHERE contest_id = $1 AND user_id = $2",
+        )
+        .bind(contest_id)
+        .bind(participant.user_id)
+        .bind(participant.rating_before)
+        .execute(&mut **transaction)
+        .await
+        .map_err(AppError::Database)?;
+        if !is_event_contest && diff != 0 {
+            sqlx::query(
+                "UPDATE users SET contest_rating = GREATEST(0, contest_rating + $2), \
+                 updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+            )
+            .bind(participant.user_id)
+            .bind(diff)
+            .execute(&mut **transaction)
+            .await
+            .map_err(AppError::Database)?;
+        }
+    }
+
+    Ok(changed)
 }
 
 /// Validates that a submission belongs to a running contest and returns the
@@ -590,12 +1231,14 @@ pub async fn precheck_submission(
         status: String,
         ends_at: DateTime<Utc>,
         participant_status: String,
+        disqualified_at: Option<DateTime<Utc>>,
         run_config: Value,
         judge_cases: Option<Value>,
     }
 
     let row = sqlx::query_as::<_, ContestProblemContext>(
-        "SELECT c.status, c.ends_at, p.status AS participant_status, cp.run_config, cp.judge_cases \
+        "SELECT c.status, c.ends_at, p.status AS participant_status, p.disqualified_at, \
+                cp.run_config, cp.judge_cases \
          FROM contests c \
          JOIN contest_participants p ON p.contest_id = c.id AND p.user_id = $2 \
          JOIN contest_problems cp ON cp.contest_id = c.id AND cp.problem_id = $3 \
@@ -614,6 +1257,11 @@ pub async fn precheck_submission(
     }
     if row.participant_status != PARTICIPANT_STATUS_ACTIVE {
         return Err(AppError::ConflictWith("你已离场，无法继续提交".to_owned()));
+    }
+    if row.disqualified_at.is_some() {
+        return Err(AppError::ConflictWith(
+            "本场成绩已取消，无法继续提交".to_owned(),
+        ));
     }
     if row.ends_at <= Utc::now() {
         return Err(AppError::ConflictWith("比赛已结束".to_owned()));
@@ -686,7 +1334,8 @@ pub async fn settle_contest(pool: &PgPool, contest_id: i32) -> Result<bool, AppE
     let participants: Vec<(i32, Option<DateTime<Utc>>, i32)> = sqlx::query_as(
         "SELECT p.user_id, p.finished_at, COALESCE(p.rating_before, u.contest_rating) \
          FROM contest_participants p JOIN users u ON u.id = p.user_id \
-         WHERE p.contest_id = $1 AND p.status IN ('active', 'finished')",
+         WHERE p.contest_id = $1 AND p.status IN ('active', 'finished') \
+           AND p.disqualified_at IS NULL",
     )
     .bind(contest_id)
     .fetch_all(&mut *transaction)
@@ -935,6 +1584,36 @@ async fn active_contest_id(pool: &PgPool, user_id: i32) -> Result<Option<i32>, A
     .map_err(AppError::Database)
 }
 
+async fn ensure_reputation_for_ranked(pool: &PgPool, user_id: i32) -> Result<(), AppError> {
+    let score: Option<f64> =
+        sqlx::query_scalar("SELECT reputation_score::float8 FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::Database)?;
+    if score.unwrap_or(100.0) < REPUTATION_RESTRICT_BELOW {
+        return Err(AppError::ForbiddenWith(
+            "信誉分低于 40 暂不能参与排位赛".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn ensure_reputation_for_events(pool: &PgPool, user_id: i32) -> Result<(), AppError> {
+    let score: Option<f64> =
+        sqlx::query_scalar("SELECT reputation_score::float8 FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::Database)?;
+    if score.unwrap_or(100.0) < REPUTATION_RESTRICT_BELOW {
+        return Err(AppError::ForbiddenWith(
+            "信誉分低于 40 暂不能报名或参加赛事".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 async fn queue_position(pool: &PgPool, user_id: i32) -> Result<Option<i64>, AppError> {
     sqlx::query_scalar(
         "SELECT position FROM ( \
@@ -1024,6 +1703,7 @@ async fn try_match(pool: &PgPool) -> Result<Option<i32>, AppError> {
                 u.contest_rating AS rating, q.joined_at \
          FROM contest_queue q \
          JOIN users u ON u.id = q.user_id AND u.status = 'active' \
+         WHERE u.reputation_score >= 40 \
          ORDER BY q.joined_at, q.user_id LIMIT 400 FOR UPDATE OF q",
     )
     .fetch_all(&mut *transaction)
@@ -1283,6 +1963,10 @@ fn validate_event(event: &ContestEventInput) -> Result<(), AppError> {
     Ok(())
 }
 
+fn round1(value: f64) -> f64 {
+    (value * 10.0).round() / 10.0
+}
+
 fn round2(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
 }
@@ -1505,6 +2189,7 @@ async fn register_event_inner(
     event_id: i32,
     invite_flow: bool,
 ) -> Result<ContestEventCard, AppError> {
+    ensure_reputation_for_events(pool, user_id).await?;
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
     let event = sqlx::query_as::<_, LockedEventRow>(
         "SELECT status, registration_mode, registration_opens_at, registration_closes_at, \
@@ -2088,6 +2773,7 @@ pub async fn enter_event(
     user_id: i32,
     event_id: i32,
 ) -> Result<EnterEventResponse, AppError> {
+    ensure_reputation_for_events(pool, user_id).await?;
     let event: Option<(String, DateTime<Utc>, DateTime<Utc>)> =
         sqlx::query_as("SELECT status, starts_at, ends_at FROM official_events WHERE id = $1")
             .bind(event_id)

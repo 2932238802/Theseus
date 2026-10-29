@@ -63,6 +63,8 @@ pub struct AnalyticsSummary {
     pub acceptance_rate: f64,
     pub active_classes: i64,
     pub streak_days: i64,
+    pub checkin_streak: i64,
+    pub reputation_score: f64,
 }
 
 #[derive(Debug, Serialize, Clone)]

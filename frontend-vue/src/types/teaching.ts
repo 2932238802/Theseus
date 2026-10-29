@@ -5,7 +5,7 @@ import type {
 
 export type Role = 'student' | 'teacher' | 'admin'
 
-export type AccountStatus = 'active' | 'disabled' | 'deleted'
+export type AccountStatus = 'active' | 'disabled' | 'deleted' | 'banned'
 
 export type AssignmentStatus = 'draft' | 'published' | 'archived'
 
@@ -184,6 +184,7 @@ export interface AdminUser {
   email: string
   role: Role
   status: AccountStatus
+  reputationScore: number
   activeMembershipCount: number
   ownedActiveClassCount: number
   createdAt: string
@@ -214,6 +215,14 @@ export interface ChangeUserStatusResult {
   id: number
   username: string
   status: 'active' | 'disabled'
+  message: string
+}
+
+export interface RestoreReputationResult {
+  id: number
+  username: string
+  status: AccountStatus
+  reputationScore: number
   message: string
 }
 

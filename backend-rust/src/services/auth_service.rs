@@ -30,6 +30,20 @@ pub async fn register(
     let password_hash = hash_password(&request.password)?;
     let email = request.email.trim().to_lowercase();
 
+    let blacklisted: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM email_blacklist \
+                        WHERE LOWER(email) = $1 AND exempted_at IS NULL)",
+    )
+    .bind(&email)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::Database)?;
+    if blacklisted {
+        return Err(AppError::ForbiddenWith(
+            "该邮箱已被列入黑名单，无法注册".to_owned(),
+        ));
+    }
+
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
     let user = sqlx::query_as::<_, User>(
         "INSERT INTO users (username, email, password_hash)

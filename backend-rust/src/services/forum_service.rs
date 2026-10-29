@@ -31,6 +31,7 @@ const DEFAULT_SIZE: u32 = 20;
 const MAX_PUBLIC_PAGE_SIZE: u32 = 50;
 const MAX_ADMIN_PAGE_SIZE: u32 = 100;
 const MAX_MUTE_HOURS: i64 = 8_760;
+const REPUTATION_FORUM_MINIMUM: f64 = 40.0;
 
 pub fn ensure_enabled(config: &Config) -> Result<(), AppError> {
     if config.forum_enabled {
@@ -235,6 +236,17 @@ async fn ensure_not_muted(
     tx: &mut Transaction<'_, Postgres>,
     user_id: i32,
 ) -> Result<(), AppError> {
+    let reputation_score: f64 =
+        sqlx::query_scalar("SELECT reputation_score::float8 FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(AppError::Database)?;
+    if reputation_score < REPUTATION_FORUM_MINIMUM {
+        return Err(AppError::ForbiddenWith(
+            "信誉分低于 40 暂不能在论坛发言".to_owned(),
+        ));
+    }
     let muted: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM user_mutes WHERE user_id = $1 AND revoked_at IS NULL \
          AND starts_at <= CURRENT_TIMESTAMP AND (ends_at IS NULL OR ends_at > CURRENT_TIMESTAMP))",

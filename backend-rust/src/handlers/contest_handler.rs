@@ -11,7 +11,7 @@ use crate::{
     middleware::auth::{authenticate, require_admin, require_verified_email},
     models::contest::{
         AdminEventInput, ContestEventListQuery, ContestEventsRequest, MatchRequest,
-        RankedLeaderboardQuery,
+        ProctorReviewInput, RankedLeaderboardQuery,
     },
     services::contest_service,
 };
@@ -220,6 +220,29 @@ pub async fn admin_list_events(
 ) -> Result<impl IntoResponse, AppError> {
     require_admin(&state.pool, &headers, &state.config).await?;
     let response = contest_service::admin_list_events(&state.pool).await?;
+    Ok(ok(response))
+}
+
+pub async fn admin_proctor_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(contest_id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    let response = contest_service::proctor_events(&state.pool, admin.id, contest_id).await?;
+    Ok(ok(response))
+}
+
+pub async fn admin_review_proctor_event(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((contest_id, event_id)): Path<(i32, i64)>,
+    Json(input): Json<ProctorReviewInput>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_admin(&state.pool, &headers, &state.config).await?;
+    let response =
+        contest_service::review_proctor_event(&state.pool, contest_id, event_id, user.id, &input)
+            .await?;
     Ok(ok(response))
 }
 

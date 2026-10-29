@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { toErrorMessage } from '../api/client'
 import {
   cancelEmailChange,
   changePassword,
   deleteAccount,
+  fetchBadges,
   requestEmailChange,
+  setBadgeVisibility,
   updateUsername,
 } from '../api/profile'
 import { useAuthStore } from '../store/auth'
+import type { ProfileBadge } from '../types/profile'
 
 const emit = defineEmits<{ close: [] }>()
 const router = useRouter()
@@ -25,6 +28,19 @@ const deleteUsername = ref('')
 const busy = ref('')
 const error = ref('')
 const message = ref('')
+const badges = ref<ProfileBadge[]>([])
+const badgesLoading = ref(true)
+const activeSection = ref<'username' | 'email' | 'password' | 'sessions' | 'badges' | 'danger'>(
+  'username',
+)
+const sections = [
+  { key: 'username', label: '用户名' },
+  { key: 'email', label: '邮箱' },
+  { key: 'password', label: '密码' },
+  { key: 'sessions', label: '设备会话' },
+  { key: 'badges', label: '徽章展示' },
+  { key: 'danger', label: '注销账号' },
+] as const
 
 const run = async (key: string, action: () => Promise<void>): Promise<void> => {
   if (busy.value) return
@@ -80,6 +96,30 @@ const savePassword = (): void => {
   })
 }
 
+const loadBadges = async (): Promise<void> => {
+  badgesLoading.value = true
+  try {
+    badges.value = await fetchBadges()
+  } catch (exception: unknown) {
+    error.value = toErrorMessage(exception)
+  } finally {
+    badgesLoading.value = false
+  }
+}
+
+const toggleBadge = (badge: ProfileBadge): void => {
+  const hidden = !badge.hidden
+  void run(`badge-${badge.code}`, async () => {
+    const result = await setBadgeVisibility(badge.code, hidden)
+    badge.hidden = hidden
+    message.value = result.message
+  })
+}
+
+onMounted(() => {
+  void loadBadges()
+})
+
 const logoutEverywhere = (): void => {
   if (!window.confirm('退出所有设备后，当前浏览器也需要重新登录，确定继续吗？')) return
   void run('logout-all', async () => {
@@ -112,7 +152,25 @@ const removeAccount = (): void => {
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
         <p v-if="message" class="teaching-success" role="status">{{ message }}</p>
 
-        <form class="teaching-grade-form" @submit.prevent="saveUsername">
+        <div class="profile-settings-layout">
+          <nav class="profile-settings-nav" aria-label="账号设置分类">
+            <button
+              v-for="section in sections"
+              :key="section.key"
+              type="button"
+              :class="{
+                'is-active': activeSection === section.key,
+                'is-danger': section.key === 'danger',
+              }"
+              :aria-current="activeSection === section.key ? 'page' : undefined"
+              @click="activeSection = section.key"
+            >
+              {{ section.label }}
+            </button>
+          </nav>
+
+          <div class="profile-settings-panel">
+            <form v-show="activeSection === 'username'" class="teaching-grade-form" @submit.prevent="saveUsername">
           <h3>用户名</h3>
           <label>
             <span>新用户名</span>
@@ -125,7 +183,7 @@ const removeAccount = (): void => {
           </div>
         </form>
 
-        <form class="teaching-grade-form" @submit.prevent="saveEmail">
+        <form v-show="activeSection === 'email'" class="teaching-grade-form" @submit.prevent="saveEmail">
           <h3>邮箱</h3>
           <p class="teaching-subtle">
             当前邮箱：{{ authStore.user?.email }}
@@ -155,7 +213,7 @@ const removeAccount = (): void => {
           </div>
         </form>
 
-        <form class="teaching-grade-form" @submit.prevent="savePassword">
+        <form v-show="activeSection === 'password'" class="teaching-grade-form" @submit.prevent="savePassword">
           <h3>密码</h3>
           <label>
             <span>当前密码</span>
@@ -176,7 +234,7 @@ const removeAccount = (): void => {
           </div>
         </form>
 
-        <section class="teaching-grade-form">
+        <section v-show="activeSection === 'sessions'" class="teaching-grade-form">
           <h3>设备会话</h3>
           <p class="teaching-subtle">退出所有设备会使当前浏览器也退出登录</p>
           <div class="teaching-form-actions">
@@ -186,7 +244,41 @@ const removeAccount = (): void => {
           </div>
         </section>
 
-        <section class="teaching-grade-form profile-danger-zone">
+        <section v-show="activeSection === 'badges'" class="teaching-grade-form">
+          <p class="teaching-subtle">
+            关闭后，该徽章不会在论坛和排行榜等公开位置展示，个人界面仍会标记为已隐藏
+          </p>
+          <p v-if="badgesLoading" class="teaching-subtle">加载中</p>
+          <p v-else-if="!badges.length" class="teaching-subtle">暂无可用徽章</p>
+          <ul v-else class="profile-badge-settings">
+            <li
+              v-for="badge in badges"
+              :key="badge.code"
+              :class="{ 'is-locked': !badge.earned }"
+            >
+              <div>
+                <strong>{{ badge.name }}</strong>
+                <small v-if="badge.earned">
+                  {{ badge.description }} · 有效期至
+                  {{ new Date(badge.expiresAt ?? '').toLocaleDateString('zh-CN') }}
+                </small>
+                <small v-else>{{ badge.description }} · 未获得</small>
+              </div>
+              <label v-if="badge.earned" class="profile-badge-toggle">
+                <input
+                  type="checkbox"
+                  :checked="!badge.hidden"
+                  :disabled="busy === `badge-${badge.code}`"
+                  @change="toggleBadge(badge)"
+                />
+                <span>展示</span>
+              </label>
+              <span v-else class="profile-badge-locked">未获得</span>
+            </li>
+          </ul>
+        </section>
+
+        <section v-show="activeSection === 'danger'" class="teaching-grade-form profile-danger-zone">
           <h3>注销账号</h3>
           <p class="teaching-subtle">
             注销后账号立即不可登录，用户名和邮箱会匿名化；历史提交、成绩和教学记录保留；
@@ -206,6 +298,8 @@ const removeAccount = (): void => {
             </button>
           </div>
         </section>
+          </div>
+        </div>
       </div>
     </section>
   </div>

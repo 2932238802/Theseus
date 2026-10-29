@@ -24,6 +24,7 @@ import type { Language } from '../types/oj'
 import type { RunMode } from '../types/run'
 import { formatArgs, formatInline } from '../utils/format'
 import { useContestEvents } from '../utils/contestEvents'
+import { inspectPaste } from '../utils/pasteInspection'
 import { clearDraftMeta, saveDraftMeta } from '../utils/problemDrafts'
 
 const route = useRoute()
@@ -66,7 +67,7 @@ const contestId = computed(() => {
   return Number.isInteger(value) && value > 0 ? value : null
 })
 const contestEventsEnabled = computed(() => contestId.value !== null)
-useContestEvents(contestId, contestEventsEnabled)
+const { report: reportContestEvent } = useContestEvents(contestId, contestEventsEnabled)
 const assignment = ref<AssignmentDetail | null>(null)
 const assignmentError = ref('')
 const assignmentLoading = ref(false)
@@ -206,6 +207,42 @@ const loadPage = async (): Promise<void> => {
   ])
   restoreDraft()
 }
+const problemContextText = (): string => {
+  const problem = problemStore.currentProblem
+  if (!problem) return ''
+  const examples = problem.examples.flatMap((example) => [
+    example.input,
+    example.output,
+    example.explanation ?? '',
+  ])
+  return [
+    problem.title,
+    problem.description,
+    ...examples,
+    problem.codeTemplate[language.value] ?? '',
+  ].join('\n')
+}
+
+const handleEditorPaste = (text: string): void => {
+  if (!contestId.value) return
+  const problem = problemStore.currentProblem
+  if (!problem) return
+  const inspection = inspectPaste(text, {
+    code: code.value,
+    problemText: problemContextText(),
+  })
+  if (!inspection.suspicious) return
+  reportContestEvent('paste_suspicious', {
+    length: inspection.length,
+    lines: inspection.lines,
+    code_similarity: inspection.codeSimilarity,
+    problem_similarity: inspection.problemSimilarity,
+    preview: inspection.preview,
+    preview_truncated: inspection.length > inspection.preview.length,
+    language: language.value,
+  })
+}
+
 const submitCode = async (): Promise<void> => {
   if (
     !submitFeatureEnabled ||
@@ -674,7 +711,7 @@ onBeforeUnmount(() => {
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
         <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(12, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(20, fontSize + 1)">A+</button><button type="button" aria-label="切换编辑器主题" title="切换编辑器主题" @click="isDark = !isDark">◐</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
-        <CodeEditor v-model="code" :language="language" :font-size="fontSize" :dark="isDark" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" />
+        <CodeEditor v-model="code" :language="language" :font-size="fontSize" :dark="isDark" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" />
         <div
           ref="outputResizerRef"
           class="pane-resizer-h"

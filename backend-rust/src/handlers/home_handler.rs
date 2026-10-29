@@ -17,6 +17,15 @@ pub async fn overview(
     Ok(ok(response))
 }
 
+pub async fn check_in(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let response = home_service::check_in(&state.pool, user.id).await?;
+    Ok(ok(response))
+}
+
 pub async fn random_problem(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
     let problem_id: Option<i32> = sqlx::query_scalar(
         "SELECT id FROM problems WHERE review_status = 'approved' ORDER BY random() LIMIT 1",

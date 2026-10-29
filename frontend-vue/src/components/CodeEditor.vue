@@ -21,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   shortcut: [actionId: string]
+  pasteText: [text: string]
 }>()
 
 const container = ref<HTMLElement | null>(null)
@@ -91,9 +92,15 @@ const applyShortcutRules = (): void => {
   if (rules.length) shortcutRuleDisposable = monacoApi.editor.addKeybindingRules(rules)
 }
 
+const onPaste = (event: ClipboardEvent): void => {
+  const text = event.clipboardData?.getData('text/plain') ?? ''
+  if (text) emit('pasteText', text)
+}
+
 onMounted(async () => {
   await nextTick()
   if (!container.value) return
+  container.value.addEventListener('paste', onPaste)
   const monaco = await loader.init()
   monacoApi = monaco
   const instance = monaco.editor.create(container.value, {
@@ -132,6 +139,7 @@ const focus = (): void => monacoEditor?.focus()
 defineExpose({ focus })
 
 onBeforeUnmount(() => {
+  container.value?.removeEventListener('paste', onPaste)
   resizeObserver?.disconnect()
   shortcutRuleDisposable?.dispose()
   shortcutRuleDisposable = undefined

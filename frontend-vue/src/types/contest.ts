@@ -171,6 +171,7 @@ export interface ContestRankingItem {
   coding_score: number
   finished_at: string | null
   is_me: boolean
+  disqualified: boolean
   rating_before: number | null
   rating_after: number | null
   rating_delta: number | null
@@ -302,4 +303,45 @@ export interface AdminEventInput {
   status: 'draft' | 'published' | 'cancelled'
   rules: EventRuleGroup[]
   problem_ids: number[]
+}
+
+export type ProctorReviewStatus = 'pending' | 'cleared' | 'confirmed'
+
+export interface ProctorContestInfo {
+  id: number
+  event_id: number | null
+  event_title: string | null
+  status: ContestStatus
+  starts_at: string
+  ends_at: string
+}
+
+export interface ProctorEventItem {
+  id: number
+  user_id: number
+  username: string
+  event_type: string
+  payload: Record<string, unknown>
+  client_time: string | null
+  received_at: string
+  review_status: ProctorReviewStatus
+  review_note: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  assigned_admin: string | null
+  assigned_to_me: boolean
+}
+
+export interface ProctorEventListResponse {
+  contest: ProctorContestInfo
+  items: ProctorEventItem[]
+  pending_count: number
+}
+
+export interface ProctorReviewResponse {
+  message: string
+  review_status: ProctorReviewStatus
+  reputation_score: number | null
+  disqualified: boolean
+  rating_reranked: boolean
 }

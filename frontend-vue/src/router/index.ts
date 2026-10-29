@@ -10,6 +10,7 @@ import AssignmentDetailPage from '../views/AssignmentDetailPage.vue'
 import ClassDetailPage from '../views/ClassDetailPage.vue'
 import ClassesPage from '../views/ClassesPage.vue'
 import ContestPage from '../views/ContestPage.vue'
+import ContestProctorPage from '../views/ContestProctorPage.vue'
 import ContestEventDetailPage from '../views/ContestEventDetailPage.vue'
 import ContestEventsPage from '../views/ContestEventsPage.vue'
 import ContestRankedLeaderboardPage from '../views/ContestRankedLeaderboardPage.vue'
@@ -53,6 +54,7 @@ const router = createRouter({
     { path: '/contests/rankings', name: 'contest-rankings', component: ContestRankedLeaderboardPage, meta: { requiresAuth: true } },
     { path: '/contests/events/:eventId', name: 'contest-event-detail', component: ContestEventDetailPage, meta: { requiresAuth: true } },
     { path: '/contests/:id', name: 'contest', component: ContestPage, meta: { requiresAuth: true } },
+    { path: '/contests/:id/proctor', name: 'contest-proctor', component: ContestProctorPage, meta: { requiresAuth: true, requiresAdmin: true } },
     { path: '/contests/:id/result', name: 'contest-result', component: ContestResultPage, meta: { requiresAuth: true } },
     { path: '/forum', name: 'forum', component: ForumPage },
     { path: '/forum/new', name: 'forum-compose', component: ForumComposePage, meta: { requiresAuth: true } },

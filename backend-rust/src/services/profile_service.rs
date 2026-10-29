@@ -316,11 +316,12 @@ pub async fn analytics(
     .await
     .map_err(AppError::Database)?;
 
-    let (role,): (String,) = sqlx::query_as("SELECT role FROM users WHERE id = $1")
-        .bind(user_id)
-        .fetch_one(pool)
-        .await
-        .map_err(AppError::Database)?;
+    let (role, reputation_score): (String, f64) =
+        sqlx::query_as("SELECT role, reputation_score::float8 FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::Database)?;
     let active_classes: i64 = match role.as_str() {
         "student" => sqlx::query_scalar(
             "SELECT COUNT(*) FROM class_members WHERE user_id = $1 AND status = 'active'",
@@ -350,6 +351,16 @@ pub async fn analytics(
     .await
     .map_err(AppError::Database)?;
     let streak_days = compute_streak(&days_with_accepted);
+
+    let checkin_days: Vec<NaiveDate> = sqlx::query_scalar(
+        "SELECT checkin_date FROM reputation_checkins WHERE user_id = $1 \
+         ORDER BY checkin_date DESC",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+    let checkin_streak = compute_streak(&checkin_days);
 
     #[derive(FromRow)]
     struct TrendRow {
@@ -462,6 +473,8 @@ pub async fn analytics(
             acceptance_rate,
             active_classes,
             streak_days,
+            checkin_streak,
+            reputation_score,
         },
         trend,
         heatmap,

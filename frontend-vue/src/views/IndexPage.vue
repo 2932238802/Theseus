@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
-import { fetchHomeOverview, fetchRandomProblem } from '../api/home'
+import { checkIn, fetchHomeOverview, fetchRandomProblem } from '../api/home'
 import { useAuthStore } from '../store/auth'
 import { DIFFICULTY_LABELS, LANGUAGE_OPTIONS } from '../utils/constants'
 import { latestDraftMeta, type DraftMeta } from '../utils/problemDrafts'
@@ -30,6 +30,9 @@ const error = ref('')
 const actionError = ref('')
 const randomLoading = ref(false)
 const draft = ref<DraftMeta | null>(null)
+const checkinState = ref<HomeOverview['checkin'] | null>(null)
+const checkinLoading = ref(false)
+const checkinNotice = ref('')
 
 const continueEntry = computed<ContinueView | null>(() => {
   if (draft.value) {
@@ -132,6 +135,7 @@ const loadOverview = async (): Promise<void> => {
   error.value = ''
   try {
     overview.value = await fetchHomeOverview()
+    checkinState.value = overview.value.checkin
   } catch (exception: unknown) {
     error.value = toErrorMessage(exception)
   } finally {
@@ -157,6 +161,25 @@ const openRandomProblem = async (): Promise<void> => {
   }
 }
 
+const doCheckin = async (): Promise<void> => {
+  if (checkinLoading.value || checkinState.value?.checked_in_today) return
+  checkinLoading.value = true
+  checkinNotice.value = ''
+  actionError.value = ''
+  try {
+    const result = await checkIn()
+    checkinState.value = {
+      checked_in_today: true,
+      reputation_score: result.reputation_score,
+    }
+    checkinNotice.value = result.message
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    checkinLoading.value = false
+  }
+}
+
 const continueLink = computed(() => {
   const entry = continueEntry.value
   if (!entry) return '/problems'
@@ -177,7 +200,18 @@ onMounted(() => {
   <main class="home-page page-shell">
     <header class="home-heading">
       <h1>{{ greeting }}</h1>
+      <div v-if="authStore.isAuthenticated && checkinState" class="home-checkin">
+        <button
+          class="forum-secondary-button"
+          type="button"
+          :disabled="checkinState.checked_in_today || checkinLoading"
+          @click="doCheckin"
+        >
+          {{ checkinState.checked_in_today ? '今日已签到' : '签到' }}
+        </button>
+      </div>
     </header>
+    <p v-if="checkinNotice" class="teaching-success" role="status">{{ checkinNotice }}</p>
 
     <section class="home-search" aria-label="题目搜索">
       <form class="home-search-form" @submit.prevent="search">

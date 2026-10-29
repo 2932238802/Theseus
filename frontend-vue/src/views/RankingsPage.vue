@@ -71,9 +71,8 @@ watch(() => `${authStore.user?.id ?? ''}:${authStore.isStudent}`, () => {
       </div>
     </section>
 
-    <p class="ranking-hint">
-      <span>仅学生参与排名 同分按通过率 再按最后通过时间早者优先</span>
-      <RouterLink v-if="!authStore.isAuthenticated" to="/login?redirect=/rankings">登录后查看我的排名</RouterLink>
+    <p v-if="!authStore.isAuthenticated" class="ranking-hint">
+      <RouterLink to="/login?redirect=/rankings">登录后查看我的排名</RouterLink>
     </p>
 
     <p v-if="error" class="list-error" role="alert">{{ error }} <button type="button" @click="load(page)">重试</button></p>

@@ -557,6 +557,13 @@ onMounted(() => {
                     编辑
                   </button>
                   <RouterLink
+                    v-if="event.contest_id"
+                    class="forum-secondary-button"
+                    :to="`/contests/${event.contest_id}/proctor`"
+                  >
+                    粘贴复核
+                  </RouterLink>
+                  <RouterLink
                     v-if="event.forum_post_id"
                     class="forum-secondary-button"
                     :to="`/forum/${event.forum_post_id}`"

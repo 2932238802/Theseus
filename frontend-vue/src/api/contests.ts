@@ -14,6 +14,8 @@ import type {
   ContestResult,
   EnterContestEvent,
   EventLeaderboard,
+  ProctorEventListResponse,
+  ProctorReviewResponse,
   RankedLeaderboard,
   ScreenPermission,
 } from '../types/contest'
@@ -101,4 +103,26 @@ export const sendContestEvents = async (
 ): Promise<ContestEventResult> =>
   unwrap(
     http.post<ApiEnvelope<ContestEventResult>>(`/contests/${id}/events`, { events }),
+  )
+
+export const fetchProctorEvents = async (
+  contestId: number,
+): Promise<ProctorEventListResponse> =>
+  unwrap(
+    http.get<ApiEnvelope<ProctorEventListResponse>>(
+      `/admin/contests/${contestId}/proctor-events`,
+    ),
+  )
+
+export const reviewProctorEvent = async (
+  contestId: number,
+  eventId: number,
+  status: 'cleared' | 'confirmed',
+  note?: string,
+): Promise<ProctorReviewResponse> =>
+  unwrap(
+    http.post<ApiEnvelope<ProctorReviewResponse>>(
+      `/admin/contests/${contestId}/proctor-events/${eventId}/review`,
+      { status, note: note?.trim() || null },
+    ),
   )

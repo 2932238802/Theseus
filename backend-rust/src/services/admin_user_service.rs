@@ -6,8 +6,10 @@ use crate::{
     models::teaching::{
         AdminUserItem, AdminUserListQuery, AdminUserListResponse, ChangeRoleRequest,
         ChangeRoleResponse, ChangeUserStatusRequest, ChangeUserStatusResponse, DeleteUserResponse,
-        ROLE_ADMIN, ROLE_STUDENT, ROLE_TEACHER,
+        ROLE_ADMIN, ROLE_STUDENT, ROLE_TEACHER, RestoreReputationRequest,
+        RestoreReputationResponse,
     },
+    services::notification_service,
 };
 
 const DEFAULT_PAGE: u32 = 1;
@@ -17,6 +19,7 @@ const ROLE_LOCK_NAMESPACE: i32 = 4;
 const STATUS_ACTIVE: &str = "active";
 const STATUS_DISABLED: &str = "disabled";
 const STATUS_DELETED: &str = "deleted";
+const STATUS_BANNED: &str = "banned";
 
 pub async fn list_users(
     pool: &PgPool,
@@ -46,6 +49,7 @@ pub async fn list_users(
 
     let mut builder = QueryBuilder::<Postgres>::new(
         "SELECT u.id, u.username, u.email, u.role, u.status, \
+         u.reputation_score::float8 AS reputation_score, \
          (SELECT COUNT(*) FROM class_members cm WHERE cm.user_id = u.id AND cm.status = 'active') AS active_membership_count, \
          (SELECT COUNT(*) FROM classes c WHERE c.owner_id = u.id AND c.archived_at IS NULL) AS owned_active_class_count, \
          u.created_at, u.role_changed_at FROM users u WHERE 1 = 1",
@@ -223,6 +227,11 @@ pub async fn change_status(
             "该账号已删除，无法修改状态".to_owned(),
         ));
     }
+    if current_status == STATUS_BANNED {
+        return Err(AppError::ConflictWith(
+            "该账号因信誉分封禁，请通过恢复信誉分解除".to_owned(),
+        ));
+    }
     if current_status == next_status {
         transaction.commit().await.map_err(AppError::Database)?;
         return Ok(ChangeUserStatusResponse {
@@ -263,6 +272,158 @@ pub async fn change_status(
             "账号已恢复，可以重新登录".to_owned()
         },
     })
+}
+
+pub async fn restore_reputation(
+    pool: &PgPool,
+    actor_id: i32,
+    target_id: i32,
+    request: &RestoreReputationRequest,
+) -> Result<RestoreReputationResponse, AppError> {
+    let score_after = round1(request.score);
+    if !score_after.is_finite() || !(0.0..=100.0).contains(&score_after) {
+        return Err(AppError::BadRequest(
+            "信誉分必须在 0 到 100 之间".to_owned(),
+        ));
+    }
+    let note = request
+        .note
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(note) = note
+        && note.chars().count() > 500
+    {
+        return Err(AppError::BadRequest("恢复原因不能超过 500 字".to_owned()));
+    }
+    if actor_id == target_id {
+        return Err(AppError::BadRequest("不能修改自己的信誉分".to_owned()));
+    }
+
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let target: Option<(i32, String, String, String, f64)> = sqlx::query_as(
+        "SELECT id, username, email, status, reputation_score::float8 \
+         FROM users WHERE id = $1 FOR UPDATE",
+    )
+    .bind(target_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    let (id, username, email, current_status, score_before) =
+        target.ok_or_else(|| AppError::NotFound("用户不存在".to_owned()))?;
+
+    if current_status == STATUS_DELETED {
+        return Err(AppError::ConflictWith("该账号已删除".to_owned()));
+    }
+    if score_after <= score_before {
+        return Err(AppError::BadRequest("只能上调信誉分".to_owned()));
+    }
+    if current_status == STATUS_BANNED && score_after <= 0.0 {
+        return Err(AppError::BadRequest(
+            "恢复后的信誉分需高于 0 才能解除封禁".to_owned(),
+        ));
+    }
+
+    let unban = current_status == STATUS_BANNED;
+    if unban {
+        sqlx::query(
+            "UPDATE users SET reputation_score = $2::float8::numeric(6, 1), status = 'active', \
+             token_version = token_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        )
+        .bind(id)
+        .bind(score_after)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        sqlx::query(
+            "UPDATE email_blacklist SET exempted_at = CURRENT_TIMESTAMP, exempted_by = $2 \
+             WHERE exempted_at IS NULL AND (user_id = $1 OR LOWER(email) = LOWER($3))",
+        )
+        .bind(id)
+        .bind(actor_id)
+        .bind(&email)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+    } else {
+        sqlx::query(
+            "UPDATE users SET reputation_score = $2::float8::numeric(6, 1), \
+             updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        )
+        .bind(id)
+        .bind(score_after)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+    }
+
+    sqlx::query(
+        "INSERT INTO reputation_events \
+         (user_id, delta, score_before, score_after, reason, actor_id, note) \
+         VALUES ($1, $2::float8::numeric(6, 1), $3::float8::numeric(6, 1), \
+                 $4::float8::numeric(6, 1), 'admin_restore', $5, $6)",
+    )
+    .bind(id)
+    .bind(round1(score_after - score_before))
+    .bind(score_before)
+    .bind(score_after)
+    .bind(actor_id)
+    .bind(note)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    notification_service::create(
+        &mut transaction,
+        id,
+        "reputation_notice",
+        Some(actor_id),
+        "信誉分已恢复",
+        Some(&format!(
+            "管理员已将信誉分从 {:.1} 恢复为 {:.1}{}",
+            score_before,
+            score_after,
+            if unban {
+                "，账号已解除封禁"
+            } else {
+                ""
+            }
+        )),
+        Some("/profile"),
+        Some("user"),
+        Some(i64::from(id)),
+    )
+    .await?;
+
+    transaction.commit().await.map_err(AppError::Database)?;
+    tracing::info!(
+        actor_id,
+        target_id = id,
+        score_before,
+        score_after,
+        unban,
+        "user reputation restored"
+    );
+
+    Ok(RestoreReputationResponse {
+        id,
+        username,
+        status: if unban {
+            STATUS_ACTIVE.to_owned()
+        } else {
+            current_status
+        },
+        reputation_score: score_after,
+        message: if unban {
+            "信誉分已恢复，账号与邮箱已解除封禁".to_owned()
+        } else {
+            "信誉分已恢复".to_owned()
+        },
+    })
+}
+
+fn round1(value: f64) -> f64 {
+    (value * 10.0).round() / 10.0
 }
 
 pub async fn delete_user(

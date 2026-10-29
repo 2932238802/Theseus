@@ -568,6 +568,14 @@
   background: var(--color-accent-soft);
 }
 
+.ranking-table tbody tr.is-disqualified td {
+  color: var(--color-text-muted);
+}
+
+.ranking-table tbody tr.is-disqualified td .ranking-disqualified {
+  color: var(--color-danger);
+}
+
 .ranking-rank {
   width: 72px;
   color: var(--color-text-secondary);
@@ -593,6 +601,28 @@
   font-size: 11px;
   font-weight: 500;
   vertical-align: middle;
+}
+
+.ranking-rank.is-disqualified {
+  color: var(--color-text-muted);
+}
+
+.ranking-disqualified {
+  display: inline-flex;
+  margin-left: var(--space-xs);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.ranking-me-rank .ranking-disqualified {
+  margin-left: 0;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 @media (max-width: 640px) {

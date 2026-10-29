@@ -1,5 +1,5 @@
 import type { User } from '../types/oj'
-import type { ForumFavoriteList, ProfileAnalytics } from '../types/profile'
+import type { ForumFavoriteList, ProfileAnalytics, ProfileBadge } from '../types/profile'
 import { type ApiEnvelope, unwrap } from './client'
 import { type BackendUser, mapUser } from './adapters'
 import { http } from './http'
@@ -29,11 +29,25 @@ interface BackendAnalytics {
     acceptance_rate: number
     active_classes: number
     streak_days: number
+    checkin_streak: number
+    reputation_score: number
   }
   trend: Array<{ date: string; submissions: number; accepted: number }>
   heatmap?: Array<{ date: string; submissions: number; accepted: number }>
   difficulty: Array<{ difficulty: string; attempted: number; accepted: number }>
   tags: Array<{ tag: string; attempted: number; accepted: number }>
+}
+
+interface BackendBadge {
+  code: string
+  name: string
+  description: string
+  category: string
+  threshold_days: number
+  earned: boolean
+  awarded_at: string | null
+  expires_at: string | null
+  hidden: boolean
 }
 
 interface BackendFavorite {
@@ -125,12 +139,44 @@ export const fetchAnalytics = async (days = 30): Promise<ProfileAnalytics> => {
       acceptanceRate: data.summary.acceptance_rate,
       activeClasses: data.summary.active_classes,
       streakDays: data.summary.streak_days,
+      checkinStreak: data.summary.checkin_streak,
+      reputationScore: data.summary.reputation_score,
     },
     trend: data.trend,
     heatmap: data.heatmap ?? data.trend,
     difficulty: data.difficulty,
     tags: data.tags,
   }
+}
+
+export const fetchBadges = async (): Promise<ProfileBadge[]> => {
+  const data = await unwrap(
+    http.get<ApiEnvelope<{ badges: BackendBadge[] }>>('/profile/badges'),
+  )
+  return data.badges.map((badge) => ({
+    code: badge.code,
+    name: badge.name,
+    description: badge.description,
+    category: badge.category,
+    thresholdDays: badge.threshold_days,
+    earned: badge.earned,
+    awardedAt: badge.awarded_at,
+    expiresAt: badge.expires_at,
+    hidden: badge.hidden,
+  }))
+}
+
+export const setBadgeVisibility = async (
+  code: string,
+  hidden: boolean,
+): Promise<{ message: string }> => {
+  const data = await unwrap(
+    http.put<ApiEnvelope<{ code: string; hidden: boolean; message: string }>>(
+      `/profile/badges/${encodeURIComponent(code)}/visibility`,
+      { hidden },
+    ),
+  )
+  return { message: data.message }
 }
 
 export const fetchForumFavorites = async (

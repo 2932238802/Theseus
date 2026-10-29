@@ -6,6 +6,20 @@ export interface ProfileAnalyticsSummary {
   acceptanceRate: number
   activeClasses: number
   streakDays: number
+  checkinStreak: number
+  reputationScore: number
+}
+
+export interface ProfileBadge {
+  code: string
+  name: string
+  description: string
+  category: string
+  thresholdDays: number
+  earned: boolean
+  awardedAt: string | null
+  expiresAt: string | null
+  hidden: boolean
 }
 
 export interface ProfileTrendPoint {

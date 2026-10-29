@@ -29,6 +29,7 @@ pub struct AdminUserItem {
     pub email: String,
     pub role: String,
     pub status: String,
+    pub reputation_score: f64,
     pub active_membership_count: i64,
     pub owned_active_class_count: i64,
     pub created_at: DateTime<Utc>,
@@ -75,6 +76,22 @@ pub struct ChangeUserStatusResponse {
 #[derive(Debug, Serialize)]
 pub struct DeleteUserResponse {
     pub id: i32,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RestoreReputationRequest {
+    pub score: f64,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RestoreReputationResponse {
+    pub id: i32,
+    pub username: String,
+    pub status: String,
+    pub reputation_score: f64,
     pub message: String,
 }
 

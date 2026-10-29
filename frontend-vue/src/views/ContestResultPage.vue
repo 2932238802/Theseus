@@ -107,7 +107,8 @@ void load()
       <section v-if="result.mine" class="ranking-me" aria-label="我的成绩">
         <div class="ranking-me-rank">
           <span>我的排名</span>
-          <strong>#{{ result.mine.rank }}</strong>
+          <strong v-if="result.mine.disqualified" class="ranking-disqualified">成绩取消</strong>
+          <strong v-else>#{{ result.mine.rank }}</strong>
         </div>
         <div class="ranking-me-stat">
           <span>总分</span>
@@ -158,12 +159,21 @@ void load()
               <tr
                 v-for="entry in result.ranking"
                 :key="entry.user_id"
-                :class="{ 'is-me': entry.is_me }"
+                :class="{ 'is-me': entry.is_me, 'is-disqualified': entry.disqualified }"
               >
-                <td class="ranking-rank" :class="{ top: entry.rank <= 3 }">{{ entry.rank }}</td>
+                <td
+                  class="ranking-rank"
+                  :class="{
+                    top: !entry.disqualified && entry.rank <= 3,
+                    'is-disqualified': entry.disqualified,
+                  }"
+                >
+                  {{ entry.disqualified ? '—' : entry.rank }}
+                </td>
                 <td class="ranking-user">
                   {{ entry.username }}
                   <span v-if="entry.is_me" class="ranking-you">我</span>
+                  <span v-if="entry.disqualified" class="ranking-disqualified">成绩已取消</span>
                 </td>
                 <td>{{ formatScore(entry.total_score) }}</td>
                 <td>{{ entry.solved_count }}</td>

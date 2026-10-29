@@ -26,8 +26,21 @@ export interface HomeActivity {
   submitted_at: string
 }
 
+export interface HomeCheckin {
+  checked_in_today: boolean
+  reputation_score: number
+}
+
 export interface HomeOverview {
   continue_learning: HomeContinue | null
   stats: HomeStats
   recent_activity: HomeActivity[]
+  checkin: HomeCheckin
+}
+
+export interface CheckinResult {
+  checked_in: boolean
+  reputation_score: number
+  checkin_streak: number
+  message: string
 }

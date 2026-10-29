@@ -9,7 +9,9 @@ use crate::{
     AppState,
     common::{error::AppError, response::ok},
     middleware::auth::require_admin,
-    models::teaching::{AdminUserListQuery, ChangeRoleRequest, ChangeUserStatusRequest},
+    models::teaching::{
+        AdminUserListQuery, ChangeRoleRequest, ChangeUserStatusRequest, RestoreReputationRequest,
+    },
     services::admin_user_service,
 };
 
@@ -42,6 +44,17 @@ pub async fn change_status(
 ) -> Result<impl IntoResponse, AppError> {
     let admin = require_admin(&state.pool, &headers, &state.config).await?;
     let data = admin_user_service::change_status(&state.pool, admin.id, id, &request).await?;
+    Ok(ok(data))
+}
+
+pub async fn restore_reputation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+    Json(request): Json<RestoreReputationRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    let data = admin_user_service::restore_reputation(&state.pool, admin.id, id, &request).await?;
     Ok(ok(data))
 }
 

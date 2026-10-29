@@ -23,11 +23,12 @@ pub const RATING_LOSS_FOURTH: i32 = 20;
 
 pub const CAMERA_PERMISSIONS: [&str; 3] = ["granted", "denied", "unavailable"];
 pub const SCREEN_PERMISSIONS: [&str; 3] = ["granted", "denied", "unavailable"];
-pub const CONTEST_EVENT_TYPES: [&str; 5] = [
+pub const CONTEST_EVENT_TYPES: [&str; 6] = [
     "camera_permission",
     "visibility_hidden",
     "visibility_visible",
     "paste",
+    "paste_suspicious",
     "camera_unavailable",
 ];
 
@@ -194,6 +195,7 @@ pub struct ContestRankingItem {
     pub coding_score: f64,
     pub finished_at: Option<DateTime<Utc>>,
     pub is_me: bool,
+    pub disqualified: bool,
     pub rating_before: Option<i32>,
     pub rating_after: Option<i32>,
     pub rating_delta: Option<i32>,
@@ -260,6 +262,56 @@ pub struct ContestEventsResponse {
     pub accepted: u64,
     pub duplicates: u64,
     pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProctorContestInfo {
+    pub id: i32,
+    pub event_id: Option<i32>,
+    pub event_title: Option<String>,
+    pub status: String,
+    pub starts_at: DateTime<Utc>,
+    pub ends_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProctorEventItem {
+    pub id: i64,
+    pub user_id: i32,
+    pub username: String,
+    pub event_type: String,
+    pub payload: Value,
+    pub client_time: Option<DateTime<Utc>>,
+    pub received_at: DateTime<Utc>,
+    pub review_status: String,
+    pub review_note: Option<String>,
+    pub reviewed_by: Option<String>,
+    pub reviewed_at: Option<DateTime<Utc>>,
+    pub assigned_admin: Option<String>,
+    pub assigned_to_me: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProctorEventListResponse {
+    pub contest: ProctorContestInfo,
+    pub items: Vec<ProctorEventItem>,
+    pub pending_count: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProctorReviewInput {
+    pub status: String,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProctorReviewResponse {
+    pub message: String,
+    pub review_status: String,
+    pub reputation_score: Option<f64>,
+    pub disqualified: bool,
+    pub rating_reranked: bool,
 }
 
 #[derive(Debug, FromRow)]

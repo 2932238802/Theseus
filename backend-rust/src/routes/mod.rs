@@ -8,9 +8,10 @@ use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use crate::{
     AppState,
     handlers::{
-        admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, class_handler,
-        contest_handler, forum_handler, home_handler, invitation_handler, notification_handler,
-        problem_handler, profile_handler, ranking_handler, run_handler, submission_handler,
+        admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, badge_handler,
+        class_handler, contest_handler, forum_handler, home_handler, invitation_handler,
+        notification_handler, problem_handler, profile_handler, ranking_handler, run_handler,
+        submission_handler,
     },
 };
 
@@ -45,6 +46,11 @@ pub fn router(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max(3 * 1024 * 1024)),
         )
         .route("/api/profile/analytics", get(profile_handler::analytics))
+        .route("/api/profile/badges", get(badge_handler::list))
+        .route(
+            "/api/profile/badges/{code}/visibility",
+            put(badge_handler::update_visibility),
+        )
         .route("/api/auth/verify-email", post(auth_handler::verify_email))
         .route(
             "/api/auth/verify-email/resend",
@@ -70,6 +76,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/admin/users/{id}/role",
             put(admin_user_handler::change_role),
+        )
+        .route(
+            "/api/admin/users/{id}/reputation",
+            put(admin_user_handler::restore_reputation),
         )
         .route(
             "/api/classes",
@@ -202,6 +212,14 @@ pub fn router(state: AppState) -> Router {
             post(contest_handler::sync_event_forum),
         )
         .route(
+            "/api/admin/contests/{id}/proctor-events",
+            get(contest_handler::admin_proctor_events),
+        )
+        .route(
+            "/api/admin/contests/{id}/proctor-events/{event_id}/review",
+            post(contest_handler::admin_review_proctor_event),
+        )
+        .route(
             "/api/contests/events/{id}/enter",
             post(contest_handler::enter_event),
         )
@@ -239,6 +257,7 @@ pub fn router(state: AppState) -> Router {
             get(run_handler::detail).delete(run_handler::remove),
         )
         .route("/api/home/overview", get(home_handler::overview))
+        .route("/api/home/check-in", post(home_handler::check_in))
         .route("/api/problems", get(problem_handler::list))
         .route("/api/problems/random", get(home_handler::random_problem))
         .route("/api/problems/tags", get(problem_handler::tags))

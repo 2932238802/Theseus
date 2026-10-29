@@ -1,3 +1,4 @@
+pub mod badge;
 pub mod contest;
 pub mod forum;
 pub mod home;

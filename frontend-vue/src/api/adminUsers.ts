@@ -4,6 +4,7 @@ import type {
   ChangeRoleResult,
   ChangeUserStatusResult,
   DeleteUserResult,
+  RestoreReputationResult,
   Role,
 } from '../types/teaching'
 import { type ApiEnvelope, unwrap } from './client'
@@ -75,6 +76,31 @@ export const changeUserStatus = async (
     id: data.id,
     username: data.username,
     status: data.status,
+    message: data.message,
+  }
+}
+
+export const restoreUserReputation = async (
+  userId: number,
+  score: number,
+  note?: string,
+): Promise<RestoreReputationResult> => {
+  const data = await unwrap(
+    http.put<
+      ApiEnvelope<{
+        id: number
+        username: string
+        status: RestoreReputationResult['status']
+        reputation_score: number
+        message: string
+      }>
+    >(`/admin/users/${userId}/reputation`, { score, note }),
+  )
+  return {
+    id: data.id,
+    username: data.username,
+    status: data.status,
+    reputationScore: data.reputation_score,
     message: data.message,
   }
 }

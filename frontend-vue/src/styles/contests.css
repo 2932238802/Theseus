@@ -999,3 +999,203 @@
   margin: 0;
   text-decoration: none;
 }
+
+/* 粘贴复核 ----------------------------------------------------------------- */
+
+.proctor-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.proctor-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin: var(--space-lg) 0;
+}
+
+.proctor-filters button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  transition:
+    border-color var(--duration),
+    background-color var(--duration),
+    color var(--duration);
+}
+
+.proctor-filters button:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.proctor-filters button.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.proctor-filters button span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.proctor-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.proctor-card {
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.proctor-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.proctor-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.proctor-card-title time {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.proctor-status {
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.proctor-status.is-pending {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.proctor-status.is-confirmed {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.proctor-status.is-cleared {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.proctor-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-sm) var(--space-md);
+  margin: var(--space-md) 0 0;
+}
+
+.proctor-metrics dt {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.proctor-metrics dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+}
+
+.proctor-preview {
+  margin-top: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.proctor-preview > span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.proctor-preview pre {
+  max-height: 200px;
+  margin: 6px 0 4px;
+  overflow: auto;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.proctor-preview small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.proctor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.proctor-actions input {
+  flex: 1 1 220px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: 13px;
+}
+
+.proctor-review-note {
+  margin-top: var(--space-md);
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.proctor-empty {
+  margin-top: var(--space-lg);
+  padding: var(--space-xl);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .proctor-card {
+    padding: var(--space-md);
+  }
+
+  .proctor-card > header {
+    flex-direction: column;
+  }
+
+  .proctor-actions button {
+    flex: 1 1 auto;
+  }
+}
