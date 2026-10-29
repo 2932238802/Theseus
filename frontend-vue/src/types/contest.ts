@@ -12,22 +12,62 @@ export type CameraPermission = 'granted' | 'denied' | 'unavailable'
 
 export type ContestEventStatus = 'registration' | 'upcoming' | 'running' | 'finished' | 'full'
 
+export type ContestEventAction =
+  | 'register'
+  | 'join'
+  | 'enter'
+  | 'details'
+  | 'full'
+  | 'closed'
+
+export type ContestEventType = 'official' | 'teacher' | 'school'
+
+export interface EventRuleGroup {
+  title: string
+  items: string[]
+}
+
 export interface ContestEventCard {
   id: number
   title: string
   organizer: string
-  type: 'official' | 'teacher' | 'school'
+  type: ContestEventType
   status: ContestEventStatus
   starts_at: string
   ends_at: string
+  registration_opens_at?: string | null
   registration_deadline?: string | null
   scope?: string | null
   capacity?: number | null
-  registered_count?: number | null
+  registered_count: number
   is_registered: boolean
   eligible: boolean
   ineligible_reason?: string | null
-  action: 'register' | 'join' | 'enter' | 'full' | 'closed'
+  action: ContestEventAction
+  rules_summary?: string | null
+}
+
+export interface ContestEventDetail extends ContestEventCard {
+  description?: string | null
+  registration_url?: string | null
+  rules: EventRuleGroup[]
+}
+
+export interface RankedContestConfig {
+  mode: 'ranked'
+  title: string
+  participants: number
+  duration_minutes: number
+  problem_count: number
+  rating_window: number
+  my_rating: number
+  rules: EventRuleGroup[]
+}
+
+export interface ContestFeatured {
+  ranked: RankedContestConfig
+  events: ContestEventCard[]
+  server_time: string
 }
 
 export interface ContestSummary {

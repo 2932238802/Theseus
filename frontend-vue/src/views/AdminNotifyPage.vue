@@ -99,7 +99,7 @@ const send = async (): Promise<void> => {
   sendError.value = ''
   notice.value = ''
   if (audienceType.value !== 'users') {
-    if (!window.confirm(`确定向${audienceSummary.value}发送通知吗？发送后不可撤回。`)) return
+    if (!window.confirm(`确定向${audienceSummary.value}发送通知吗？发送后不可撤回`)) return
   }
   isSending.value = true
   try {
@@ -132,13 +132,6 @@ onMounted(() => {
 <template>
   <NavBar />
   <main class="teaching-page teaching-wide page-shell">
-    <header class="teaching-page-header">
-      <div>
-        <h1>通知管理</h1>
-        <p class="teaching-subtle">向指定用户、某一角色或全站发送站内通知</p>
-      </div>
-    </header>
-
     <p v-if="notice" class="teaching-success" role="status">{{ notice }}</p>
 
     <div class="admin-notify-layout">
@@ -234,7 +227,7 @@ onMounted(() => {
         </div>
 
         <p v-else class="teaching-subtle">
-          通知将发送给全站除当前管理员外的所有用户。该操作影响范围较大，请谨慎使用。
+          通知将发送给全站除当前管理员外的所有用户，该操作影响范围较大，请谨慎使用
         </p>
       </section>
 

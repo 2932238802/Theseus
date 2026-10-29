@@ -94,7 +94,7 @@ const percent = (value: number, max: number): string => `${Math.max(4, (value / 
     <p v-else-if="error" class="form-error" role="alert">{{ error }}</p>
     <div v-else-if="!analytics || analytics.summary.totalSubmissions === 0" class="empty-state profile-empty-analytics">
       <strong>还没有学习记录</strong>
-      <span>完成第一道题后，这里会显示你的学习进度。</span>
+      <span>完成第一道题后，这里会显示你的学习进度</span>
       <RouterLink class="primary-button" to="/problems">去题库</RouterLink>
     </div>
     <template v-else>

@@ -363,12 +363,12 @@ pub async fn request_email_change(
     .await?;
     let link = verification_link(&config.frontend_base_url, &token);
     let body = format!(
-        "你好 {}：\n\n你正在把 Theseus 账号邮箱修改为 {}。请打开以下链接完成验证：\n{}\n\n链接 {} 小时内有效。如果这不是你的操作，请忽略这封邮件。\n",
+        "你好 {}：\n\n你正在把 Theseus 账号邮箱修改为 {}，请打开以下链接完成验证：\n{}\n\n链接 {} 小时内有效，如果这不是你的操作，请忽略这封邮件\n",
         user.username, email, link, config.email_verify_ttl_hours
     );
     email_service::enqueue(&mut transaction, &email, "确认你的 Theseus 新邮箱", &body).await?;
     let notice = format!(
-        "你好 {}：\n\n你的 Theseus 账号刚刚申请将邮箱修改为 {}。如果这不是你的操作，请立即登录并修改密码。\n",
+        "你好 {}：\n\n你的 Theseus 账号刚刚申请将邮箱修改为 {}，如果这不是你的操作，请立即登录并修改密码\n",
         user.username, email
     );
     email_service::enqueue(
@@ -445,7 +445,7 @@ pub async fn change_password(
     .await
     .map_err(AppError::Database)?;
     let notice = format!(
-        "你好 {}：\n\n你的 Theseus 账号密码刚刚被修改，其他设备已退出登录。如果这不是你的操作，请立即使用找回密码功能。\n",
+        "你好 {}：\n\n你的 Theseus 账号密码刚刚被修改，其他设备已退出登录，如果这不是你的操作，请立即使用找回密码功能\n",
         user.username
     );
     email_service::enqueue(
@@ -507,7 +507,7 @@ async fn queue_verification_email(
     .await?;
     let link = verification_link(&config.frontend_base_url, &token);
     let body = format!(
-        "你好 {}：\n\n请打开以下链接验证邮箱：\n{}\n\n链接 {} 小时内有效。如果这不是你的操作，请忽略这封邮件。\n",
+        "你好 {}：\n\n请打开以下链接验证邮箱：\n{}\n\n链接 {} 小时内有效，如果这不是你的操作，请忽略这封邮件\n",
         user.username, link, config.email_verify_ttl_hours
     );
     email_service::enqueue(transaction, &user.email, "验证你的 Theseus 邮箱", &body).await
@@ -527,7 +527,7 @@ async fn queue_password_reset_email(
     .await?;
     let link = password_reset_link(&config.frontend_base_url, &token);
     let body = format!(
-        "你好 {}：\n\n请打开以下链接重置密码：\n{}\n\n链接 {} 分钟内有效。重置后所有已登录设备需要重新登录。如果这不是你的操作，请忽略这封邮件。\n",
+        "你好 {}：\n\n请打开以下链接重置密码：\n{}\n\n链接 {} 分钟内有效，重置后所有已登录设备需要重新登录，如果这不是你的操作，请忽略这封邮件\n",
         user.username, link, config.password_reset_ttl_minutes
     );
     email_service::enqueue(transaction, &user.email, "重置你的 Theseus 密码", &body).await

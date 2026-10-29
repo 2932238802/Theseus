@@ -73,7 +73,7 @@ void load()
       <div class="section-heading">
         <h2>比赛尚未结束</h2>
       </div>
-      <p class="teaching-description">比赛结束后会公布最终排名与得分明细，请稍后再来查看。</p>
+      <p class="teaching-description">比赛结束后会公布最终排名与得分明细，请稍后再来查看</p>
       <RouterLink class="primary-button" :to="`/contests/${contestId}`">返回比赛</RouterLink>
     </section>
 
@@ -228,7 +228,7 @@ void load()
           <p>没有可展示的答题明细</p>
         </div>
         <p class="teaching-subtle contest-formula-note">
-          计分规则：60% 通过题数 + 25% 速度 + 15% 代码书写。
+          计分规则：60% 通过题数 + 25% 速度 + 15% 代码书写
         </p>
       </section>
 

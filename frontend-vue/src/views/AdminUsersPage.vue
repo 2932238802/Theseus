@@ -147,7 +147,7 @@ const toggleStatus = async (user: AdminUser): Promise<void> => {
   if (busyUserId.value !== null || isSelf(user) || user.status === 'deleted') return
   const nextStatus = user.status === 'active' ? 'disabled' : 'active'
   const actionLabel = nextStatus === 'disabled' ? '禁用' : '恢复'
-  const hint = nextStatus === 'disabled' ? '禁用后该用户将无法登录。' : '恢复后该用户可以重新登录。'
+  const hint = nextStatus === 'disabled' ? '禁用后该用户将无法登录' : '恢复后该用户可以重新登录'
   if (!window.confirm(`确定${actionLabel}账号「${user.username}」吗？${hint}`)) return
 
   busyUserId.value = user.id
@@ -168,7 +168,7 @@ const removeUser = async (user: AdminUser): Promise<void> => {
   if (busyUserId.value !== null || isSelf(user) || user.status === 'deleted') return
   if (
     !window.confirm(
-      `确定删除账号「${user.username}」吗？删除后该账号将无法登录，用户名与邮箱会被匿名化，此操作不可撤销。`,
+      `确定删除账号「${user.username}」吗？删除后该账号将无法登录，用户名与邮箱会被匿名化，此操作不可撤销`,
     )
   ) {
     return

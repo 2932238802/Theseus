@@ -1,0 +1,93 @@
+/* Dialog -------------------------------------------------------------------- */
+
+.forum-dialog {
+  display: flex;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: 0 20px 50px rgba(28, 28, 28, 0.22);
+}
+
+.forum-dialog > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.forum-dialog > header h2 {
+  font-size: 20px;
+}
+
+.forum-dialog > header p {
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.forum-dialog > header > button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--color-text-secondary);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.forum-dialog > header > button:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.forum-dialog-body {
+  display: grid;
+  gap: var(--space-md);
+  overflow: auto;
+  padding: var(--space-lg);
+}
+
+.forum-dialog > footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--color-border);
+}
+
+.forum-report-reasons {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.forum-report-reasons legend {
+  margin-bottom: var(--space-xs);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.forum-report-reasons label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.forum-report-reasons input {
+  accent-color: var(--color-accent);
+}
+

@@ -129,13 +129,13 @@ const finishAndLeave = async (): Promise<void> => {
   ) {
     return
   }
-  if (!window.confirm('完成后将停止计时并离场，成绩会在比赛结束后结算。确定继续吗？')) return
+  if (!window.confirm('完成后将停止计时并离场，成绩会在比赛结束后结算，确定继续吗？')) return
   isFinishing.value = true
   actionError.value = ''
   try {
     await flushContestEvents()
     const result = await finishContest(contestIdRef.value)
-    actionMessage.value = result.message || '已离场，成绩将在比赛结束后公布。'
+    actionMessage.value = result.message || '已离场，成绩将在比赛结束后公布'
     enabledRef.value = false
     await loadContest(true)
   } catch (exception: unknown) {
@@ -231,7 +231,7 @@ onBeforeUnmount(() => {
       <p v-if="actionMessage" class="teaching-success" role="status">{{ actionMessage }}</p>
 
       <section v-if="detail.status === 'cancelled'" class="teaching-panel contest-cancelled">
-        <p class="form-error">本场比赛已取消，成绩不会结算。</p>
+        <p class="form-error">本场比赛已取消，成绩不会结算</p>
         <RouterLink class="primary-button" to="/contests">返回竞赛首页</RouterLink>
       </section>
 
@@ -239,11 +239,11 @@ onBeforeUnmount(() => {
         <div>
           <strong>{{ detail.my_status === 'finished' ? '你已离场' : '完成后可以提前离场' }}</strong>
           <p v-if="detail.my_status === 'finished'" class="teaching-subtle">
-            成绩将在比赛结束后公布。你可以继续留在本页查看题目与选手状态。
+            成绩将在比赛结束后公布，你可以继续留在本页查看题目与选手状态
           </p>
           <p v-else class="teaching-subtle">
-            离场后不能再提交本场比赛的题目。比赛结束时间为
-            {{ formatDateTime(detail.ends_at) }}。
+            离场后不能再提交本场比赛的题目，比赛结束时间为
+            {{ formatDateTime(detail.ends_at) }}
           </p>
         </div>
         <button

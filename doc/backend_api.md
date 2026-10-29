@@ -50,6 +50,10 @@ cargo run
 | DELETE | `/api/profile/avatar` | 用户 | 删除头像 |
 | GET | `/api/profile/analytics` | 用户 | 个人学习分析 |
 | GET | `/api/forum/favorites` | 用户 | 当前用户论坛收藏列表 |
+| GET | `/api/contests/featured` | 用户 | 竞赛首页：排位赛配置、规则分组与限时赛事列表 |
+| GET | `/api/contests/events/{id}` | 用户 | 赛事详情（含说明、规则和报名链接） |
+| POST | `/api/contests/events/{id}/register` | 用户 | 公开赛事报名，返回更新后的赛事卡片 |
+| POST | `/api/contests/events/{id}/join` | 用户 | 邀请赛事直接加入，返回更新后的赛事卡片 |
 | PUT | `/api/assignments/{id}` | 教师 | 修改作业；发布后仅允许延长截止时间 |
 | POST | `/api/assignments/{id}/solutions/publish` | 教师 | 发布答案解析，要求作业已截止 |
 | GET | `/api/assignments/{id}/overrides` | 教师 | 查询学生补交/免修例外 |
@@ -153,3 +157,64 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 - `POST /api/profile/avatar` 使用 `multipart/form-data`，字段 `file`，JPG/PNG/WebP ≤2MB。
 - `GET /api/profile/analytics?days=30` 返回概览、趋势、难度和标签统计。
 - `GET /api/forum/favorites?page=&size=` 返回当前用户收藏的帖子。
+
+## 竞赛与限时赛事接口
+
+完整设计见 `doc/2610281_实现多人竞赛匹配机制.md` 与 `doc/2610291_竞赛ui的完善.md`。
+
+`GET /api/contests/featured` 返回：
+
+```json
+{
+  "ranked": {
+    "mode": "ranked",
+    "title": "4 人排位赛",
+    "participants": 4,
+    "duration_minutes": 60,
+    "problem_count": 4,
+    "rating_window": 100,
+    "my_rating": 1000,
+    "rules": [{ "title": "比赛流程", "items": ["..."] }]
+  },
+  "events": [
+    {
+      "id": 1,
+      "title": "校园算法挑战赛",
+      "organizer": "教务处",
+      "type": "school",
+      "status": "registration",
+      "starts_at": "2026-10-31T06:00:00Z",
+      "ends_at": "2026-10-31T08:00:00Z",
+      "registration_opens_at": null,
+      "registration_deadline": "2026-10-30T15:59:00Z",
+      "scope": "面向本校学生",
+      "capacity": 100,
+      "registered_count": 12,
+      "is_registered": false,
+      "eligible": true,
+      "ineligible_reason": null,
+      "action": "register",
+      "rules_summary": "..."
+    }
+  ],
+  "server_time": "2026-10-29T04:00:00Z"
+}
+```
+
+- `status`：`registration` 报名中、`upcoming` 即将开始、`running` 进行中、`full` 已满员；已结束和草稿赛事不返回。
+- `action`：`register` 报名、`join` 加入、`enter` 进入赛事、`details` 查看详情、`full` 已满员、`closed` 已截止。
+- `eligible = false` 时前端置灰操作，原因在 `ineligible_reason`；目前仅支持班级范围，因此原因可能是「仅限指定班级的学生参加」。
+- 排名排序：进行中赛事优先且按结束时间，其余按开始时间升序。
+
+报名与加入错误：
+
+| 场景 | 状态码 |
+|---|---:|
+| 赛事不存在或未发布 | 404 |
+| 外部链接赛事走站内报名、报名/加入接口与 `registration_mode` 不匹配 | 400 |
+| 非指定班级成员 | 403 |
+| 赛事已开始或已结束 | 409 |
+| 报名尚未开始或已截止 | 409 |
+| 名额已满 | 409 |
+
+重复报名幂等：已报名的用户再次调用返回 200 与最新卡片。`POST .../join` 仅适用于 `registration_mode = 'invite'` 的赛事；公开赛事应调用 `register`。

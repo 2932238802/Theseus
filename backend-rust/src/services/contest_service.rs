@@ -10,13 +10,17 @@ use crate::{
     models::contest::{
         CAMERA_PERMISSIONS, CONTEST_EVENT_TYPES, CONTEST_STATUS_CANCELLED, CONTEST_STATUS_FINISHED,
         CONTEST_STATUS_RUNNING, CONTEST_STATUS_SETTLING, CancelMatchResponse,
-        ContestDetailResponse, ContestEventInput, ContestEventsRequest, ContestEventsResponse,
-        ContestParticipantRow, ContestParticipantView, ContestProblemDetail,
-        ContestProblemDetailRow, ContestProblemSummary, ContestRankingItem, ContestResultContest,
-        ContestResultMine, ContestResultResponse, ContestRow, ContestScoreDetail, ContestSummary,
-        CurrentContestResponse, DEFAULT_CONTEST_RATING, FinishContestResponse, MatchRequest,
-        MatchResponse, PARTICIPANT_STATUS_ACTIVE, PARTICIPANT_STATUS_FINISHED, RATING_GAIN_FIRST,
-        RATING_GAIN_SECOND, RATING_LOSS_FOURTH, RATING_WINDOW,
+        ContestDetailResponse, ContestEventCard, ContestEventDetailResponse, ContestEventInput,
+        ContestEventsRequest, ContestEventsResponse, ContestParticipantRow, ContestParticipantView,
+        ContestProblemDetail, ContestProblemDetailRow, ContestProblemSummary, ContestRankingItem,
+        ContestResultContest, ContestResultMine, ContestResultResponse, ContestRow,
+        ContestScoreDetail, ContestSummary, CurrentContestResponse, DEFAULT_CONTEST_RATING,
+        EVENT_ACTION_CLOSED, EVENT_ACTION_DETAILS, EVENT_ACTION_ENTER, EVENT_ACTION_FULL,
+        EVENT_ACTION_JOIN, EVENT_ACTION_REGISTER, EVENT_STATUS_FINISHED, EVENT_STATUS_FULL,
+        EVENT_STATUS_REGISTRATION, EVENT_STATUS_RUNNING, EVENT_STATUS_UPCOMING, EventRuleGroup,
+        FeaturedContestsResponse, FinishContestResponse, MatchRequest, MatchResponse,
+        PARTICIPANT_STATUS_ACTIVE, PARTICIPANT_STATUS_FINISHED, RATING_GAIN_FIRST,
+        RATING_GAIN_SECOND, RATING_LOSS_FOURTH, RATING_WINDOW, RankedConfig,
     },
     services::notification_service,
 };
@@ -1159,5 +1163,450 @@ fn rating_delta_for_rank(rank: i32) -> i32 {
         2 => RATING_GAIN_SECOND,
         3 => 0,
         _ => -RATING_LOSS_FOURTH,
+    }
+}
+
+// ── 限时赛事（official_events） ─────────────────────────────────────
+
+#[derive(Debug, FromRow, Clone)]
+struct EventRow {
+    id: i32,
+    title: String,
+    organizer: String,
+    event_type: String,
+    description: Option<String>,
+    registration_url: Option<String>,
+    registration_opens_at: Option<DateTime<Utc>>,
+    registration_deadline: Option<DateTime<Utc>>,
+    starts_at: DateTime<Utc>,
+    ends_at: DateTime<Utc>,
+    scope: Option<String>,
+    capacity: Option<i32>,
+    registration_mode: String,
+    rules: Value,
+    registered_count: i64,
+    is_registered: bool,
+    in_class: bool,
+}
+
+#[derive(Debug, FromRow)]
+struct LockedEventRow {
+    status: String,
+    registration_mode: String,
+    registration_opens_at: Option<DateTime<Utc>>,
+    registration_deadline: Option<DateTime<Utc>>,
+    starts_at: DateTime<Utc>,
+    ends_at: DateTime<Utc>,
+    capacity: Option<i32>,
+    class_id: Option<i32>,
+}
+
+/// Homepage list: ranked configuration plus every published event that has not
+/// ended. Only `published` events are visible; draft and cancelled events stay
+/// hidden until an administrator publishes them.
+pub async fn featured(pool: &PgPool, user_id: i32) -> Result<FeaturedContestsResponse, AppError> {
+    let my_rating = user_rating(pool, user_id).await?;
+    let rows = fetch_event_rows(pool, user_id, None, true).await?;
+    let now = Utc::now();
+    let events = rows
+        .into_iter()
+        .map(|row| build_event_card(row, now))
+        .collect();
+    Ok(FeaturedContestsResponse {
+        ranked: ranked_config(my_rating),
+        events,
+        server_time: now,
+    })
+}
+
+pub async fn event_detail(
+    pool: &PgPool,
+    user_id: i32,
+    event_id: i32,
+) -> Result<ContestEventDetailResponse, AppError> {
+    let row = fetch_event_rows(pool, user_id, Some(event_id), false)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::NotFound("赛事不存在".to_owned()))?;
+    let rules = parse_rules(&row.rules);
+    let description = row.description.clone();
+    let registration_url = row.registration_url.clone();
+    let card = build_event_card(row, Utc::now());
+    Ok(ContestEventDetailResponse {
+        card,
+        description,
+        registration_url,
+        rules,
+    })
+}
+
+/// Public registration. `invite` events use [`join_event`] instead; both share
+/// the same validation so capacity and eligibility rules stay in one place.
+pub async fn register_event(
+    pool: &PgPool,
+    user_id: i32,
+    event_id: i32,
+) -> Result<ContestEventCard, AppError> {
+    register_event_inner(pool, user_id, event_id, false).await
+}
+
+pub async fn join_event(
+    pool: &PgPool,
+    user_id: i32,
+    event_id: i32,
+) -> Result<ContestEventCard, AppError> {
+    register_event_inner(pool, user_id, event_id, true).await
+}
+
+async fn register_event_inner(
+    pool: &PgPool,
+    user_id: i32,
+    event_id: i32,
+    invite_flow: bool,
+) -> Result<ContestEventCard, AppError> {
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let event = sqlx::query_as::<_, LockedEventRow>(
+        "SELECT status, registration_mode, registration_opens_at, registration_closes_at, \
+                starts_at, ends_at, capacity, class_id \
+         FROM official_events WHERE id = $1 FOR UPDATE",
+    )
+    .bind(event_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or_else(|| AppError::NotFound("赛事不存在".to_owned()))?;
+
+    if event.status != "published" {
+        return Err(AppError::NotFound("赛事不存在".to_owned()));
+    }
+
+    let now = Utc::now();
+    if now >= event.ends_at {
+        return Err(AppError::ConflictWith("赛事已结束".to_owned()));
+    }
+    if now >= event.starts_at {
+        return Err(AppError::ConflictWith("赛事已开始，无法报名".to_owned()));
+    }
+    if event.registration_mode == "external" {
+        return Err(AppError::BadRequest("该赛事需通过外部链接报名".to_owned()));
+    }
+    if invite_flow && event.registration_mode != "invite" {
+        return Err(AppError::BadRequest("该赛事需要先报名".to_owned()));
+    }
+    if !invite_flow && event.registration_mode != "open" {
+        return Err(AppError::BadRequest(
+            "该赛事为邀请赛事，请直接加入".to_owned(),
+        ));
+    }
+    if let Some(opens_at) = event.registration_opens_at
+        && now < opens_at
+    {
+        return Err(AppError::ConflictWith("报名尚未开始".to_owned()));
+    }
+    if let Some(deadline) = event.registration_deadline
+        && now >= deadline
+    {
+        return Err(AppError::ConflictWith("报名已截止".to_owned()));
+    }
+    if let Some(class_id) = event.class_id {
+        let allowed: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM class_members \
+                            WHERE class_id = $1 AND user_id = $2 AND status = 'active') \
+                 OR EXISTS (SELECT 1 FROM classes WHERE id = $1 AND owner_id = $2)",
+        )
+        .bind(class_id)
+        .bind(user_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        if !allowed {
+            return Err(AppError::ForbiddenWith("仅限指定班级的学生参加".to_owned()));
+        }
+    }
+
+    let already_registered: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM official_event_registrations \
+                        WHERE event_id = $1 AND user_id = $2 \
+                          AND status IN ('registered', 'joined'))",
+    )
+    .bind(event_id)
+    .bind(user_id)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    if !already_registered {
+        let registered_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM official_event_registrations \
+             WHERE event_id = $1 AND status IN ('registered', 'joined')",
+        )
+        .bind(event_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        if let Some(capacity) = event.capacity
+            && registered_count >= i64::from(capacity)
+        {
+            return Err(AppError::ConflictWith("名额已满".to_owned()));
+        }
+    }
+
+    let status = if invite_flow { "joined" } else { "registered" };
+    sqlx::query(
+        "INSERT INTO official_event_registrations (event_id, user_id, status) \
+         VALUES ($1, $2, $3) \
+         ON CONFLICT (event_id, user_id) DO UPDATE \
+            SET status = EXCLUDED.status, registered_at = CURRENT_TIMESTAMP",
+    )
+    .bind(event_id)
+    .bind(user_id)
+    .bind(status)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    transaction.commit().await.map_err(AppError::Database)?;
+    fetch_event_card(pool, user_id, event_id).await
+}
+
+async fn fetch_event_card(
+    pool: &PgPool,
+    user_id: i32,
+    event_id: i32,
+) -> Result<ContestEventCard, AppError> {
+    let row = fetch_event_rows(pool, user_id, Some(event_id), true)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::NotFound("赛事不存在".to_owned()))?;
+    Ok(build_event_card(row, Utc::now()))
+}
+
+async fn fetch_event_rows(
+    pool: &PgPool,
+    user_id: i32,
+    event_id: Option<i32>,
+    only_active: bool,
+) -> Result<Vec<EventRow>, AppError> {
+    // `only_active` hides ended events from the homepage while still allowing
+    // a card that was just registered for to be read back.
+    let sql = if only_active {
+        EVENT_SELECT_SQL.to_owned() + " AND e.ends_at > CURRENT_TIMESTAMP"
+    } else {
+        EVENT_SELECT_SQL.to_owned()
+    };
+    let sql = sql
+        + " ORDER BY CASE WHEN e.starts_at <= CURRENT_TIMESTAMP THEN 0 ELSE 1 END, \
+             CASE WHEN e.starts_at <= CURRENT_TIMESTAMP THEN e.ends_at ELSE e.starts_at END ASC, \
+             e.id ASC";
+    sqlx::query_as::<_, EventRow>(&sql)
+        .bind(user_id)
+        .bind(event_id)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)
+}
+
+const EVENT_SELECT_SQL: &str = "SELECT e.id, e.title, e.organizer, e.event_type, e.description, \
+        e.registration_url, e.registration_opens_at, \
+        e.registration_closes_at AS registration_deadline, \
+        e.starts_at, e.ends_at, e.scope, e.capacity, e.registration_mode, \
+        COALESCE(e.rules, '[]'::jsonb) AS rules, \
+        (SELECT COUNT(*) FROM official_event_registrations r \
+          WHERE r.event_id = e.id AND r.status IN ('registered', 'joined')) AS registered_count, \
+        EXISTS (SELECT 1 FROM official_event_registrations r \
+          WHERE r.event_id = e.id AND r.user_id = $1 \
+            AND r.status IN ('registered', 'joined')) AS is_registered, \
+        CASE WHEN e.class_id IS NULL THEN TRUE ELSE ( \
+            EXISTS (SELECT 1 FROM class_members m \
+              WHERE m.class_id = e.class_id AND m.user_id = $1 AND m.status = 'active') \
+            OR EXISTS (SELECT 1 FROM classes c \
+              WHERE c.id = e.class_id AND c.owner_id = $1)) END AS in_class \
+     FROM official_events e \
+     WHERE e.status = 'published' AND ($2::int IS NULL OR e.id = $2::int)";
+
+fn build_event_card(row: EventRow, now: DateTime<Utc>) -> ContestEventCard {
+    let ended = now >= row.ends_at;
+    let started = now >= row.starts_at && !ended;
+    let full = row
+        .capacity
+        .is_some_and(|capacity| row.registered_count >= i64::from(capacity));
+    let registration_open = registration_open(&row, now);
+    let eligible = row.in_class;
+
+    let status = if ended {
+        EVENT_STATUS_FINISHED
+    } else if started {
+        EVENT_STATUS_RUNNING
+    } else if full && !row.is_registered {
+        EVENT_STATUS_FULL
+    } else if registration_open {
+        EVENT_STATUS_REGISTRATION
+    } else {
+        EVENT_STATUS_UPCOMING
+    };
+
+    let action = if ended {
+        EVENT_ACTION_CLOSED
+    } else if started {
+        if row.is_registered {
+            EVENT_ACTION_ENTER
+        } else {
+            EVENT_ACTION_DETAILS
+        }
+    } else if row.is_registered {
+        EVENT_ACTION_DETAILS
+    } else if full {
+        EVENT_ACTION_FULL
+    } else if row.registration_mode == "external" {
+        EVENT_ACTION_DETAILS
+    } else if registration_open {
+        if row.registration_mode == "invite" {
+            EVENT_ACTION_JOIN
+        } else {
+            EVENT_ACTION_REGISTER
+        }
+    } else {
+        EVENT_ACTION_CLOSED
+    };
+
+    let mut ineligible_reason = if eligible {
+        None
+    } else {
+        Some("仅限指定班级的学生参加".to_owned())
+    };
+    if ineligible_reason.is_none() && full && !row.is_registered {
+        ineligible_reason = Some("名额已满".to_owned());
+    }
+    if ineligible_reason.is_none() && action == EVENT_ACTION_CLOSED && !ended {
+        ineligible_reason = Some(closed_reason(&row, now));
+    }
+
+    let rules = parse_rules(&row.rules);
+    let rules_summary = rules
+        .iter()
+        .find_map(|group| group.items.first().cloned())
+        .or_else(|| rules.first().map(|group| group.title.clone()));
+
+    ContestEventCard {
+        id: row.id,
+        title: row.title,
+        organizer: row.organizer,
+        event_type: row.event_type,
+        status: status.to_owned(),
+        starts_at: row.starts_at,
+        ends_at: row.ends_at,
+        registration_opens_at: row.registration_opens_at,
+        registration_deadline: row.registration_deadline,
+        scope: row.scope,
+        capacity: row.capacity,
+        registered_count: row.registered_count,
+        is_registered: row.is_registered,
+        eligible,
+        ineligible_reason,
+        action: action.to_owned(),
+        rules_summary,
+    }
+}
+
+fn registration_open(row: &EventRow, now: DateTime<Utc>) -> bool {
+    if row.registration_mode == "external" {
+        return false;
+    }
+    if now >= row.starts_at || now >= row.ends_at {
+        return false;
+    }
+    if row
+        .registration_opens_at
+        .is_some_and(|opens_at| now < opens_at)
+    {
+        return false;
+    }
+    if row
+        .registration_deadline
+        .is_some_and(|deadline| now >= deadline)
+    {
+        return false;
+    }
+    true
+}
+
+fn closed_reason(row: &EventRow, now: DateTime<Utc>) -> String {
+    if row
+        .registration_deadline
+        .is_some_and(|deadline| now >= deadline)
+    {
+        "报名已截止".to_owned()
+    } else if row
+        .registration_opens_at
+        .is_some_and(|opens_at| now < opens_at)
+    {
+        "报名尚未开始".to_owned()
+    } else {
+        "当前不可报名".to_owned()
+    }
+}
+
+fn parse_rules(value: &Value) -> Vec<EventRuleGroup> {
+    let mut groups: Vec<EventRuleGroup> = serde_json::from_value(value.clone()).unwrap_or_default();
+    // 规则是列表项，末尾不需要句号；这里统一去掉，兼容已录入的历史数据。
+    for group in &mut groups {
+        group.title = group.title.trim_end_matches('。').trim_end().to_owned();
+        for item in &mut group.items {
+            *item = item.trim_end_matches('。').trim_end().to_owned();
+        }
+    }
+    groups
+}
+
+fn ranked_config(my_rating: i32) -> RankedConfig {
+    RankedConfig {
+        mode: "ranked".to_owned(),
+        title: "4 人排位赛".to_owned(),
+        participants: 4,
+        duration_minutes: DURATION_SECONDS / 60,
+        problem_count: PROBLEMS_PER_CONTEST as i32,
+        rating_window: RATING_WINDOW,
+        my_rating,
+        rules: vec![
+            EventRuleGroup {
+                title: "比赛流程".to_owned(),
+                items: vec![
+                    "匹配 4 名选手后自动开始比赛，完成题目并提交，比赛结束后统一结算".to_owned(),
+                    "比赛开始后不能取消，可以提前「完成并离场」，成绩保留并等待结算".to_owned(),
+                ],
+            },
+            EventRuleGroup {
+                title: "计分与排名".to_owned(),
+                items: vec![
+                    format!(
+                        "总分由通过题数 {:.0}%、完成速度 {:.0}%、代码书写 {:.0}% 加权计算",
+                        SOLVE_WEIGHT * 100.0,
+                        SPEED_WEIGHT * 100.0,
+                        CODING_WEIGHT * 100.0
+                    ),
+                    "每道题只按首次通过时间计入速度分，未通过的题目不计分".to_owned(),
+                ],
+            },
+            EventRuleGroup {
+                title: "匹配限制".to_owned(),
+                items: vec!["同一时间只能参加一场比赛或排队一次".to_owned()],
+            },
+            EventRuleGroup {
+                title: "设备与行为记录".to_owned(),
+                items: vec![
+                    "开始排位赛必须开启摄像头；系统只记录授权状态，不录制或上传视频".to_owned(),
+                    "比赛期间会记录切屏和粘贴行为，仅用于赛后审计，不会自动扣分".to_owned(),
+                ],
+            },
+            EventRuleGroup {
+                title: "成绩与通知".to_owned(),
+                items: vec![
+                    "比赛结束后统一结算，结果通过站内通知发送".to_owned(),
+                    "比赛结果页可以查看排名、总分和每题得分明细".to_owned(),
+                ],
+            },
+        ],
     }
 }

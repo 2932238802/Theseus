@@ -1,0 +1,94 @@
+/* Teaching, classes, assignments, gradebook, admin users */
+.nav-menu {
+  position: relative;
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+}
+
+.nav-menu > button {
+  display: inline-flex;
+  height: 64px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  transition: color var(--duration), border-color var(--duration);
+}
+
+.nav-menu > button:hover,
+.nav-menu.is-active > button,
+.nav-menu > button[aria-expanded='true'] {
+  color: var(--color-text);
+}
+
+.nav-menu.is-active > button {
+  border-bottom-color: var(--color-accent);
+}
+
+.nav-caret {
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform var(--duration), margin-top var(--duration);
+}
+
+.nav-menu > button[aria-expanded='true'] .nav-caret {
+  margin-top: 2px;
+  transform: rotate(225deg);
+}
+
+.nav-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  min-width: 160px;
+  padding: 6px;
+  transform: translateX(-50%);
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  animation: nav-menu-in var(--duration) ease-out;
+}
+
+.nav-menu-panel a {
+  display: flex;
+  height: auto;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  border: 0;
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 400;
+  white-space: nowrap;
+  transition: background-color var(--duration), color var(--duration);
+}
+
+.nav-menu-panel a:hover,
+.nav-menu-panel a.router-link-active {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+@keyframes nav-menu-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+

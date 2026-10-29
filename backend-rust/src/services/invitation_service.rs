@@ -217,7 +217,7 @@ pub async fn create_invitations(
             "class_invite",
             Some(teacher.id),
             &format!("{teacher_username} 邀请你加入班级「{class_name}」"),
-            Some("邀请 7 天内有效，可在通知中心或「我的班级」中接受或拒绝。"),
+            Some("邀请 7 天内有效，可在通知中心或「我的班级」中接受或拒绝"),
             Some("/classes"),
             Some("class_invitation"),
             Some(invitation_id),

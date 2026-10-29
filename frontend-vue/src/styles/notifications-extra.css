@@ -1,0 +1,306 @@
+/* Invitations & notification composer --------------------------------------- */
+
+.teaching-subsection {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.teaching-subsection h3 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.teaching-candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.teaching-candidate-list.compact {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: var(--space-xs) 0;
+}
+
+.teaching-candidate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.teaching-candidate:hover {
+  border-color: var(--color-border-strong);
+}
+
+.teaching-candidate.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.teaching-candidate > input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.teaching-candidate-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.teaching-candidate-main strong {
+  font-size: 14px;
+}
+
+.teaching-candidate-main span {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teaching-audience {
+  display: flex;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+.teaching-audience label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.teaching-preview {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.teaching-preview .markdown-body {
+  font-size: 14px;
+}
+
+.teaching-invitation-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.teaching-member-list article > .teaching-invitation-actions {
+  flex: 0 0 auto;
+}
+
+.teaching-invitation-actions .primary-button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font-size: 13px;
+}
+
+.teaching-invitation-actions .primary-button:hover:not(:disabled) {
+  border-color: var(--color-accent-hover);
+  background: var(--color-accent-hover);
+  color: var(--color-accent-ink);
+}
+
+.teaching-invitation-actions .teaching-secondary-button {
+  min-height: 32px;
+}
+
+/* Notification list extras -------------------------------------------------- */
+
+.notification-markdown {
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.notification-markdown > :first-child {
+  margin-top: 0;
+}
+
+.notification-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.notification-markdown h1,
+.notification-markdown h2,
+.notification-markdown h3,
+.notification-markdown h4 {
+  margin: 0.6em 0 0.3em;
+  font-size: 14px;
+}
+
+.notification-markdown ul,
+.notification-markdown ol {
+  padding-left: 1.4em;
+}
+
+.notification-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.notification-actions .primary-button,
+.notification-actions .teaching-secondary-button {
+  min-height: 32px;
+  padding: 0 var(--space-md);
+  font-size: 13px;
+}
+
+.notification-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin-top: var(--space-xs);
+}
+
+.notification-open {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.notification-open:hover {
+  text-decoration: underline;
+}
+
+/* Admin notification page --------------------------------------------------- */
+
+.admin-notify-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+.admin-notify-layout .admin-panel {
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.admin-notify-audience {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.admin-notify-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  cursor: pointer;
+  transition: border-color var(--duration), background-color var(--duration);
+}
+
+.admin-notify-option:hover {
+  border-color: var(--color-border-strong);
+}
+
+.admin-notify-option.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.admin-notify-option input {
+  align-self: flex-start;
+  margin: 0 0 2px;
+}
+
+.admin-notify-option strong {
+  font-size: 13px;
+}
+
+.admin-notify-option span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.admin-notify-role label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.admin-notify-role label > span {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.admin-notify-role select {
+  max-width: 240px;
+  height: 38px;
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: 13px;
+}
+
+.admin-notify-user-scroll {
+  max-height: 420px;
+}
+
+.admin-notify-user-table {
+  min-width: 520px;
+}
+
+.admin-notify-user-table tr.disabled {
+  opacity: 0.55;
+}
+
+.admin-notify-check-cell {
+  width: 36px;
+}
+
+.admin-notify-check-cell input {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 900px) {
+  .admin-notify-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-notify-audience {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+

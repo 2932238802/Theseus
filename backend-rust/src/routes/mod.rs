@@ -183,6 +183,19 @@ pub fn router(state: AppState) -> Router {
             post(contest_handler::start_match).delete(contest_handler::cancel_match),
         )
         .route("/api/contests/current", get(contest_handler::current))
+        .route("/api/contests/featured", get(contest_handler::featured))
+        .route(
+            "/api/contests/events/{id}",
+            get(contest_handler::event_detail),
+        )
+        .route(
+            "/api/contests/events/{id}/register",
+            post(contest_handler::register_event),
+        )
+        .route(
+            "/api/contests/events/{id}/join",
+            post(contest_handler::join_event),
+        )
         .route("/api/contests/{id}", get(contest_handler::detail))
         .route(
             "/api/contests/{id}/problems/{problem_id}",

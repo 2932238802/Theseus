@@ -382,7 +382,7 @@ onMounted(load)
             </label>
           </div>
           <p v-if="policy.latePolicy === 'allow'" class="teaching-subtle">
-            迟交从截止时间起算，不足一天按一天计；补交例外由教师在批改台单独设置。
+            迟交从截止时间起算，不足一天按一天计；补交例外由教师在批改台单独设置
           </p>
         </section>
 

@@ -269,6 +269,80 @@ pub struct ContestRow {
     pub coding_weight: f64,
 }
 
+pub const EVENT_STATUS_REGISTRATION: &str = "registration";
+pub const EVENT_STATUS_UPCOMING: &str = "upcoming";
+pub const EVENT_STATUS_RUNNING: &str = "running";
+pub const EVENT_STATUS_FULL: &str = "full";
+pub const EVENT_STATUS_FINISHED: &str = "finished";
+
+pub const EVENT_ACTION_REGISTER: &str = "register";
+pub const EVENT_ACTION_JOIN: &str = "join";
+pub const EVENT_ACTION_ENTER: &str = "enter";
+pub const EVENT_ACTION_DETAILS: &str = "details";
+pub const EVENT_ACTION_FULL: &str = "full";
+pub const EVENT_ACTION_CLOSED: &str = "closed";
+
+/// One collapsible group in a rules drawer. Ranked contests and official events
+/// share the shape so the frontend can render both without special cases.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct EventRuleGroup {
+    pub title: String,
+    #[serde(default)]
+    pub items: Vec<String>,
+}
+
+/// Homepage configuration for the fixed 4-player ranked mode.
+#[derive(Debug, Serialize)]
+pub struct RankedConfig {
+    pub mode: String,
+    pub title: String,
+    pub participants: i32,
+    pub duration_minutes: i32,
+    pub problem_count: i32,
+    pub rating_window: i32,
+    pub my_rating: i32,
+    pub rules: Vec<EventRuleGroup>,
+}
+
+/// One card in the homepage "limited-time events" list.
+#[derive(Debug, Serialize, Clone)]
+pub struct ContestEventCard {
+    pub id: i32,
+    pub title: String,
+    pub organizer: String,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub status: String,
+    pub starts_at: DateTime<Utc>,
+    pub ends_at: DateTime<Utc>,
+    pub registration_opens_at: Option<DateTime<Utc>>,
+    pub registration_deadline: Option<DateTime<Utc>>,
+    pub scope: Option<String>,
+    pub capacity: Option<i32>,
+    pub registered_count: i64,
+    pub is_registered: bool,
+    pub eligible: bool,
+    pub ineligible_reason: Option<String>,
+    pub action: String,
+    pub rules_summary: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FeaturedContestsResponse {
+    pub ranked: RankedConfig,
+    pub events: Vec<ContestEventCard>,
+    pub server_time: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContestEventDetailResponse {
+    #[serde(flatten)]
+    pub card: ContestEventCard,
+    pub description: Option<String>,
+    pub registration_url: Option<String>,
+    pub rules: Vec<EventRuleGroup>,
+}
+
 #[derive(Debug, FromRow)]
 pub struct ContestParticipantRow {
     pub user_id: i32,

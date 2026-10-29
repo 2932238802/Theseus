@@ -3,9 +3,11 @@ import type {
   CameraPermission,
   ContestCurrent,
   ContestDetail,
+  ContestEventCard,
+  ContestEventDetail,
   ContestEventInput,
   ContestEventResult,
-  ContestEventCard,
+  ContestFeatured,
   ContestMatchResult,
   ContestResult,
 } from '../types/contest'
@@ -28,8 +30,17 @@ export const cancelMatch = async (): Promise<{ message: string }> =>
 export const fetchCurrentContest = async (): Promise<ContestCurrent> =>
   unwrap(http.get<ApiEnvelope<ContestCurrent>>('/contests/current'))
 
-export const fetchContestEvents = async (): Promise<ContestEventCard[]> =>
-  unwrap(http.get<ApiEnvelope<ContestEventCard[]>>('/contests/featured'))
+export const fetchFeaturedContests = async (): Promise<ContestFeatured> =>
+  unwrap(http.get<ApiEnvelope<ContestFeatured>>('/contests/featured'))
+
+export const fetchContestEventDetail = async (id: number): Promise<ContestEventDetail> =>
+  unwrap(http.get<ApiEnvelope<ContestEventDetail>>(`/contests/events/${id}`))
+
+export const registerContestEvent = async (id: number): Promise<ContestEventCard> =>
+  unwrap(http.post<ApiEnvelope<ContestEventCard>>(`/contests/events/${id}/register`))
+
+export const joinContestEvent = async (id: number): Promise<ContestEventCard> =>
+  unwrap(http.post<ApiEnvelope<ContestEventCard>>(`/contests/events/${id}/join`))
 
 export const fetchContest = async (id: number): Promise<ContestDetail> =>
   unwrap(http.get<ApiEnvelope<ContestDetail>>(`/contests/${id}`))

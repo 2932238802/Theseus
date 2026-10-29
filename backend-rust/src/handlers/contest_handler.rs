@@ -44,6 +44,49 @@ pub async fn current(
     Ok(ok(response))
 }
 
+pub async fn featured(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
+    let response = contest_service::featured(&state.pool, user.id).await?;
+    Ok(ok(response))
+}
+
+pub async fn event_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(event_id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
+    let response = contest_service::event_detail(&state.pool, user.id, event_id).await?;
+    Ok(ok(response))
+}
+
+pub async fn register_event(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(event_id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
+    let response = contest_service::register_event(&state.pool, user.id, event_id).await?;
+    Ok(ok(response))
+}
+
+pub async fn join_event(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(event_id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
+    let response = contest_service::join_event(&state.pool, user.id, event_id).await?;
+    Ok(ok(response))
+}
+
 pub async fn detail(
     State(state): State<AppState>,
     headers: HeaderMap,

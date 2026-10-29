@@ -81,7 +81,7 @@ const savePassword = (): void => {
 }
 
 const logoutEverywhere = (): void => {
-  if (!window.confirm('退出所有设备后，当前浏览器也需要重新登录。确定继续吗？')) return
+  if (!window.confirm('退出所有设备后，当前浏览器也需要重新登录，确定继续吗？')) return
   void run('logout-all', async () => {
     await authStore.logoutAll()
     await router.push('/login')
@@ -89,7 +89,7 @@ const logoutEverywhere = (): void => {
 }
 
 const removeAccount = (): void => {
-  if (!window.confirm('注销后账号立即不可登录，历史提交和成绩会保留但身份匿名化。确定继续吗？')) return
+  if (!window.confirm('注销后账号立即不可登录，历史提交和成绩会保留但身份匿名化，确定继续吗？')) return
   void run('delete', async () => {
     await deleteAccount(deletePassword.value, deleteUsername.value.trim())
     authStore.logout()
@@ -178,7 +178,7 @@ const removeAccount = (): void => {
 
         <section class="teaching-grade-form">
           <h3>设备会话</h3>
-          <p class="teaching-subtle">退出所有设备会使当前浏览器也退出登录。</p>
+          <p class="teaching-subtle">退出所有设备会使当前浏览器也退出登录</p>
           <div class="teaching-form-actions">
             <button class="teaching-secondary-button" type="button" :disabled="busy === 'logout-all'" @click="logoutEverywhere">
               退出所有设备
@@ -189,8 +189,8 @@ const removeAccount = (): void => {
         <section class="teaching-grade-form profile-danger-zone">
           <h3>注销账号</h3>
           <p class="teaching-subtle">
-            注销后账号立即不可登录，用户名和邮箱会匿名化；历史提交、成绩和教学记录保留。
-            教师需先归档自己的班级。
+            注销后账号立即不可登录，用户名和邮箱会匿名化；历史提交、成绩和教学记录保留；
+            教师需先归档自己的班级
           </p>
           <label>
             <span>当前密码</span>
