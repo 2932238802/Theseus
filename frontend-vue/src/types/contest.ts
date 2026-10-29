@@ -10,6 +10,26 @@ export type ContestCurrentState = 'idle' | 'queued' | 'contest'
 
 export type CameraPermission = 'granted' | 'denied' | 'unavailable'
 
+export type ContestEventStatus = 'registration' | 'upcoming' | 'running' | 'finished' | 'full'
+
+export interface ContestEventCard {
+  id: number
+  title: string
+  organizer: string
+  type: 'official' | 'teacher' | 'school'
+  status: ContestEventStatus
+  starts_at: string
+  ends_at: string
+  registration_deadline?: string | null
+  scope?: string | null
+  capacity?: number | null
+  registered_count?: number | null
+  is_registered: boolean
+  eligible: boolean
+  ineligible_reason?: string | null
+  action: 'register' | 'join' | 'enter' | 'full' | 'closed'
+}
+
 export interface ContestSummary {
   id: number
   status: ContestStatus

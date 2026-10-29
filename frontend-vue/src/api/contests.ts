@@ -5,6 +5,7 @@ import type {
   ContestDetail,
   ContestEventInput,
   ContestEventResult,
+  ContestEventCard,
   ContestMatchResult,
   ContestResult,
 } from '../types/contest'
@@ -26,6 +27,9 @@ export const cancelMatch = async (): Promise<{ message: string }> =>
 
 export const fetchCurrentContest = async (): Promise<ContestCurrent> =>
   unwrap(http.get<ApiEnvelope<ContestCurrent>>('/contests/current'))
+
+export const fetchContestEvents = async (): Promise<ContestEventCard[]> =>
+  unwrap(http.get<ApiEnvelope<ContestEventCard[]>>('/contests/featured'))
 
 export const fetchContest = async (id: number): Promise<ContestDetail> =>
   unwrap(http.get<ApiEnvelope<ContestDetail>>(`/contests/${id}`))
