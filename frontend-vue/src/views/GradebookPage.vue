@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import {
   fetchAssignmentSubmissions,
   publishGrades,
@@ -29,7 +30,6 @@ const assignmentId = computed(() => Number(route.params.id))
 const gradebook = computed(() => assignmentStore.gradebook)
 const includeRemoved = ref(false)
 const actionError = ref('')
-const actionMessage = ref('')
 const isPublishing = ref(false)
 const overrides = ref<OverrideItem[]>([])
 const overrideMakeup = ref('')
@@ -131,7 +131,6 @@ const saveCell = async (): Promise<void> => {
   const { student, cell } = cellTarget.value
   if (student.status === 'removed') return
   actionError.value = ''
-  actionMessage.value = ''
   const raw = manualScoreInput.value.trim()
   let manualScore: number | null = null
   if (raw) {
@@ -156,7 +155,7 @@ const saveCell = async (): Promise<void> => {
       manualScore,
       feedback,
     )
-    actionMessage.value = '分数已保存'
+    toast.success('分数已保存')
     await load()
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
@@ -183,7 +182,6 @@ const saveOverall = async (): Promise<void> => {
   if (!overallTarget.value || isSavingOverall.value) return
   if (overallTarget.value.status === 'removed') return
   actionError.value = ''
-  actionMessage.value = ''
   const feedback = overallInput.value.trim()
   if (feedback.length > 5000) {
     actionError.value = '整体评语不能超过 5000 个字符'
@@ -192,7 +190,7 @@ const saveOverall = async (): Promise<void> => {
   isSavingOverall.value = true
   try {
     await updateOverallGrade(assignmentId.value, overallTarget.value.userId, feedback || null)
-    actionMessage.value = '整体评语已保存'
+    toast.success('整体评语已保存')
     await load()
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
@@ -205,11 +203,10 @@ const publish = async (): Promise<void> => {
   if (isPublishing.value || !duePassed.value || gradesPublished.value) return
   if (!window.confirm('发布后学生可以查看成绩 确定发布吗？')) return
   actionError.value = ''
-  actionMessage.value = ''
   isPublishing.value = true
   try {
     await publishGrades(assignmentId.value)
-    actionMessage.value = '成绩已发布'
+    toast.success('成绩已发布')
     await load()
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
@@ -232,7 +229,6 @@ const saveOverride = async (): Promise<void> => {
     return
   }
   actionError.value = ''
-  actionMessage.value = ''
   isSavingOverride.value = true
   try {
     await setOverride(assignmentId.value, student.userId, cell.problemId, {
@@ -242,7 +238,7 @@ const saveOverride = async (): Promise<void> => {
       exemptionMode: overrideExempt.value ? overrideMode.value : undefined,
       reason: overrideReason.value.trim() || undefined,
     })
-    actionMessage.value = '补交/免修已保存'
+    toast.success('补交/免修已保存')
     await load()
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
@@ -258,7 +254,7 @@ const removeOverride = async (): Promise<void> => {
   isSavingOverride.value = true
   try {
     await deleteOverride(assignmentId.value, student.userId, cell.problemId)
-    actionMessage.value = '例外已撤销'
+    toast.success('例外已撤销')
     overrideMakeup.value = ''
     overrideExempt.value = false
     overrideReason.value = ''
@@ -272,10 +268,9 @@ const removeOverride = async (): Promise<void> => {
 
 const publishSolutionsNow = async (): Promise<void> => {
   actionError.value = ''
-  actionMessage.value = ''
   try {
     await publishSolutions(assignmentId.value)
-    actionMessage.value = '解析已发布'
+    toast.success('解析已发布')
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
   }
@@ -342,7 +337,6 @@ watch(includeRemoved, load)
       </header>
 
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
-      <p v-if="actionMessage" class="teaching-success" role="status">{{ actionMessage }}</p>
       <p v-if="!duePassed && !gradesPublished" class="teaching-subtle">作业尚未截止 暂不能发布成绩</p>
 
       <div class="gradebook-scroll">

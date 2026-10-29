@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import { changeUserRole, changeUserStatus, deleteAdminUser, fetchAdminUsers, restoreUserReputation } from '../api/adminUsers'
 import { useAuthStore } from '../store/auth'
 import type { AccountStatus, AdminUser, Role } from '../types/teaching'
@@ -37,7 +38,6 @@ const total = ref(0)
 const page = ref(1)
 const isLoading = ref(false)
 const listError = ref('')
-const notice = ref('')
 const actionError = ref('')
 const busyUserId = ref<number | null>(null)
 
@@ -89,7 +89,6 @@ const load = async (targetPage = page.value): Promise<void> => {
 }
 
 const search = (): void => {
-  notice.value = ''
   actionError.value = ''
   void load(1)
 }
@@ -108,13 +107,12 @@ const successMessage = (message: string, archivedCount: number): string => {
 const applyRole = async (user: AdminUser, role: Role, archive: boolean): Promise<void> => {
   busyUserId.value = user.id
   actionError.value = ''
-  notice.value = ''
   try {
     const result = await changeUserRole(user.id, {
       role,
       archiveOwnedClasses: archive,
     })
-    notice.value = successMessage(result.message, result.archivedClassCount)
+    toast.success(successMessage(result.message, result.archivedClassCount))
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
   } finally {
@@ -128,7 +126,6 @@ const requestRole = (user: AdminUser, event: Event): void => {
   const nextRole = select.value as Role
   select.value = user.role
   actionError.value = ''
-  notice.value = ''
   if (nextRole === user.role || busyUserId.value !== null) return
 
   if (user.role === 'student' && user.activeMembershipCount > 0) {
@@ -161,10 +158,9 @@ const toggleStatus = async (user: AdminUser): Promise<void> => {
 
   busyUserId.value = user.id
   actionError.value = ''
-  notice.value = ''
   try {
     const result = await changeUserStatus(user.id, nextStatus)
-    notice.value = result.message
+    toast.success(result.message)
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
   } finally {
@@ -209,14 +205,13 @@ const confirmRestore = async (): Promise<void> => {
   restoreSubmitting.value = true
   restoreError.value = ''
   actionError.value = ''
-  notice.value = ''
   try {
     const result = await restoreUserReputation(
       target.id,
       score,
       restoreNote.value.trim() || undefined,
     )
-    notice.value = result.message
+    toast.success(result.message)
     restoreTarget.value = null
   } catch (exception: unknown) {
     restoreError.value = toErrorMessage(exception)
@@ -238,10 +233,9 @@ const removeUser = async (user: AdminUser): Promise<void> => {
 
   busyUserId.value = user.id
   actionError.value = ''
-  notice.value = ''
   try {
     const result = await deleteAdminUser(user.id)
-    notice.value = result.message
+    toast.success(result.message)
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
   } finally {
@@ -260,7 +254,7 @@ const confirmDemote = async (): Promise<void> => {
       role: nextRole,
       archiveOwnedClasses: true,
     })
-    notice.value = successMessage(result.message, result.archivedClassCount)
+    toast.success(successMessage(result.message, result.archivedClassCount))
     demoteTarget.value = null
   } catch (exception: unknown) {
     demoteError.value = toErrorMessage(exception)
@@ -311,7 +305,6 @@ onMounted(() => {
       </form>
 
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
-      <p v-if="notice" class="teaching-success" role="status">{{ notice }}</p>
       <p v-if="listError" class="form-error" role="alert">{{ listError }}</p>
       <p v-if="isLoading" class="teaching-subtle">正在加载用户</p>
 

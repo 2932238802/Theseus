@@ -59,6 +59,7 @@ export interface Problem {
   memoryLimit: number
   submitCount: number
   acceptCount: number
+  favorited: boolean
 }
 
 export interface SubmissionCaseResult {

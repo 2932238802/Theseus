@@ -48,6 +48,7 @@ struct ProblemWithStatusRow {
     submit_count: i32,
     accept_count: i32,
     status: Option<String>,
+    favorited: bool,
 }
 
 #[derive(Clone, Debug, FromRow)]
@@ -76,8 +77,9 @@ impl ProblemWithStatusRow {
             acceptance_rate: self.acceptance_rate,
             submit_count: self.submit_count,
             accept_count: self.accept_count,
+            favorited: self.favorited,
         }
-        .response(self.status)
+        .response(self.status, self.favorited)
     }
 }
 
@@ -147,7 +149,7 @@ pub async fn get(
         .await
         .map(|user| user.id);
     let row = sqlx::query_as::<_, ProblemWithStatusRow>(
-        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = $2 WHERE p.id = $1 AND p.review_status = 'approved'",
+        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status, EXISTS (SELECT 1 FROM favorites f WHERE f.problem_id = p.id AND f.user_id = $2) AS favorited FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = $2 WHERE p.id = $1 AND p.review_status = 'approved'",
     )
     .bind(id)
     .bind(user_id)
@@ -636,7 +638,11 @@ async fn fetch_problem_page(
 
     let offset = (page.saturating_sub(1) as i64) * i64::from(size);
     let mut builder = QueryBuilder::<Postgres>::new(
-        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = ",
+        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status, EXISTS (SELECT 1 FROM favorites f WHERE f.problem_id = p.id AND f.user_id = ",
+    );
+    builder.push_bind(user_id);
+    builder.push(
+        ") AS favorited FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = ",
     );
     builder.push_bind(user_id);
     builder.push(" WHERE p.review_status = 'approved'");

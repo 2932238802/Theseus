@@ -4,6 +4,7 @@ import MarkdownBody from '../components/MarkdownBody.vue'
 import NavBar from '../components/NavBar.vue'
 import { fetchAdminUsers } from '../api/adminUsers'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import { sendNotification } from '../api/notifications'
 import type { AdminUser, Role } from '../types/teaching'
 
@@ -34,7 +35,6 @@ const link = ref('')
 const showPreview = ref(false)
 const isSending = ref(false)
 const sendError = ref('')
-const notice = ref('')
 
 const pageCount = computed(() => Math.max(1, Math.ceil(userTotal.value / PAGE_SIZE)))
 const canSend = computed(
@@ -68,7 +68,6 @@ const loadUsers = async (targetPage = 1): Promise<void> => {
 }
 
 const searchUsers = (): void => {
-  notice.value = ''
   sendError.value = ''
   void loadUsers(1)
 }
@@ -97,7 +96,6 @@ const audienceSummary = computed(() => {
 const send = async (): Promise<void> => {
   if (!canSend.value || isSending.value) return
   sendError.value = ''
-  notice.value = ''
   if (audienceType.value !== 'users') {
     if (!window.confirm(`确定向${audienceSummary.value}发送通知吗？发送后不可撤回`)) return
   }
@@ -111,7 +109,7 @@ const send = async (): Promise<void> => {
       role: audienceType.value === 'role' ? roleTarget.value : undefined,
       all: audienceType.value === 'all' ? true : undefined,
     })
-    notice.value = result.message
+    toast.success(result.message)
     title.value = ''
     body.value = ''
     link.value = ''
@@ -132,7 +130,6 @@ onMounted(() => {
 <template>
   <NavBar />
   <main class="teaching-page teaching-wide page-shell">
-    <p v-if="notice" class="teaching-success" role="status">{{ notice }}</p>
 
     <div class="admin-notify-layout">
       <section class="admin-panel">

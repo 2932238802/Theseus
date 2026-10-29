@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import { fetchContest, finishContest } from '../api/contests'
 import { useAuthStore } from '../store/auth'
 import type {
@@ -31,7 +32,6 @@ const detail = ref<ContestDetail | null>(null)
 const isLoading = ref(true)
 const error = ref('')
 const actionError = ref('')
-const actionMessage = ref('')
 const isFinishing = ref(false)
 const serverOffset = ref(0)
 const serverNow = ref(Date.now())
@@ -135,7 +135,7 @@ const finishAndLeave = async (): Promise<void> => {
   try {
     await flushContestEvents()
     const result = await finishContest(contestIdRef.value)
-    actionMessage.value = result.message || '已离场，成绩将在比赛结束后公布'
+    toast.success(result.message || '已离场，成绩将在比赛结束后公布')
     enabledRef.value = false
     await loadContest(true)
   } catch (exception: unknown) {
@@ -161,7 +161,6 @@ watch(
     detail.value = null
     error.value = ''
     actionError.value = ''
-    actionMessage.value = ''
     if (!nextId) {
       isLoading.value = false
       error.value = '比赛地址无效'
@@ -229,7 +228,6 @@ onBeforeUnmount(() => {
 
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
-      <p v-if="actionMessage" class="teaching-success" role="status">{{ actionMessage }}</p>
 
       <section v-if="detail.status === 'cancelled'" class="teaching-panel contest-cancelled">
         <p class="form-error">本场比赛已取消，成绩不会结算</p>

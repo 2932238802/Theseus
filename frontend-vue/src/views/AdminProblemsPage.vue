@@ -4,6 +4,7 @@ import MarkdownBody from '../components/MarkdownBody.vue'
 import NavBar from '../components/NavBar.vue'
 import ProblemForm from '../components/ProblemForm.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import {
   fetchAdminProblem,
   fetchAdminProblems,
@@ -31,7 +32,6 @@ const statusFilter = ref<StatusFilter>('pending')
 const query = ref('')
 const loading = ref(false)
 const listError = ref('')
-const notice = ref('')
 let listSequence = 0
 
 const detailOpen = ref(false)
@@ -40,7 +40,6 @@ const detailLoading = ref(false)
 const detailError = ref('')
 const formSubmitting = ref(false)
 const formError = ref('')
-const formNotice = ref('')
 const reviewNote = ref('')
 const reviewSubmitting = ref(false)
 const reviewError = ref('')
@@ -100,7 +99,6 @@ const loadDetail = async (id: number): Promise<void> => {
   detailLoading.value = true
   detailError.value = ''
   formError.value = ''
-  formNotice.value = ''
   reviewError.value = ''
   try {
     const result = await fetchAdminProblem(id)
@@ -118,7 +116,6 @@ const loadDetail = async (id: number): Promise<void> => {
 
 const openDetail = (problem: AdminProblemSummary): void => {
   detailOpen.value = true
-  notice.value = ''
   detail.value = null
   void loadDetail(problem.id)
 }
@@ -134,11 +131,10 @@ const saveConfig = async (payload: ProblemEditorPayload): Promise<void> => {
   if (!detail.value || formSubmitting.value) return
   formSubmitting.value = true
   formError.value = ''
-  formNotice.value = ''
   try {
     const result = await updateAdminProblem(detail.value.id, payload)
     await loadDetail(detail.value.id)
-    formNotice.value = result.message || '配置已保存'
+    toast.success(result.message || '配置已保存')
     await load()
   } catch (exception: unknown) {
     formError.value = toErrorMessage(exception)
@@ -158,7 +154,7 @@ const submitReview = async (status: 'approved' | 'rejected'): Promise<void> => {
   reviewSubmitting.value = true
   try {
     const result = await reviewAdminProblem(detail.value.id, status, note || null)
-    notice.value = result.message
+    toast.success(result.message)
     await loadDetail(detail.value.id)
     await load()
   } catch (exception: unknown) {
@@ -208,7 +204,6 @@ onMounted(() => {
       <span class="admin-total">{{ total }} 道题目</span>
     </form>
 
-    <p v-if="notice" class="teaching-success" role="status">{{ notice }}</p>
     <p v-if="listError" class="form-error" role="alert">{{ listError }}</p>
     <p v-if="loading" class="teaching-subtle">正在加载题目</p>
 
@@ -301,7 +296,6 @@ onMounted(() => {
                 submit-label="保存配置"
                 @submit="saveConfig"
               />
-              <p v-if="formNotice" class="teaching-success" role="status">{{ formNotice }}</p>
 
               <section class="teaching-panel problem-review-actions">
                 <h3>审核</h3>

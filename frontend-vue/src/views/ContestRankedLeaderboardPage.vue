@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
 import { fetchRankedContestLeaderboard } from '../api/contests'
@@ -8,12 +8,6 @@ import type { RankedLeaderboard } from '../types/contest'
 const data = ref<RankedLeaderboard | null>(null)
 const loading = ref(true)
 const error = ref('')
-
-const totalLabel = computed(() =>
-  data.value ? `共 ${data.value.total} 名活跃学生` : '',
-)
-
-const myEntry = computed(() => data.value?.entries.find((entry) => entry.is_me) ?? null)
 
 const load = async (): Promise<void> => {
   loading.value = true
@@ -35,16 +29,7 @@ onMounted(() => {
 <template>
   <NavBar />
   <main class="teaching-page page-shell contests-page">
-    <header class="teaching-page-header">
-      <div>
-        <RouterLink class="teaching-breadcrumb" :to="{ name: 'contests' }">竞赛首页</RouterLink>
-        <h1>排位榜</h1>
-        <p class="teaching-subtle">{{ totalLabel || '按段位分排序，赛事比赛不计入排位分' }}</p>
-      </div>
-      <RouterLink class="forum-secondary-button" :to="{ name: 'contests' }">返回竞赛</RouterLink>
-    </header>
-
-    <div v-if="loading" class="empty-state"><p>正在加载排位榜</p></div>
+    <div v-if="loading" class="empty-state"><p>正在加载排行榜</p></div>
 
     <div v-else-if="error" class="contest-events-feedback">
       <p class="form-error" role="alert">{{ error }}</p>
@@ -61,14 +46,6 @@ onMounted(() => {
           <span>段位分</span>
           <strong>{{ data.my_rating }}</strong>
         </div>
-        <div v-if="myEntry" class="ranking-me-stat">
-          <span>已参赛</span>
-          <strong>{{ myEntry.played }}</strong>
-        </div>
-        <div v-if="myEntry" class="ranking-me-stat">
-          <span>第一名</span>
-          <strong>{{ myEntry.wins }}</strong>
-        </div>
       </section>
 
       <section class="teaching-panel">
@@ -80,8 +57,6 @@ onMounted(() => {
                 <th scope="col">排名</th>
                 <th scope="col">学生</th>
                 <th scope="col">段位分</th>
-                <th scope="col">参赛场次</th>
-                <th scope="col">第一名</th>
               </tr>
             </thead>
             <tbody>
@@ -96,8 +71,6 @@ onMounted(() => {
                   <span v-if="entry.is_me" class="contest-event-registered">我</span>
                 </td>
                 <td>{{ entry.rating }}</td>
-                <td>{{ entry.played }}</td>
-                <td>{{ entry.wins }}</td>
               </tr>
             </tbody>
           </table>

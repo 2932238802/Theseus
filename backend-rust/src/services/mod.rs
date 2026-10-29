@@ -6,6 +6,7 @@ pub mod badge_service;
 pub mod class_service;
 pub mod contest_service;
 pub mod email_service;
+pub mod favorite_service;
 pub mod forum_service;
 pub mod grade_service;
 pub mod home_service;

@@ -5,6 +5,7 @@ import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
 import { checkIn, fetchHomeOverview, fetchRandomProblem } from '../api/home'
 import { useAuthStore } from '../store/auth'
+import { toast } from '../store/toast'
 import { DIFFICULTY_LABELS, LANGUAGE_OPTIONS } from '../utils/constants'
 import { latestDraftMeta, type DraftMeta } from '../utils/problemDrafts'
 import { formatDateTime } from '../utils/teaching'
@@ -32,7 +33,6 @@ const randomLoading = ref(false)
 const draft = ref<DraftMeta | null>(null)
 const checkinState = ref<HomeOverview['checkin'] | null>(null)
 const checkinLoading = ref(false)
-const checkinNotice = ref('')
 
 const continueEntry = computed<ContinueView | null>(() => {
   if (draft.value) {
@@ -118,8 +118,8 @@ const shortcuts = [
     to: { path: '/problems', query: { status: 'attempted' } },
   },
   {
-    label: '论坛收藏',
-    description: '收藏过的帖子',
+    label: '我的收藏',
+    description: '收藏的题目、帖子与评论',
     to: '/profile/favorites',
   },
   {
@@ -164,7 +164,6 @@ const openRandomProblem = async (): Promise<void> => {
 const doCheckin = async (): Promise<void> => {
   if (checkinLoading.value || checkinState.value?.checked_in_today) return
   checkinLoading.value = true
-  checkinNotice.value = ''
   actionError.value = ''
   try {
     const result = await checkIn()
@@ -172,7 +171,7 @@ const doCheckin = async (): Promise<void> => {
       checked_in_today: true,
       reputation_score: result.reputation_score,
     }
-    checkinNotice.value = result.message
+    toast.success(result.message)
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
   } finally {
@@ -211,7 +210,6 @@ onMounted(() => {
         </button>
       </div>
     </header>
-    <p v-if="checkinNotice" class="teaching-success" role="status">{{ checkinNotice }}</p>
 
     <section class="home-search" aria-label="题目搜索">
       <form class="home-search-form" @submit.prevent="search">

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import ContestEventCardView from '../components/ContestEventCard.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import {
   cancelMatch,
   enterContestEvent,
@@ -41,7 +42,6 @@ const currentMyRating = ref<number | null>(null)
 const isStarting = ref(false)
 const isCancelling = ref(false)
 const error = ref('')
-const notice = ref('')
 const rulesOpen = ref(false)
 const startFlowOpen = ref(false)
 
@@ -50,7 +50,6 @@ const eventsLoading = ref(true)
 const eventsError = ref('')
 const eventActionId = ref<number | null>(null)
 const eventActionError = ref('')
-const eventNotice = ref('')
 
 const eventDetailOpen = ref(false)
 const eventDetail = ref<ContestEventDetail | null>(null)
@@ -266,7 +265,6 @@ const openEventDetail = async (event: ContestEventCard): Promise<void> => {
 const handleEventAction = async (event: ContestEventCard): Promise<void> => {
   if (eventActionId.value !== null) return
   eventActionError.value = ''
-  eventNotice.value = ''
   if (!event.eligible) {
     eventActionError.value = event.ineligible_reason ?? '当前不符合参赛条件'
     return
@@ -303,11 +301,13 @@ const handleEventAction = async (event: ContestEventCard): Promise<void> => {
       if (eventDetail.value && eventDetail.value.id === card.id) {
         eventDetail.value = { ...eventDetail.value, ...card }
       }
-      eventNotice.value = card.is_registered
-        ? event.action === 'join'
-          ? '已加入赛事'
-          : '报名成功'
-        : '操作成功'
+      toast.success(
+        card.is_registered
+          ? event.action === 'join'
+            ? '已加入赛事'
+            : '报名成功'
+          : '操作成功',
+      )
     } catch (exception: unknown) {
       eventActionError.value = toErrorMessage(exception)
       // 可能刚刚被其他人报满或管理员下架，静默同步一次状态。
@@ -464,11 +464,10 @@ const beginMatch = async (): Promise<void> => {
   isStarting.value = true
   startFlowError.value = ''
   error.value = ''
-  notice.value = ''
   try {
     const result = await matchContest(cameraPermission.value, screenPermission.value)
     startFlowOpen.value = false
-    notice.value = result.message
+    toast.success(result.message)
     if (result.state === 'matched') {
       if (result.contest) {
         stopPolling()
@@ -496,7 +495,7 @@ const cancelQueue = async (): Promise<void> => {
   epoch += 1
   try {
     const result = await cancelMatch()
-    notice.value = result.message
+    toast.success(result.message)
     stopPolling()
     phase.value = 'idle'
     queuePosition.value = null
@@ -561,7 +560,6 @@ onBeforeUnmount(() => {
   <NavBar />
   <main class="teaching-page page-shell contests-page">
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-    <p v-if="notice && phase !== 'idle'" class="teaching-success" role="status">{{ notice }}</p>
 
     <div v-if="phase === 'loading'" class="empty-state">
       <p>正在检查比赛状态</p>
@@ -573,7 +571,7 @@ onBeforeUnmount(() => {
         <div class="contest-heading-actions">
           <span class="teaching-badge">{{ participantLabel }} · {{ durationLabel }} · {{ problemLabel }}</span>
           <RouterLink class="contest-rules-button contest-rules-link" :to="{ name: 'contest-rankings' }">
-            排位榜
+            排行榜
           </RouterLink>
           <button
             class="contest-rules-button"
@@ -604,7 +602,6 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <p v-if="notice" class="teaching-success" role="status">{{ notice }}</p>
     </section>
 
     <section v-if="phase === 'queued'" class="teaching-panel contest-queue" aria-live="polite">
@@ -790,7 +787,6 @@ onBeforeUnmount(() => {
       </div>
 
       <p v-if="eventActionError" class="form-error" role="alert">{{ eventActionError }}</p>
-      <p v-if="eventNotice" class="teaching-success" role="status">{{ eventNotice }}</p>
 
       <div v-if="eventsLoading" class="contest-event-grid" aria-busy="true">
         <div v-for="index in 2" :key="index" class="contest-event-card is-loading">

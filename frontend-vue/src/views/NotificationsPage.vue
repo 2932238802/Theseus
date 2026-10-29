@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import MarkdownBody from '../components/MarkdownBody.vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import { useInvitationStore } from '../store/invitations'
 import { useNotificationStore } from '../store/notifications'
 import { formatForumDateTime, notificationIcon, notificationLabel } from '../utils/forum'
@@ -14,7 +15,6 @@ const notificationStore = useNotificationStore()
 const invitationStore = useInvitationStore()
 
 const actionError = ref('')
-const actionMessage = ref('')
 const actingNotificationId = ref<number | null>(null)
 const selectedNotification = ref<ForumNotification | null>(null)
 
@@ -82,7 +82,6 @@ const respondInvitation = async (
 ): Promise<void> => {
   if (item.relatedId === null || item.relatedId === undefined) return
   actionError.value = ''
-  actionMessage.value = ''
   actingNotificationId.value = item.id
   try {
     const result =
@@ -90,7 +89,7 @@ const respondInvitation = async (
         ? await invitationStore.accept(item.relatedId)
         : await invitationStore.decline(item.relatedId)
     item.invitationStatus = result.status
-    actionMessage.value = result.message
+    toast.success(result.message)
     await notificationStore.markRead(item.id)
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
@@ -124,7 +123,6 @@ onMounted(() => {
 
     <p v-if="notificationStore.error" class="form-error" role="alert">{{ notificationStore.error }}</p>
     <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
-    <p v-if="actionMessage" class="teaching-success" role="status">{{ actionMessage }}</p>
 
     <div v-if="notificationStore.isLoading && !notificationStore.notifications.length" class="run-note">
       正在加载通知

@@ -94,6 +94,7 @@ export interface ForumReply {
   editedAt: string | null
   canEdit: boolean
   canDelete: boolean
+  favorited: boolean
 }
 
 export interface ForumComment extends ForumReply {

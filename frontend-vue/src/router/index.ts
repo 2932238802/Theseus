@@ -29,7 +29,6 @@ import OjPage from '../views/OjPage.vue'
 import ProblemsPage from '../views/ProblemsPage.vue'
 import ProfilePage from '../views/ProfilePage.vue'
 import ProfileFavoritesPage from '../views/ProfileFavoritesPage.vue'
-import RankingsPage from '../views/RankingsPage.vue'
 import ResetPasswordPage from '../views/ResetPasswordPage.vue'
 import TeacherProblemComposePage from '../views/TeacherProblemComposePage.vue'
 import TeacherProblemsPage from '../views/TeacherProblemsPage.vue'
@@ -48,7 +47,7 @@ const router = createRouter({
     { path: '/problem/:id', name: 'problem', component: OjPage, props: true },
     { path: '/profile', name: 'profile', component: ProfilePage, meta: { requiresAuth: true } },
     { path: '/profile/favorites', name: 'profile-favorites', component: ProfileFavoritesPage, meta: { requiresAuth: true } },
-    { path: '/rankings', name: 'rankings', component: RankingsPage },
+    { path: '/rankings', redirect: { name: 'contest-rankings' } },
     { path: '/contests', name: 'contests', component: ContestsPage, meta: { requiresAuth: true } },
     { path: '/contests/events', name: 'contest-events', component: ContestEventsPage, meta: { requiresAuth: true } },
     { path: '/contests/rankings', name: 'contest-rankings', component: ContestRankedLeaderboardPage, meta: { requiresAuth: true } },

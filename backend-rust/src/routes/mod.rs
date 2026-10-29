@@ -9,9 +9,9 @@ use crate::{
     AppState,
     handlers::{
         admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, badge_handler,
-        class_handler, contest_handler, forum_handler, home_handler, invitation_handler,
-        notification_handler, problem_handler, profile_handler, ranking_handler, run_handler,
-        submission_handler,
+        class_handler, contest_handler, favorite_handler, forum_handler, home_handler,
+        invitation_handler, notification_handler, problem_handler, profile_handler,
+        ranking_handler, run_handler, submission_handler,
     },
 };
 
@@ -262,6 +262,18 @@ pub fn router(state: AppState) -> Router {
         .route("/api/problems/random", get(home_handler::random_problem))
         .route("/api/problems/tags", get(problem_handler::tags))
         .route("/api/problems/{id}", get(problem_handler::get))
+        .route(
+            "/api/problems/{id}/favorite",
+            post(favorite_handler::favorite_problem).delete(favorite_handler::unfavorite_problem),
+        )
+        .route(
+            "/api/profile/favorites/problems",
+            get(favorite_handler::list_problem_favorites),
+        )
+        .route(
+            "/api/profile/favorites/comments",
+            get(favorite_handler::list_comment_favorites),
+        )
         .route("/api/stats", get(problem_handler::stats))
         .route("/api/rankings", get(ranking_handler::list))
         .route("/api/problems/custom", post(problem_handler::submit_custom))
@@ -299,6 +311,10 @@ pub fn router(state: AppState) -> Router {
             get(forum_handler::list_posts).post(forum_handler::create_post),
         )
         .route("/api/forum/favorites", get(forum_handler::favorites))
+        .route(
+            "/api/forum/comments/{id}/favorite",
+            post(favorite_handler::favorite_comment).delete(favorite_handler::unfavorite_comment),
+        )
         .route(
             "/api/forum/posts/{id}",
             get(forum_handler::get_post)

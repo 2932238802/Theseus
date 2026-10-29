@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import ContestEventCardView from '../components/ContestEventCard.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import {
   enterContestEvent,
   fetchContestEventList,
@@ -47,7 +48,6 @@ const pageSize = 12
 const data = ref<ContestEventList | null>(null)
 const loading = ref(false)
 const error = ref('')
-const notice = ref('')
 const actionError = ref('')
 const actionId = ref<number | null>(null)
 const followId = ref<number | null>(null)
@@ -120,7 +120,6 @@ const openEvent = (event: ContestEventCard): void => {
 const handleAction = async (event: ContestEventCard): Promise<void> => {
   if (actionId.value !== null) return
   actionError.value = ''
-  notice.value = ''
   if (!event.eligible) {
     actionError.value = event.ineligible_reason ?? '当前不符合参赛条件'
     return
@@ -157,11 +156,13 @@ const handleAction = async (event: ContestEventCard): Promise<void> => {
         ? await joinContestEvent(event.id)
         : await registerContestEvent(event.id)
     replaceEvent(card)
-    notice.value = card.is_registered
-      ? event.action === 'join'
-        ? '已加入赛事'
-        : '报名成功'
-      : '操作成功'
+    toast.success(
+      card.is_registered
+        ? event.action === 'join'
+          ? '已加入赛事'
+          : '报名成功'
+        : '操作成功',
+    )
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
     void load()
@@ -246,7 +247,6 @@ onBeforeUnmount(() => {
     </div>
 
     <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
-    <p v-if="notice" class="teaching-success" role="status">{{ notice }}</p>
 
     <div v-if="loading" class="contest-event-grid" aria-busy="true">
       <div v-for="index in 3" :key="index" class="contest-event-card is-loading">

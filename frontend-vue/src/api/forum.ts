@@ -120,6 +120,7 @@ const mapReply = (value: unknown): ForumReply => {
     editedAt: nullableText(item.edited_at),
     canEdit: bool(item.can_edit),
     canDelete: bool(item.can_delete),
+    favorited: bool(item.favorited),
   }
 }
 

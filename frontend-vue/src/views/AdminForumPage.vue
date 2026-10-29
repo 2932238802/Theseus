@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import MarkdownBody from '../components/MarkdownBody.vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import {
   changeAdminCommentStatus,
   changeAdminPostStatus,
@@ -56,7 +57,6 @@ const MUTE_DURATIONS = [
 const PAGE_SIZE = 20
 
 const tab = ref<Tab>('reports')
-const notice = ref('')
 const actionError = ref('')
 const busyKey = ref('')
 
@@ -178,7 +178,6 @@ const resetContentFilters = (): void => {
 }
 
 const refreshAll = async (): Promise<void> => {
-  notice.value = ''
   actionError.value = ''
   await Promise.all([loadReports(reportPage.value), loadContent(contentPage.value)])
 }
@@ -254,7 +253,7 @@ const changePostStatus = async (
   busyKey.value = `post-${post.id}`
   try {
     const result = await changeAdminPostStatus(post.id, next, reason)
-    notice.value = result.message
+    toast.success(result.message)
     await Promise.all([loadContent(contentPage.value), loadReports(reportPage.value)])
     await refreshDetailIfOpen(post.id)
   } catch (exception: unknown) {
@@ -270,7 +269,7 @@ const togglePin = async (post: AdminForumPostSummary): Promise<void> => {
   busyKey.value = `post-${post.id}`
   try {
     const result = await pinAdminForumPost(post.id, !post.isPinned)
-    notice.value = result.message || (result.isPinned ? '帖子已置顶' : '帖子已取消置顶')
+    toast.success(result.message || (result.isPinned ? '帖子已置顶' : '帖子已取消置顶'))
     await loadContent(contentPage.value)
     await refreshDetailIfOpen(post.id)
   } catch (exception: unknown) {
@@ -297,7 +296,7 @@ const changeCommentStatus = async (
   busyKey.value = `comment-${commentId}`
   try {
     const result = await changeAdminCommentStatus(commentId, next, reason)
-    notice.value = result.message
+    toast.success(result.message)
     await Promise.all([loadContent(contentPage.value), loadDetail(postId)])
     await loadReports(reportPage.value)
   } catch (exception: unknown) {
@@ -317,7 +316,7 @@ const decideReport = async (report: AdminReport, decision: 'hide' | 'keep'): Pro
   busyKey.value = `report-${report.id}`
   try {
     const result = await decideAdminReport(report.id, decision, note.trim() || undefined)
-    notice.value = result.message
+    toast.success(result.message)
     await Promise.all([loadReports(reportPage.value), loadContent(contentPage.value)])
     if (detailOpen.value && detailPostId.value !== null) await loadDetail(detailPostId.value)
   } catch (exception: unknown) {
@@ -372,7 +371,7 @@ const submitMute = async (): Promise<void> => {
       muteDuration.value === 'permanent' ? null : Number(muteDuration.value),
       reason,
     )
-    notice.value = result.message
+    toast.success(result.message)
     closeMute()
   } catch (exception: unknown) {
     muteError.value = toErrorMessage(exception)
@@ -386,7 +385,7 @@ const unmuteUser = async (author: { id: number; username: string }): Promise<voi
   actionError.value = ''
   try {
     const result = await unmuteForumUser(author.id)
-    notice.value = result.message
+    toast.success(result.message)
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
   }
@@ -428,7 +427,6 @@ onMounted(() => {
       <button type="button" :class="{ active: tab === 'content' }" @click="tab = 'content'">内容管理</button>
     </nav>
 
-    <p v-if="notice" class="forum-notice" role="status">{{ notice }}</p>
     <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
 
     <section v-if="tab === 'reports'" class="admin-panel" aria-label="举报队列">
@@ -641,8 +639,7 @@ onMounted(() => {
           <p v-else-if="detailError" class="form-error" role="alert">{{ detailError }}</p>
           <template v-else-if="detail">
             <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
-            <p v-if="notice" class="forum-notice" role="status">{{ notice }}</p>
-            <div class="admin-detail-meta">
+                    <div class="admin-detail-meta">
               <span v-if="detail.post.isAnonymous" class="admin-anonymous-badge">前台匿名</span>
               <span v-for="tag in detail.post.tags" :key="tag" class="forum-tag">{{ tagLabel(tag) }}</span>
               <span>点赞 {{ detail.post.likeCount }}</span>

@@ -895,14 +895,20 @@ async fn load_visible_post(
     Ok(VisiblePost { author_id, status })
 }
 
-fn push_public_comment_select(builder: &mut QueryBuilder<'_, Postgres>) {
+fn push_public_comment_select(builder: &mut QueryBuilder<'_, Postgres>, viewer_id: Option<i32>) {
     builder.push(
         "SELECT c.id, c.post_id, c.author_id, u.username AS author_username, c.parent_id, \
          c.reply_to_comment_id, ru.username AS reply_to_username, \
          rc.is_anonymous AS reply_to_is_anonymous, rc.status AS reply_to_status, \
          c.body_md, c.is_anonymous, c.status, \
          c.created_at, c.edited_at, COUNT(*) OVER() AS reply_total, \
-         COUNT(*) OVER() AS total, 0::bigint AS reply_rank \
+         COUNT(*) OVER() AS total, 0::bigint AS reply_rank, \
+         EXISTS (SELECT 1 FROM forum_comment_favorites cf \
+         WHERE cf.comment_id = c.id AND cf.user_id = ",
+    );
+    builder.push_bind(viewer_id);
+    builder.push(
+        ") AS favorited \
          FROM forum_comments c \
          JOIN users u ON u.id = c.author_id \
          LEFT JOIN forum_comments rc ON rc.id = c.reply_to_comment_id \
@@ -929,7 +935,12 @@ pub async fn list_comments(
          rc.is_anonymous AS reply_to_is_anonymous, rc.status AS reply_to_status, \
          c.body_md, c.is_anonymous, c.status, \
          c.created_at, c.edited_at, 0::bigint AS reply_total, COUNT(*) OVER() AS total, \
-         0::bigint AS reply_rank \
+         0::bigint AS reply_rank, EXISTS (SELECT 1 FROM forum_comment_favorites cf \
+         WHERE cf.comment_id = c.id AND cf.user_id = ",
+    );
+    builder.push_bind(viewer_id);
+    builder.push(
+        ") AS favorited \
          FROM forum_comments c \
          JOIN users u ON u.id = c.author_id \
          LEFT JOIN forum_comments rc ON rc.id = c.reply_to_comment_id \
@@ -967,7 +978,8 @@ pub async fn list_comments(
         let mut reply_builder = QueryBuilder::<Postgres>::new(
             "SELECT id, post_id, author_id, author_username, parent_id, \
              reply_to_comment_id, reply_to_username, reply_to_is_anonymous, reply_to_status, \
-             body_md, is_anonymous, status, created_at, edited_at, reply_total, total, reply_rank \
+             body_md, is_anonymous, status, created_at, edited_at, reply_total, total, \
+             reply_rank, favorited \
              FROM ( \
              SELECT c.id, c.post_id, c.author_id, u.username AS author_username, c.parent_id, \
              c.reply_to_comment_id, ru.username AS reply_to_username, \
@@ -976,14 +988,19 @@ pub async fn list_comments(
              COUNT(*) OVER (PARTITION BY c.parent_id) AS reply_total, \
              0::bigint AS total, \
              ROW_NUMBER() OVER (PARTITION BY c.parent_id ORDER BY c.created_at ASC, c.id ASC) \
-             AS reply_rank \
+             AS reply_rank, EXISTS (SELECT 1 FROM forum_comment_favorites cf \
+             WHERE cf.comment_id = c.id AND cf.user_id = ",
+        );
+        reply_builder
+            .push_bind(viewer_id)
+            .push(
+                ") AS favorited \
              FROM forum_comments c \
              JOIN users u ON u.id = c.author_id \
              LEFT JOIN forum_comments rc ON rc.id = c.reply_to_comment_id \
              LEFT JOIN users ru ON ru.id = rc.author_id \
              WHERE c.parent_id = ANY(",
-        );
-        reply_builder
+            )
             .push_bind(&root_ids)
             .push(") AND c.status = 'published') ranked WHERE ranked.reply_rank <= ")
             .push_bind(MAX_EMBEDDED_REPLIES)
@@ -1044,7 +1061,7 @@ pub async fn list_replies(
     load_visible_post(pool, post_id, viewer_id).await?;
 
     let mut builder = QueryBuilder::<Postgres>::new("");
-    push_public_comment_select(&mut builder);
+    push_public_comment_select(&mut builder, viewer_id);
     builder
         .push(" WHERE c.parent_id = ")
         .push_bind(root_id)

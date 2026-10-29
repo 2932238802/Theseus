@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import { useAuthStore } from '../store/auth'
 import { useClassStore } from '../store/classes'
 import { useInvitationStore } from '../store/invitations'
@@ -29,7 +30,6 @@ const joinError = ref('')
 const isJoining = ref(false)
 
 const invitationError = ref('')
-const invitationMessage = ref('')
 
 const invitationMeta = (item: MyInvitation): string =>
   [item.courseName, item.term].filter(Boolean).join(' · ')
@@ -39,13 +39,12 @@ const respondToInvitation = async (
   action: 'accept' | 'decline',
 ): Promise<void> => {
   invitationError.value = ''
-  invitationMessage.value = ''
   try {
     const result =
       action === 'accept'
         ? await invitationStore.accept(item.id)
         : await invitationStore.decline(item.id)
-    invitationMessage.value = result.message
+    toast.success(result.message)
     if (action === 'accept') await classStore.loadClasses()
   } catch (exception: unknown) {
     invitationError.value = toErrorMessage(exception)
@@ -108,7 +107,6 @@ onMounted(() => {
       </div>
       <p v-if="invitationStore.error" class="form-error" role="alert">{{ invitationStore.error }}</p>
       <p v-if="invitationError" class="form-error" role="alert">{{ invitationError }}</p>
-      <p v-if="invitationMessage" class="teaching-success" role="status">{{ invitationMessage }}</p>
       <div v-if="invitationStore.invitations.length" class="teaching-member-list">
         <article v-for="item in invitationStore.invitations" :key="item.id">
           <div>

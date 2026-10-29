@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import ToastHost from './components/ToastHost.vue'
 import { useAuthStore } from './store/auth'
 
 const authStore = useAuthStore()
@@ -41,5 +42,6 @@ onBeforeUnmount(() => {
     <RouterLink to="/verify-email">去验证</RouterLink>
   </div>
   <RouterView />
+  <ToastHost />
   <footer class="app-footer" aria-label="站点信息">LosAngelous/Theseus</footer>
 </template>

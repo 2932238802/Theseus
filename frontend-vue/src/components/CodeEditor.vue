@@ -128,10 +128,17 @@ watch(() => props.modelValue, (value) => {
   if (monacoEditor && monacoEditor.getValue() !== value) monacoEditor.setValue(value)
 })
 watch(monacoLanguage, (language) => {
-  if (monacoEditor) loader.init().then((monaco) => monaco.editor.setModelLanguage(monacoEditor!.getModel()!, language))
+  const model = monacoEditor?.getModel()
+  if (model && monacoApi) monacoApi.editor.setModelLanguage(model, language)
 })
 watch(() => props.fontSize, (fontSize) => monacoEditor?.updateOptions({ fontSize }))
-watch(() => props.dark, (dark) => loader.init().then((monaco) => monaco.editor.setTheme(dark ? 'vs-dark' : 'vs')))
+watch(() => props.dark, (dark) => {
+  if (monacoApi) {
+    monacoApi.editor.setTheme(dark ? 'vs-dark' : 'vs')
+    return
+  }
+  void loader.init().then((monaco) => monaco.editor.setTheme(dark ? 'vs-dark' : 'vs'))
+})
 watch(() => props.shortcutBindings, applyShortcutRules, { deep: true })
 
 const focus = (): void => monacoEditor?.focus()

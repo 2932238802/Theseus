@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import { fetchProctorEvents, reviewProctorEvent } from '../api/contests'
 import type {
   ProctorEventItem,
@@ -18,7 +19,6 @@ const contestId = computed(() => Number(route.params.id))
 const data = ref<ProctorEventListResponse | null>(null)
 const loading = ref(true)
 const error = ref('')
-const notice = ref('')
 const filter = ref<ReviewFilter>('pending')
 const notes = ref<Record<number, string>>({})
 const reviewingId = ref<number | null>(null)
@@ -82,7 +82,6 @@ const review = async (
 ): Promise<void> => {
   if (reviewingId.value !== null) return
   reviewingId.value = item.id
-  notice.value = ''
   error.value = ''
   try {
     const result = await reviewProctorEvent(
@@ -93,10 +92,11 @@ const review = async (
     )
     const score =
       result.reputation_score === null ? '' : `，信誉分 ${result.reputation_score.toFixed(1)}`
-    notice.value =
+    toast.success(
       status === 'confirmed'
         ? `${item.username} 已确认作弊${score}${result.rating_reranked ? '，排名已重新结算' : ''}`
-        : `${item.username} 的粘贴记录已排除`
+        : `${item.username} 的粘贴记录已排除`,
+    )
     await load(true)
   } catch (exception: unknown) {
     error.value = toErrorMessage(exception)
@@ -128,7 +128,6 @@ onMounted(() => {
       </button>
     </header>
 
-    <p v-if="notice" class="teaching-success" role="status">{{ notice }}</p>
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
     <div v-if="loading" class="proctor-empty">正在加载复核记录</div>

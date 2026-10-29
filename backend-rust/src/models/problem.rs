@@ -18,6 +18,7 @@ pub struct ProblemRow {
     pub acceptance_rate: f64,
     pub submit_count: i32,
     pub accept_count: i32,
+    pub favorited: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -36,10 +37,11 @@ pub struct ProblemResponse {
     pub submit_count: i32,
     pub accept_count: i32,
     pub status: Option<String>,
+    pub favorited: bool,
 }
 
 impl ProblemRow {
-    pub fn response(self, status: Option<String>) -> ProblemResponse {
+    pub fn response(self, status: Option<String>, favorited: bool) -> ProblemResponse {
         ProblemResponse {
             id: self.id,
             title: self.title,
@@ -57,6 +59,7 @@ impl ProblemRow {
             submit_count: self.submit_count,
             accept_count: self.accept_count,
             status,
+            favorited,
         }
     }
 }

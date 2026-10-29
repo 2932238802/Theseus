@@ -68,6 +68,37 @@ body.is-resizing {
   letter-spacing: -0.01em;
 }
 
+.problem-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.problem-favorite-button {
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  transition:
+    border-color var(--duration),
+    color var(--duration),
+    background var(--duration);
+}
+
+.problem-favorite-button:hover:not(:disabled) {
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.problem-favorite-button.active {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
 .problem-tags {
   margin-bottom: var(--space-lg);
 }

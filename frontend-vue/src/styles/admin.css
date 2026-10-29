@@ -437,7 +437,7 @@
 
 @media (max-width: 700px) {
   .brand-name,
-  .main-nav .nav-profile {
+  .main-nav .nav-profile-menu {
     display: none;
   }
 
@@ -449,11 +449,15 @@
   .main-nav {
     gap: 14px;
   }
+
+  .main-nav .nav-campus .nav-menu-panel {
+    left: 0;
+    transform: none;
+  }
 }
 
 @media (max-width: 480px) {
-  .brand-name,
-  .main-nav .nav-rankings {
+  .brand-name {
     display: none;
   }
 

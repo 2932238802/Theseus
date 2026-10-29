@@ -11,6 +11,7 @@ import { useShortcutStore } from '../store/shortcuts'
 import { useSubmissionStore } from '../store/submissions'
 import { fetchAssignment } from '../api/assignments'
 import { fetchContestProblem } from '../api/contests'
+import { setProblemFavorite } from '../api/favorites'
 import { toErrorMessage } from '../api/client'
 import type { AssignmentDetail } from '../types/teaching'
 import {
@@ -35,14 +36,16 @@ const shortcutStore = useShortcutStore()
 const submissionStore = useSubmissionStore()
 const runStore = useRunStore()
 const problemId = computed(() => Number(route.params.id))
-const language = ref<Language>('javascript')
-const queryLanguage = route.query.language
-if (
-  typeof queryLanguage === 'string' &&
-  LANGUAGE_OPTIONS.some((option) => option.value === queryLanguage)
-) {
-  language.value = queryLanguage as Language
+const PREFERRED_LANGUAGE_KEY = 'theseus-preferred-language'
+const isLanguage = (value: unknown): value is Language =>
+  typeof value === 'string' && LANGUAGE_OPTIONS.some((option) => option.value === value)
+const initialLanguage = (): Language => {
+  const queryLanguage = route.query.language
+  if (isLanguage(queryLanguage)) return queryLanguage
+  const stored = localStorage.getItem(PREFERRED_LANGUAGE_KEY)
+  return isLanguage(stored) ? stored : 'cpp'
 }
+const language = ref<Language>(initialLanguage())
 const code = ref('')
 const fontSize = ref(14)
 const isOutputOpen = ref(true)
@@ -57,6 +60,8 @@ const runMode = ref<RunMode>('examples')
 const runInput = ref('')
 const runInputError = ref('')
 const runFeatureEnabled = import.meta.env.VITE_RUN_CODE_ENABLED !== 'false'
+const favoriteBusy = ref(false)
+const favoriteError = ref('')
 const submitFeatureEnabled = import.meta.env.VITE_SUBMIT_JUDGE_ENABLED === 'true'
 const assignmentId = computed(() => {
   const value = Number(route.query.assignment_id)
@@ -67,6 +72,26 @@ const contestId = computed(() => {
   return Number.isInteger(value) && value > 0 ? value : null
 })
 const contestEventsEnabled = computed(() => contestId.value !== null)
+const toggleProblemFavorite = async (): Promise<void> => {
+  if (!authStore.isAuthenticated) {
+    void router.push({ name: 'login', query: { redirect: route.fullPath } })
+    return
+  }
+  const problem = problemStore.currentProblem
+  if (!problem || favoriteBusy.value) return
+  const before = problem.favorited
+  problem.favorited = !before
+  favoriteBusy.value = true
+  favoriteError.value = ''
+  try {
+    problem.favorited = await setProblemFavorite(problem.id, problem.favorited)
+  } catch (exception: unknown) {
+    problem.favorited = before
+    favoriteError.value = toErrorMessage(exception)
+  } finally {
+    favoriteBusy.value = false
+  }
+}
 const { report: reportContestEvent } = useContestEvents(contestId, contestEventsEnabled)
 const assignment = ref<AssignmentDetail | null>(null)
 const assignmentError = ref('')
@@ -135,6 +160,12 @@ const templateFor = (target: Language): string => problemStore.currentProblem?.c
 const restoreDraft = (): void => {
   code.value = localStorage.getItem(draftKey.value) ?? templateFor(language.value)
 }
+const hasOtherLanguageDraft = (): boolean =>
+  LANGUAGE_OPTIONS.some((option) => {
+    if (option.value === language.value) return false
+    const stored = localStorage.getItem(`theseus-draft-${problemId.value}-${option.value}`)
+    return Boolean(stored && stored !== templateFor(option.value))
+  })
 const saveDraft = (): void => {
   if (code.value) localStorage.setItem(draftKey.value, code.value)
   const problem = problemStore.currentProblem
@@ -146,7 +177,8 @@ const saveDraft = (): void => {
       difficulty: problem.difficulty,
       language: language.value,
     })
-  } else {
+  } else if (!hasOtherLanguageDraft()) {
+    // 当前语言没有编辑内容时，只有其他语言也没有草稿才清除首页的继续学习记录
     clearDraftMeta(problem.id)
   }
 }
@@ -634,7 +666,13 @@ onMounted(() => {
     if (pageRef.value) pageObserver.observe(pageRef.value)
   }
 })
-watch(language, () => {
+watch(language, (_next, previous) => {
+  localStorage.setItem(PREFERRED_LANGUAGE_KEY, language.value)
+  // 先把上一种语言的当前代码落盘，再恢复新语言的草稿，避免切换时丢失编辑
+  if (previous) {
+    const previousKey = `theseus-draft-${problemId.value}-${previous}`
+    if (code.value) localStorage.setItem(previousKey, code.value)
+  }
   restoreDraft()
   isRunDialogOpen.value = false
 })
@@ -688,7 +726,22 @@ onBeforeUnmount(() => {
             <span v-if="assignmentStateLabel" class="assignment-context-state">{{ assignmentStateLabel }}</span>
             <RouterLink :to="`/assignments/${assignmentId}`">返回作业</RouterLink>
           </aside>
-          <header class="problem-heading"><h1>{{ problemStore.currentProblem.title }}</h1><span :class="['difficulty', problemStore.currentProblem.difficulty]">{{ DIFFICULTY_LABELS[problemStore.currentProblem.difficulty] }}</span></header>
+          <header class="problem-heading">
+            <h1>{{ problemStore.currentProblem.title }}</h1>
+            <div class="problem-heading-actions">
+              <button
+                v-if="!contestId"
+                type="button"
+                :class="['problem-favorite-button', { active: problemStore.currentProblem.favorited }]"
+                :disabled="favoriteBusy"
+                @click="toggleProblemFavorite"
+              >
+                {{ problemStore.currentProblem.favorited ? '★ 已收藏' : '☆ 收藏' }}
+              </button>
+              <span :class="['difficulty', problemStore.currentProblem.difficulty]">{{ DIFFICULTY_LABELS[problemStore.currentProblem.difficulty] }}</span>
+            </div>
+          </header>
+          <p v-if="favoriteError" class="form-error" role="alert">{{ favoriteError }}</p>
           <div class="problem-tags"><span v-for="tag in problemStore.currentProblem.tags" :key="tag" class="tag">{{ tag }}</span><span class="acceptance-stat">通过率 {{ problemStore.currentProblem.acceptance.toFixed(1) }}%</span></div>
           <article class="problem-content"><p v-for="paragraph in problemStore.currentProblem.description.split('\n\n')" :key="paragraph">{{ paragraph.replaceAll('**', '').replaceAll('*', '') }}</p><h2>示例</h2><div v-for="(example, index) in problemStore.currentProblem.examples" :key="`${example.input}-${index}`" class="example-block"><span>示例 {{ index + 1 }}</span><pre><b>输入：</b>{{ example.input }}
 <b>输出：</b>{{ example.output }}</pre><p v-if="example.explanation"><b>解释：</b>{{ example.explanation }}</p></div><p v-if="!problemStore.currentProblem.examples.length" class="output-placeholder">暂无示例</p><h2>限制</h2><ul><li>时间限制：{{ problemStore.currentProblem.timeLimit }} ms</li><li>内存限制：{{ problemStore.currentProblem.memoryLimit }} MB</li></ul></article>

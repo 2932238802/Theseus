@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import MarkdownBody from '../components/MarkdownBody.vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import {
   fetchClassInvitations,
   fetchInviteCandidates,
@@ -31,7 +32,6 @@ const isOwner = computed(() => detail.value?.relation === 'owner')
 const isArchived = computed(() => Boolean(detail.value?.archivedAt))
 
 const actionError = ref('')
-const actionMessage = ref('')
 const inviteCode = ref('')
 const removingUserId = ref<number | null>(null)
 const isRotating = ref(false)
@@ -43,7 +43,6 @@ const inviteCandidates = ref<InviteCandidate[]>([])
 const selectedCandidateIds = ref<number[]>([])
 const pendingInvitations = ref<OwnerInvitation[]>([])
 const invitationsError = ref('')
-const invitationsMessage = ref('')
 const isSearchingInvites = ref(false)
 const isSendingInvites = ref(false)
 const hasSearchedInvites = ref(false)
@@ -58,7 +57,6 @@ const selectedNotifyIds = ref<number[]>([])
 const showNotifyPreview = ref(false)
 const isSendingNotice = ref(false)
 const notifyError = ref('')
-const notifyMessage = ref('')
 
 let inviteSearchSequence = 0
 
@@ -89,7 +87,6 @@ const assignmentProgress = (assignment: AssignmentSummary): string => {
 
 const clearActionState = (): void => {
   actionError.value = ''
-  actionMessage.value = ''
 }
 
 const copyInviteCode = async (): Promise<void> => {
@@ -97,7 +94,7 @@ const copyInviteCode = async (): Promise<void> => {
   clearActionState()
   try {
     await navigator.clipboard.writeText(inviteCode.value)
-    actionMessage.value = '邀请码已复制'
+    toast.success('邀请码已复制')
   } catch {
     actionError.value = '复制失败 请手动选择邀请码'
   }
@@ -109,7 +106,7 @@ const rotateCode = async (): Promise<void> => {
   isRotating.value = true
   try {
     inviteCode.value = await classStore.rotateCode(detail.value.id)
-    actionMessage.value = '邀请码已更新'
+    toast.success('邀请码已更新')
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
   } finally {
@@ -130,7 +127,6 @@ const searchCandidates = async (): Promise<void> => {
   if (!detail.value || !inviteQuery.value.trim() || isSearchingInvites.value) return
   const requestId = ++inviteSearchSequence
   invitationsError.value = ''
-  invitationsMessage.value = ''
   isSearchingInvites.value = true
   try {
     const result = await fetchInviteCandidates(detail.value.id, inviteQuery.value.trim())
@@ -161,7 +157,6 @@ const toggleCandidate = (candidate: InviteCandidate): void => {
 const sendInvitations = async (): Promise<void> => {
   if (!detail.value || !selectedCandidateIds.value.length || isSendingInvites.value) return
   invitationsError.value = ''
-  invitationsMessage.value = ''
   isSendingInvites.value = true
   try {
     const result = await sendClassInvitations(detail.value.id, [...selectedCandidateIds.value])
@@ -173,7 +168,7 @@ const sendInvitations = async (): Promise<void> => {
     selectedCandidateIds.value = []
     await Promise.all([loadInvitations(), classStore.refreshCurrent()])
     if (inviteQuery.value.trim()) await searchCandidates()
-    invitationsMessage.value = successMessage
+    toast.success(successMessage)
   } catch (exception: unknown) {
     invitationsError.value = toErrorMessage(exception)
   } finally {
@@ -190,7 +185,6 @@ const toggleNotifyMember = (userId: number): void => {
 const sendClassNotice = async (): Promise<void> => {
   if (!detail.value || !notifyForm.title.trim() || isSendingNotice.value) return
   notifyError.value = ''
-  notifyMessage.value = ''
   if (notifyForm.audience === 'selected' && !selectedNotifyIds.value.length) {
     notifyError.value = '请至少选择一位接收学生'
     return
@@ -205,7 +199,7 @@ const sendClassNotice = async (): Promise<void> => {
       userIds:
         notifyForm.audience === 'selected' ? [...selectedNotifyIds.value] : undefined,
     })
-    notifyMessage.value = result.message
+    toast.success(result.message)
     notifyForm.title = ''
     notifyForm.body = ''
     notifyForm.link = ''
@@ -239,7 +233,7 @@ const archiveClass = async (): Promise<void> => {
   isArchiving.value = true
   try {
     await classStore.archive(detail.value.id)
-    actionMessage.value = '班级已归档'
+    toast.success('班级已归档')
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
   } finally {
@@ -270,7 +264,6 @@ const resetInvitationState = (): void => {
   hasSearchedInvites.value = false
   pendingInvitations.value = []
   invitationsError.value = ''
-  invitationsMessage.value = ''
   isSearchingInvites.value = false
   isSendingInvites.value = false
   notifyForm.audience = 'all'
@@ -280,7 +273,6 @@ const resetInvitationState = (): void => {
   selectedNotifyIds.value = []
   showNotifyPreview.value = false
   notifyError.value = ''
-  notifyMessage.value = ''
 }
 
 const load = async (): Promise<void> => {
@@ -343,7 +335,6 @@ watch(classId, load)
       <p v-if="detail.archivedAt" class="teaching-badge">已归档于 {{ formatDateTime(detail.archivedAt) }}</p>
       <p v-if="detail.description" class="teaching-description">{{ detail.description }}</p>
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
-      <p v-if="actionMessage" class="teaching-success" role="status">{{ actionMessage }}</p>
 
       <section v-if="isOwner" class="teaching-panel">
         <div class="section-heading"><h2>邀请码</h2></div>
@@ -410,7 +401,6 @@ watch(classId, load)
         </form>
 
         <p v-if="invitationsError" class="form-error" role="alert">{{ invitationsError }}</p>
-        <p v-if="invitationsMessage" class="teaching-success" role="status">{{ invitationsMessage }}</p>
 
         <template v-if="inviteCandidates.length">
           <div class="teaching-candidate-list">
@@ -516,7 +506,6 @@ watch(classId, load)
             <input v-model="notifyForm.link" maxlength="500" placeholder="/assignments/12" />
           </label>
           <p v-if="notifyError" class="form-error" role="alert">{{ notifyError }}</p>
-          <p v-if="notifyMessage" class="teaching-success" role="status">{{ notifyMessage }}</p>
           <div class="teaching-form-actions">
             <button
               class="teaching-secondary-button"

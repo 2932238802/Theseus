@@ -69,16 +69,6 @@
   background: var(--color-danger-soft);
 }
 
-.forum-notice {
-  margin: var(--space-md) 0;
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid color-mix(in srgb, var(--color-success) 35%, var(--color-border));
-  border-radius: var(--radius-sm);
-  background: var(--color-success-soft);
-  color: var(--color-success);
-  font-size: 13px;
-}
-
 .forum-toolbar {
   display: grid;
   gap: var(--space-md);
@@ -939,6 +929,10 @@
 }
 
 .forum-comment-actions button.admin {
+  color: var(--color-warning);
+}
+
+.forum-comment-actions button.is-favorite {
   color: var(--color-warning);
 }
 

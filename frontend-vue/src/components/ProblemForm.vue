@@ -136,6 +136,12 @@ const submit = (): void => {
   try {
     if (!form.title.trim()) throw new Error('题目标题不能为空')
     if (!form.description.trim()) throw new Error('题目描述不能为空')
+    const imageWithoutAlt = [...form.description.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)].some(
+      (match) => !match[1]?.trim(),
+    )
+    if (imageWithoutAlt) {
+      throw new Error('题面图片需要填写替代文本，例如 ![二维网格示意图](https://...)')
+    }
     const timeLimit = Number(form.timeLimit)
     const memoryLimit = Number(form.memoryLimit)
     if (!Number.isInteger(timeLimit) || timeLimit <= 0) throw new Error('时间限制必须是正整数')

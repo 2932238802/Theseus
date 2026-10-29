@@ -164,11 +164,11 @@ onMounted(() => {
         <p>{{ authStore.user?.email ?? '登录后同步你的练习进度' }}</p>
         <div class="profile-badges">
           <span class="teaching-badge">{{ roleLabel }}</span>
+          <span v-if="authStore.user?.emailVerified" class="teaching-badge">邮箱已验证</span>
+          <span v-else class="teaching-badge">邮箱未验证</span>
           <span v-if="analytics && checkinStreak > 0" class="profile-checkin-streak">
             连续签到 {{ checkinStreak }} 天
           </span>
-          <span v-if="authStore.user?.emailVerified" class="teaching-badge">邮箱已验证</span>
-          <span v-else class="teaching-badge">邮箱未验证</span>
           <span v-if="authStore.user?.pendingEmail" class="teaching-badge">待验证 {{ authStore.user.pendingEmail }}</span>
           <span v-if="authStore.user?.createdAt" class="teaching-subtle">
             加入于 {{ new Date(authStore.user.createdAt).toLocaleDateString('zh-CN') }}

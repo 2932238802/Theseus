@@ -562,6 +562,22 @@
   margin-top: var(--space-lg);
 }
 
+.profile-favorites-tabs {
+  margin-top: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.profile-favorite-comment {
+  min-width: 0;
+}
+
+.profile-favorites .profile-favorite-excerpt {
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
 .profile-favorites article {
   display: flex;
   align-items: center;

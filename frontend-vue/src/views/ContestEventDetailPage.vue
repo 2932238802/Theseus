@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import {
   enterContestEvent,
   fetchContestEventDetail,
@@ -34,7 +35,6 @@ const eventId = computed(() => Number(route.params.eventId))
 const detail = ref<ContestEventDetail | null>(null)
 const loading = ref(true)
 const error = ref('')
-const notice = ref('')
 const actionError = ref('')
 const actionId = ref(false)
 const followId = ref(false)
@@ -114,7 +114,6 @@ const applyCard = (card: ContestEventCard): void => {
 const handleAction = async (): Promise<void> => {
   if (!detail.value || actionId.value || !canRegister.value) return
   actionError.value = ''
-  notice.value = ''
   actionId.value = true
   const action = detail.value.action
   try {
@@ -123,11 +122,13 @@ const handleAction = async (): Promise<void> => {
         ? await joinContestEvent(detail.value.id)
         : await registerContestEvent(detail.value.id)
     applyCard(card)
-    notice.value = card.is_registered
-      ? action === 'join'
-        ? '已加入赛事'
-        : '报名成功'
-      : '操作成功'
+    toast.success(
+      card.is_registered
+        ? action === 'join'
+          ? '已加入赛事'
+          : '报名成功'
+        : '操作成功',
+    )
     void loadLeaderboard(true)
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
@@ -156,7 +157,6 @@ const toggleFollow = async (): Promise<void> => {
 const handleEnter = async (): Promise<void> => {
   if (!detail.value || entering.value) return
   actionError.value = ''
-  notice.value = ''
   entering.value = true
   try {
     const result = await enterContestEvent(detail.value.id)
@@ -255,7 +255,6 @@ onBeforeUnmount(() => {
         </div>
 
         <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
-        <p v-if="notice" class="teaching-success" role="status">{{ notice }}</p>
         <p v-if="detail.ineligible_reason" class="contest-ineligible-reason">
           {{ detail.ineligible_reason }}
         </p>

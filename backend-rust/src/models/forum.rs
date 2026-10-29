@@ -207,6 +207,7 @@ pub struct ForumCommentView {
     pub edited_at: Option<DateTime<Utc>>,
     pub can_edit: bool,
     pub can_delete: bool,
+    pub favorited: bool,
     pub reply_total: i64,
     pub replies_truncated: bool,
     pub replies: Vec<ForumReplyView>,
@@ -225,6 +226,7 @@ pub struct ForumReplyView {
     pub edited_at: Option<DateTime<Utc>>,
     pub can_edit: bool,
     pub can_delete: bool,
+    pub favorited: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -620,6 +622,7 @@ pub struct ForumCommentRow {
     pub reply_total: i64,
     pub total: i64,
     pub reply_rank: i64,
+    pub favorited: bool,
 }
 
 impl ForumCommentRow {
@@ -660,6 +663,7 @@ impl ForumCommentRow {
             edited_at: self.edited_at,
             can_edit: is_author && published,
             can_delete: (is_author || is_admin) && published,
+            favorited: self.favorited,
         }
     }
 
@@ -699,6 +703,7 @@ impl ForumCommentRow {
             edited_at: self.edited_at,
             can_edit: is_author && published,
             can_delete: (is_author || is_admin) && published,
+            favorited: self.favorited && !is_tombstone,
             reply_total,
             replies_truncated: reply_total > replies.len() as i64,
             replies,

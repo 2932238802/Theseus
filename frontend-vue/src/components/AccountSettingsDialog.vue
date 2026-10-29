@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import {
   cancelEmailChange,
   changePassword,
@@ -27,7 +28,6 @@ const deletePassword = ref('')
 const deleteUsername = ref('')
 const busy = ref('')
 const error = ref('')
-const message = ref('')
 const badges = ref<ProfileBadge[]>([])
 const badgesLoading = ref(true)
 const activeSection = ref<'username' | 'email' | 'password' | 'sessions' | 'badges' | 'danger'>(
@@ -46,7 +46,6 @@ const run = async (key: string, action: () => Promise<void>): Promise<void> => {
   if (busy.value) return
   busy.value = key
   error.value = ''
-  message.value = ''
   try {
     await action()
   } catch (exception: unknown) {
@@ -60,7 +59,7 @@ const saveUsername = (): void => {
   void run('username', async () => {
     const user = await updateUsername(usernameInput.value.trim())
     authStore.updateUser(user)
-    message.value = '用户名已更新'
+    toast.success('用户名已更新')
   })
 }
 
@@ -69,7 +68,7 @@ const saveEmail = (): void => {
     const result = await requestEmailChange(emailInput.value.trim())
     emailInput.value = ''
     await authStore.refreshMe()
-    message.value = result.message
+    toast.success(result.message)
   })
 }
 
@@ -77,7 +76,7 @@ const cancelPendingEmail = (): void => {
   void run('email-cancel', async () => {
     const user = await cancelEmailChange()
     authStore.updateUser(user)
-    message.value = '已取消待验证邮箱'
+    toast.success('已取消待验证邮箱')
   })
 }
 
@@ -92,7 +91,7 @@ const savePassword = (): void => {
     currentPassword.value = ''
     newPassword.value = ''
     confirmPassword.value = ''
-    message.value = '密码已更新，其他设备已退出'
+    toast.success('密码已更新，其他设备已退出')
   })
 }
 
@@ -112,7 +111,7 @@ const toggleBadge = (badge: ProfileBadge): void => {
   void run(`badge-${badge.code}`, async () => {
     const result = await setBadgeVisibility(badge.code, hidden)
     badge.hidden = hidden
-    message.value = result.message
+    toast.success(result.message)
   })
 }
 
@@ -150,7 +149,6 @@ const removeAccount = (): void => {
       </header>
       <div class="run-dialog-body">
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-        <p v-if="message" class="teaching-success" role="status">{{ message }}</p>
 
         <div class="profile-settings-layout">
           <nav class="profile-settings-nav" aria-label="账号设置分类">

@@ -8,6 +8,7 @@ import {
   updateAdminEvent,
 } from '../api/adminEvents'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import { fetchProblems } from '../api/problems'
 import type {
   AdminEventInput,
@@ -59,7 +60,6 @@ interface EventForm {
 const events = ref<AdminEventView[]>([])
 const loading = ref(true)
 const error = ref('')
-const notice = ref('')
 const forumError = ref('')
 const syncingId = ref<number | null>(null)
 const saving = ref(false)
@@ -281,13 +281,12 @@ const syncForum = async (event: AdminEventView): Promise<void> => {
   if (syncingId.value !== null) return
   syncingId.value = event.id
   forumError.value = ''
-  notice.value = ''
   try {
     const result = await syncAdminEventForum(event.id)
     events.value = events.value.map((item) =>
       item.id === event.id ? { ...item, forum_post_id: result.forum_post_id } : item,
     )
-    notice.value = result.message
+    toast.success(result.message)
   } catch (exception: unknown) {
     forumError.value = toErrorMessage(exception)
   } finally {
@@ -301,14 +300,13 @@ const save = async (): Promise<void> => {
   if (!payload) return
   saving.value = true
   formError.value = ''
-  notice.value = ''
   try {
     if (form.id === null) {
       await createAdminEvent(payload)
-      notice.value = '赛事已创建'
+      toast.success('赛事已创建')
     } else {
       await updateAdminEvent(form.id, payload)
-      notice.value = '赛事已更新'
+      toast.success('赛事已更新')
     }
     formOpen.value = false
     await loadEvents()
@@ -336,7 +334,6 @@ onMounted(() => {
       <button class="primary-button" type="button" @click="openCreate">新建赛事</button>
     </header>
 
-    <p v-if="notice" class="teaching-success" role="status">{{ notice }}</p>
     <p v-if="forumError" class="form-error" role="alert">{{ forumError }}</p>
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 

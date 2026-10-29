@@ -1,0 +1,86 @@
+/* Markdown 图片与预览 -------------------------------------------------------- */
+
+.markdown-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: var(--space-md) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  cursor: zoom-in;
+}
+
+.markdown-body img:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.markdown-image-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  background: rgba(12, 12, 16, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+.markdown-image-preview img {
+  max-width: min(92vw, 1200px);
+  max-height: 88vh;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  object-fit: contain;
+}
+
+.markdown-image-preview-close {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-lg);
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(20, 20, 26, 0.7);
+  color: #f4f4f6;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.markdown-image-preview-close:hover {
+  background: rgba(40, 40, 50, 0.9);
+}
+
+@media (max-width: 720px) {
+  .markdown-image-preview {
+    padding: var(--space-sm);
+  }
+
+  .markdown-image-preview-close {
+    top: var(--space-sm);
+    right: var(--space-sm);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .markdown-image-preview {
+    animation: image-preview-in 160ms ease-out;
+  }
+}
+
+@keyframes image-preview-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}

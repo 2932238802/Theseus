@@ -40,6 +40,7 @@ export interface BackendProblem {
   submit_count: number
   accept_count: number
   status: string | null
+  favorited?: boolean
 }
 
 export interface BackendProblemList {
@@ -242,6 +243,7 @@ export const mapProblem = (problem: BackendProblem): Problem => ({
   memoryLimit: problem.memory_limit,
   submitCount: problem.submit_count,
   acceptCount: problem.accept_count,
+  favorited: problem.favorited === true,
 })
 
 const mapFailedCase = (value: unknown): SubmissionCaseResult | undefined => {

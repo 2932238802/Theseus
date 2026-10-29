@@ -66,4 +66,37 @@ export interface ForumFavoriteList {
   favorites: ForumFavorite[]
 }
 
+export interface ProblemFavorite {
+  problemId: number
+  title: string
+  difficulty: 'easy' | 'medium' | 'hard'
+  acceptanceRate: number
+  favoritedAt: string
+}
+
+export interface ProblemFavoriteList {
+  total: number
+  page: number
+  size: number
+  favorites: ProblemFavorite[]
+}
+
+export interface CommentFavorite {
+  commentId: number
+  postId: number
+  postTitle: string
+  parentId: number | null
+  bodyMd: string
+  author: { displayName: string; isAnonymous: boolean; isSelf: boolean }
+  createdAt: string
+  favoritedAt: string
+}
+
+export interface CommentFavoriteList {
+  total: number
+  page: number
+  size: number
+  favorites: CommentFavorite[]
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system'

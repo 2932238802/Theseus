@@ -205,6 +205,7 @@ const loadEditTarget = async (): Promise<void> => {
         memoryLimit: 0,
         submitCount: 0,
         acceptCount: 0,
+        favorited: false,
       }
     }
   } catch (exception: unknown) {

@@ -299,10 +299,6 @@
     font-size: 14px;
   }
 
-  .main-nav .nav-classes {
-    display: none;
-  }
-
   .page-shell {
     padding: var(--space-xl) var(--space-md);
   }
@@ -450,7 +446,7 @@
     gap: 12px;
   }
 
-  .main-nav .nav-profile {
+  .main-nav .nav-profile-menu {
     display: none;
   }
 

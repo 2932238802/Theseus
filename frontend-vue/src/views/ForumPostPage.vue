@@ -6,6 +6,8 @@ import NavBar from '../components/NavBar.vue'
 import ProblemReferenceCard from '../components/ProblemReferenceCard.vue'
 import ReportDialog from '../components/ReportDialog.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
+import { setCommentFavorite } from '../api/favorites'
 import { changeAdminCommentStatus, changeAdminPostStatus, createForumComment, pinAdminForumPost } from '../api/forum'
 import { useAuthStore } from '../store/auth'
 import { useForumStore } from '../store/forum'
@@ -44,12 +46,28 @@ const editError = ref('')
 const reportOpen = ref(false)
 const reportTarget = ref<{ type: 'post' | 'comment'; id: number } | null>(null)
 const actionError = ref('')
-const actionNotice = ref('')
 const actionBusy = ref(false)
 const likeBusy = ref(false)
 const favoriteBusy = ref(false)
+const commentFavoriteBusy = ref<number | null>(null)
 
 const post = computed(() => forumStore.currentPost)
+
+const toggleCommentFavorite = async (comment: ForumReply): Promise<void> => {
+  if (!requireLogin() || commentFavoriteBusy.value !== null) return
+  const before = comment.favorited
+  comment.favorited = !before
+  commentFavoriteBusy.value = comment.id
+  actionError.value = ''
+  try {
+    comment.favorited = await setCommentFavorite(comment.id, comment.favorited)
+  } catch (exception: unknown) {
+    comment.favorited = before
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    commentFavoriteBusy.value = null
+  }
+}
 
 const requireLogin = (): boolean => {
   if (authStore.isAuthenticated) return true
@@ -218,7 +236,7 @@ const openReport = (type: 'post' | 'comment', id: number): void => {
 
 const onReportSubmitted = async (message: string): Promise<void> => {
   reportOpen.value = false
-  actionNotice.value = message
+  toast.success(message)
   await reloadThread()
 }
 
@@ -402,7 +420,6 @@ onMounted(() => {
         </div>
 
         <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
-        <p v-if="actionNotice" class="forum-notice" role="status">{{ actionNotice }}</p>
       </article>
 
       <section class="forum-comments" aria-label="评论">
@@ -454,6 +471,15 @@ onMounted(() => {
 
               <div class="forum-comment-actions">
                 <button v-if="!comment.isTombstone && authStore.isAuthenticated && post.status === 'published'" type="button" @click="openReply(comment.id, comment.id, comment.author.displayName)">回复</button>
+                <button
+                  v-if="!comment.isTombstone && authStore.isAuthenticated && post.status === 'published'"
+                  type="button"
+                  :class="{ 'is-favorite': comment.favorited }"
+                  :disabled="commentFavoriteBusy === comment.id"
+                  @click="toggleCommentFavorite(comment)"
+                >
+                  {{ comment.favorited ? '★ 已收藏' : '☆ 收藏' }}
+                </button>
                 <button v-if="comment.canEdit" type="button" @click="startEdit(comment.id, comment.bodyMd)">编辑</button>
                 <button v-if="comment.canDelete" type="button" class="danger" @click="removeComment(comment.id)">删除</button>
                 <button v-if="!comment.isTombstone && post.status === 'published'" type="button" @click="openReport('comment', comment.id)">举报</button>
@@ -495,6 +521,15 @@ onMounted(() => {
 
                   <div v-if="!reply.isTombstone" class="forum-comment-actions">
                     <button v-if="authStore.isAuthenticated && post.status === 'published'" type="button" @click="openReply(comment.id, reply.id, reply.author.displayName)">回复</button>
+                    <button
+                      v-if="authStore.isAuthenticated && post.status === 'published'"
+                      type="button"
+                      :class="{ 'is-favorite': reply.favorited }"
+                      :disabled="commentFavoriteBusy === reply.id"
+                      @click="toggleCommentFavorite(reply)"
+                    >
+                      {{ reply.favorited ? '★ 已收藏' : '☆ 收藏' }}
+                    </button>
                     <button v-if="reply.canEdit" type="button" @click="startEdit(reply.id, reply.bodyMd)">编辑</button>
                     <button v-if="reply.canDelete" type="button" class="danger" @click="removeComment(reply.id)">删除</button>
                     <button v-if="post.status === 'published'" type="button" @click="openReport('comment', reply.id)">举报</button>

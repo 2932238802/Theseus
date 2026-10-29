@@ -31,7 +31,9 @@ cargo run
 | GET | `/api/problems` | 可选 | 分页题库，见下方查询参数 |
 | GET | `/api/problems/random` | 否 | 随机返回一道已通过审核的题目 `{problem_id}` |
 | GET | `/api/problems/tags` | 否 | 已审核题目的去重标签数组 |
-| GET | `/api/problems/{id}` | 可选 | 已审核题目详情 |
+| GET | `/api/problems/{id}` | 可选 | 已审核题目详情，登录时 `favorited` 表示是否已收藏 |
+| POST | `/api/problems/{id}/favorite` | 用户 | 收藏题目 |
+| DELETE | `/api/problems/{id}/favorite` | 用户 | 取消收藏题目 |
 | GET | `/api/stats` | 否 | `{total_problems,total_submissions,accepted_submissions}` |
 | POST | `/api/problems/custom` | 用户 | 提交自定义题目，状态为 `pending`；迁移后仅 `teacher` 可提交 |
 | POST | `/api/admin/problems` | 管理员 | 创建题目 |
@@ -54,7 +56,11 @@ cargo run
 | GET | `/api/profile/analytics` | 用户 | 个人学习分析，含信誉分与连续签到天数 |
 | GET | `/api/profile/badges` | 用户 | 当前有效徽章列表 |
 | PUT | `/api/profile/badges/{code}/visibility` | 用户 | 设置徽章是否在公开位置展示 `{hidden}` |
-| GET | `/api/forum/favorites` | 用户 | 当前用户论坛收藏列表 |
+| GET | `/api/forum/favorites` | 用户 | 当前用户论坛帖子收藏列表 |
+| POST | `/api/forum/comments/{id}/favorite` | 用户 | 收藏论坛评论或回复 |
+| DELETE | `/api/forum/comments/{id}/favorite` | 用户 | 取消收藏论坛评论或回复 |
+| GET | `/api/profile/favorites/problems` | 用户 | 当前用户题目收藏列表 |
+| GET | `/api/profile/favorites/comments` | 用户 | 当前用户评论收藏列表 |
 | GET | `/api/contests/featured` | 用户 | 竞赛首页：排位赛配置、规则分组与限时赛事列表 |
 | GET | `/api/contests/events` | 用户 | 赛事列表，支持 `type`、`status`、`following`、`page`、`page_size` |
 | GET | `/api/contests/events/{id}` | 用户 | 赛事详情（含说明、规则和报名链接） |
@@ -176,6 +182,9 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 - `POST /api/profile/avatar` 使用 `multipart/form-data`，字段 `file`，JPG/PNG/WebP ≤2MB。
 - `GET /api/profile/analytics?days=30` 返回概览、趋势、难度和标签统计。
 - `GET /api/forum/favorites?page=&size=` 返回当前用户收藏的帖子。
+- `GET /api/profile/favorites/problems?page=&size=` 返回收藏的已审核题目 `{total,page,size,favorites:[{problem_id,title,difficulty,acceptance_rate,favorited_at}]}`
+- `GET /api/profile/favorites/comments?page=&size=` 返回收藏的评论 `{total,page,size,favorites:[{comment_id,post_id,post_title,parent_id,body_md,author,created_at,favorited_at}]}` 作者字段沿用公开作者结构，匿名评论不会泄露真实用户名
+- 收藏与取消收藏接口均返回 `{favorited}`，重复调用幂等；题目详情和列表的 `favorited` 字段、论坛评论和回复的 `favorited` 字段只对当前登录用户生效
 
 ## 竞赛与限时赛事接口
 

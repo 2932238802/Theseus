@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import MarkdownBody from '../components/MarkdownBody.vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import { useAssignmentStore } from '../store/assignments'
 import { fetchAssignmentStatistics, fetchPeerSubmissions, publishSolutions } from '../api/policies'
 import type { AssignmentStatistics, PeerSubmission } from '../types/policy'
@@ -24,7 +25,6 @@ const assignmentStore = useAssignmentStore()
 const assignmentId = computed(() => Number(route.params.id))
 const detail = computed(() => assignmentStore.current)
 const actionError = ref('')
-const actionMessage = ref('')
 const isWorking = ref(false)
 const stats = ref<AssignmentStatistics | null>(null)
 const statsError = ref('')
@@ -45,7 +45,6 @@ const canSeeStats = computed(
 const load = async (): Promise<void> => {
   if (!Number.isInteger(assignmentId.value) || assignmentId.value <= 0) return
   actionError.value = ''
-  actionMessage.value = ''
   await assignmentStore.loadAssignment(assignmentId.value)
   stats.value = null
   statsError.value = ''
@@ -63,11 +62,10 @@ const load = async (): Promise<void> => {
 const runAction = async (action: () => Promise<unknown>, message: string): Promise<void> => {
   if (isWorking.value) return
   actionError.value = ''
-  actionMessage.value = ''
   isWorking.value = true
   try {
     await action()
-    actionMessage.value = message
+    toast.success(message)
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
   } finally {
@@ -226,7 +224,6 @@ watch(assignmentId, load)
       </header>
 
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
-      <p v-if="actionMessage" class="teaching-success" role="status">{{ actionMessage }}</p>
 
       <section class="teaching-panel">
         <MarkdownBody v-if="detail.description" :content="detail.description" />

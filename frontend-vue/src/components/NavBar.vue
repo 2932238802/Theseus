@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import NotificationBell from './NotificationBell.vue'
 import NavSearch from './NavSearch.vue'
@@ -31,24 +31,59 @@ const roleShort = computed(() => {
 const isManageOpen = ref(false)
 const manageRef = ref<HTMLElement | null>(null)
 const isAdminArea = computed(() => route.path.startsWith('/admin'))
+const isCampusOpen = ref(false)
+const campusRef = ref<HTMLElement | null>(null)
+const isProfileMenuOpen = ref(false)
+const profileMenuRef = ref<HTMLElement | null>(null)
+const isCampusArea = computed(() =>
+  ['/contests', '/classes', '/assignments'].some(
+    (prefix) => route.path === prefix || route.path.startsWith(`${prefix}/`),
+  ),
+)
+const isProfileArea = computed(
+  () => route.path === '/profile' || route.path.startsWith('/profile/'),
+)
 
 const closeManage = (): void => {
   isManageOpen.value = false
 }
 
+const closeCampus = (): void => {
+  isCampusOpen.value = false
+}
+
+const closeProfileMenu = (): void => {
+  isProfileMenuOpen.value = false
+}
+
 const onDocumentPointerDown = (event: PointerEvent): void => {
-  if (!isManageOpen.value) return
-  if (event.target instanceof Node && manageRef.value?.contains(event.target)) return
-  closeManage()
+  if (!(event.target instanceof Node)) return
+  if (isManageOpen.value && !manageRef.value?.contains(event.target)) closeManage()
+  if (isCampusOpen.value && !campusRef.value?.contains(event.target)) closeCampus()
+  if (isProfileMenuOpen.value && !profileMenuRef.value?.contains(event.target)) closeProfileMenu()
 }
 
 const onWindowKeydown = (event: KeyboardEvent): void => {
-  if (event.key === 'Escape' && isManageOpen.value) closeManage()
+  if (event.key !== 'Escape') return
+  if (isManageOpen.value) closeManage()
+  if (isCampusOpen.value) closeCampus()
+  if (isProfileMenuOpen.value) closeProfileMenu()
+  if (isMenuOpen.value) isMenuOpen.value = false
 }
 
 const toggleTheme = (): void => {
   isDark.value = applyThemeToggle() === 'dark'
 }
+
+watch(
+  () => route.fullPath,
+  () => {
+    closeManage()
+    closeCampus()
+    closeProfileMenu()
+    isMenuOpen.value = false
+  },
+)
 
 const logout = (): void => {
   authStore.logout()
@@ -75,12 +110,74 @@ onBeforeUnmount(() => {
 
     <nav class="main-nav" aria-label="主导航">
       <RouterLink to="/problems">题库</RouterLink>
-      <RouterLink to="/forum">校园墙</RouterLink>
-      <RouterLink class="nav-rankings" to="/rankings">排行榜</RouterLink>
-      <RouterLink v-if="authStore.isAuthenticated" class="nav-contests" to="/contests">竞赛</RouterLink>
+      <RouterLink class="nav-forum" to="/forum">论坛</RouterLink>
+      <div ref="campusRef" class="nav-menu nav-campus" :class="{ 'is-active': isCampusArea }">
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-controls="campus-menu-panel"
+          :aria-expanded="isCampusOpen"
+          @click="isCampusOpen = !isCampusOpen"
+        >
+          校园<span class="nav-caret" aria-hidden="true"></span>
+        </button>
+        <div
+          v-if="isCampusOpen"
+          id="campus-menu-panel"
+          class="nav-menu-panel"
+          role="menu"
+          aria-label="校园"
+        >
+          <RouterLink
+            v-if="authStore.isAuthenticated"
+            role="menuitem"
+            to="/contests"
+            @click="closeCampus"
+          >
+            竞赛
+          </RouterLink>
+          <RouterLink
+            v-if="authStore.isStudent || authStore.isTeacher"
+            role="menuitem"
+            to="/classes"
+            @click="closeCampus"
+          >
+            我的班级
+          </RouterLink>
+          <RouterLink role="menuitem" :to="{ name: 'contest-rankings' }" @click="closeCampus">
+            排行榜
+          </RouterLink>
+        </div>
+      </div>
+      <div
+        v-if="authStore.isAuthenticated"
+        ref="profileMenuRef"
+        class="nav-menu nav-profile-menu"
+        :class="{ 'is-active': isProfileArea }"
+      >
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-controls="profile-menu-panel"
+          :aria-expanded="isProfileMenuOpen"
+          @click="isProfileMenuOpen = !isProfileMenuOpen"
+        >
+          个人<span class="nav-caret" aria-hidden="true"></span>
+        </button>
+        <div
+          v-if="isProfileMenuOpen"
+          id="profile-menu-panel"
+          class="nav-menu-panel"
+          role="menu"
+          aria-label="个人"
+        >
+          <RouterLink role="menuitem" to="/profile" @click="closeProfileMenu">个人界面</RouterLink>
+          <RouterLink role="menuitem" to="/profile/favorites" @click="closeProfileMenu">
+            个人收藏
+          </RouterLink>
+        </div>
+      </div>
       <RouterLink v-if="authStore.isTeacher" class="nav-teacher-problems" to="/teacher/problems">出题</RouterLink>
-      <RouterLink v-if="authStore.isStudent || authStore.isTeacher" class="nav-classes" to="/classes">我的班级</RouterLink>
-      <RouterLink v-if="authStore.isAuthenticated" class="nav-profile" to="/profile">个人</RouterLink>
       <div v-if="authStore.isAdmin" ref="manageRef" class="nav-menu" :class="{ 'is-active': isAdminArea }">
         <button
           id="admin-menu-button"
