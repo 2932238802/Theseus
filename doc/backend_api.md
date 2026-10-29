@@ -299,7 +299,7 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 
 ### 赛事内答题
 
-`POST /api/contests/events/{id}/enter` 要求赛事已发布、当前时间在 `[starts_at,ends_at)` 内且用户已报名。首次进入时按 `official_event_problems` 冻结题目快照并创建赛事比赛，然后把该用户从 `queued` 提升为 `active`，返回 `{event_id,contest_id}`。前端随后使用常规比赛接口 `GET /api/contests/{id}`、`/problems/{problem_id}`、`/events`、`/finish`、`/result`。
+`POST /api/contests/events/{id}/enter` 要求赛事已发布、当前时间在 `[starts_at,ends_at)` 内且用户已报名。首次进入时按 `official_event_problems` 冻结题目快照并创建赛事比赛，然后把该用户从 `queued` 提升为 `active`，返回 `{event_id,contest_id}`。前端随后使用常规比赛接口 `GET /api/contests/{id}`、`/problems/{problem_id}`、`/events`、`/heartbeat`、`/finish`、`/result`。
 
 赛事比赛特点：
 
@@ -308,6 +308,31 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 - 赛事比赛不修改 `users.contest_rating`；排名只在本赛事内生效。
 
 错误：未报名 403，比赛未开始或已结束 409，未配置题目 409。
+
+### 比赛心跳与在线状态
+
+`contest_participants.status` 取 `queued|active|disconnected|timed_out|finished`。比赛进行中，客户端每 10 秒调用一次心跳；轮询比赛详情时也会补一次心跳。
+
+`POST /api/contests/{id}/heartbeat` 无请求体，返回：
+
+```json
+{
+  "contest_id": 42,
+  "status": "running",
+  "my_status": "active",
+  "ends_at": "2026-10-29T12:00:00Z",
+  "disconnected_at": null,
+  "reconnect_grace_seconds": 120,
+  "server_time": "2026-10-29T11:20:00Z"
+}
+```
+
+- 只有比赛 `running` 且本人为 `active|disconnected` 时更新 `last_seen_at`；`disconnected` 会恢复为 `active` 并清空 `disconnected_at`，其他状态只读返回。
+- 不是该场比赛的选手返回 404；比赛已结束或已取消返回 409，前端按详情状态处理。
+- 后台任务每 5 秒扫描一次：`active` 超过 30 秒无心跳变为 `disconnected`；`last_seen_at` 超过 120 秒的 `disconnected` 变为 `timed_out` 并写站内信「比赛断线超时」；`timed_out` 选手不能再提交，`finished_at` 保持为空。
+- 排位赛全员 `timed_out` 时比赛变为 `cancelled`，不结算、不改变段位分，参赛者收到站内信「比赛已取消」；赛事比赛不因全员断线取消。
+- 排位赛没有 `active|disconnected` 且有选手 `finished` 时提前结算，不再等待 `ends_at + 20s`。
+- `disqualified_at` 不为空的选手不参与在线判定，也不能通过心跳恢复为 `active`。
 
 ### 赛事排行榜
 

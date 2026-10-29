@@ -555,6 +555,15 @@
   gap: var(--space-md);
 }
 
+.contest-connection-banner {
+  margin: 0 0 var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  font-size: 14px;
+}
+
 .contest-problem-link {
   color: var(--color-text);
   font-weight: 500;

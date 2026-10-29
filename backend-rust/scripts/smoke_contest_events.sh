@@ -266,6 +266,10 @@ api GET "/contests/$CONTEST_ID" "$TOKEN"
 expect_code "赛事比赛可读取" 200
 expect_jq "比赛关联赛事" ".data.event_id == $RUNNING_ID"
 expect_jq "赛事题目已冻结" ".data.problem_count == 1"
+api POST "/contests/$CONTEST_ID/heartbeat" "$TOKEN"
+expect_code "比赛心跳" 200
+expect_jq "心跳返回作答中" '.data.my_status == "active"'
+expect_jq "心跳返回重连宽限" ".data.reconnect_grace_seconds == 120"
 api GET "/contests/events/$RUNNING_ID/leaderboard" "$TOKEN"
 expect_code "赛事排行榜可读取" 200
 expect_jq "进行中排行榜状态" ".data.state == \"running\""

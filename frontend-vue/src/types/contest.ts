@@ -2,7 +2,12 @@ import type { Difficulty } from './oj'
 
 export type ContestStatus = 'matching' | 'running' | 'settling' | 'finished' | 'cancelled'
 
-export type ContestParticipantStatus = 'queued' | 'active' | 'finished'
+export type ContestParticipantStatus =
+  | 'queued'
+  | 'active'
+  | 'disconnected'
+  | 'timed_out'
+  | 'finished'
 
 export type ContestMatchState = 'queued' | 'matched'
 
@@ -100,7 +105,7 @@ export interface ContestSummary {
   ends_at: string
   finished_at: string | null
   participant_count?: number
-  my_status?: 'active' | 'finished'
+  my_status?: ContestParticipantStatus
   server_time?: string
 }
 
@@ -152,7 +157,7 @@ export interface ContestDetail {
   ends_at: string
   finished_at: string | null
   server_time: string
-  my_status: 'active' | 'finished'
+  my_status: ContestParticipantStatus
   my_rank: number | null
   my_total_score: number | null
   my_rating: number
@@ -206,6 +211,16 @@ export interface ContestResult {
   }
   ranking: ContestRankingItem[]
   mine: ContestMine | null
+}
+
+export interface ContestHeartbeat {
+  contest_id: number
+  status: ContestStatus
+  my_status: ContestParticipantStatus
+  ends_at: string
+  disconnected_at: string | null
+  reconnect_grace_seconds: number
+  server_time: string
 }
 
 export interface ContestEventInput {

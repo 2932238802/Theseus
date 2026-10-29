@@ -248,7 +248,7 @@ fn category_for_type(notification_type: &str) -> Option<&'static str> {
         "forum_moderation" | "forum_mute" | "reputation_notice" | "problem_review" => {
             Some("account")
         }
-        "contest_result" => Some("contest"),
+        "contest_result" | "contest_disconnected" | "contest_cancelled" => Some("contest"),
         "system_notice" => Some("announcement"),
         _ => None,
     }
@@ -807,6 +807,8 @@ mod tests {
         assert_eq!(category_for_type("reputation_notice"), Some("account"));
         assert_eq!(category_for_type("problem_review"), Some("account"));
         assert_eq!(category_for_type("contest_result"), Some("contest"));
+        assert_eq!(category_for_type("contest_disconnected"), Some("contest"));
+        assert_eq!(category_for_type("contest_cancelled"), Some("contest"));
         assert_eq!(category_for_type("system_notice"), Some("announcement"));
         assert_eq!(category_for_type("unknown_type"), None);
     }

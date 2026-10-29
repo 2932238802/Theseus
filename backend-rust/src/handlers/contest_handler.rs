@@ -157,6 +157,17 @@ pub async fn finish(
     Ok(ok(response))
 }
 
+pub async fn heartbeat(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(contest_id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
+    let response = contest_service::heartbeat(&state.pool, user.id, contest_id).await?;
+    Ok(ok(response))
+}
+
 pub async fn result(
     State(state): State<AppState>,
     headers: HeaderMap,

@@ -119,6 +119,11 @@ async fn contest_settlement_loop(state: AppState) {
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         ticker.tick().await;
+        match contest_service::sweep_contest_presence(&state.pool).await {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "updated contest participant presence"),
+            Err(error) => tracing::error!(error = %error, "failed to sweep contest presence"),
+        }
         match contest_service::settle_due_contests(&state.pool).await {
             Ok(0) => {}
             Ok(count) => tracing::info!(count, "settled due contests"),

@@ -249,6 +249,10 @@ pub fn router(state: AppState) -> Router {
             get(contest_handler::problem),
         )
         .route("/api/contests/{id}/events", post(contest_handler::events))
+        .route(
+            "/api/contests/{id}/heartbeat",
+            post(contest_handler::heartbeat),
+        )
         .route("/api/contests/{id}/finish", post(contest_handler::finish))
         .route("/api/contests/{id}/result", get(contest_handler::result))
         .route("/api/runs/{id}/status", get(run_handler::status))

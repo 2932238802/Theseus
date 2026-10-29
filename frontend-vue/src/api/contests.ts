@@ -10,6 +10,7 @@ import type {
   ContestEventListQuery,
   ContestEventResult,
   ContestFeatured,
+  ContestHeartbeat,
   ContestMatchResult,
   ContestResult,
   EnterContestEvent,
@@ -88,6 +89,9 @@ export const fetchContestProblem = async (
   )
   return mapProblem(data)
 }
+
+export const sendContestHeartbeat = async (id: number): Promise<ContestHeartbeat> =>
+  unwrap(http.post<ApiEnvelope<ContestHeartbeat>>(`/contests/${id}/heartbeat`))
 
 export const finishContest = async (
   id: number,

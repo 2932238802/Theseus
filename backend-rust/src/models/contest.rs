@@ -11,6 +11,8 @@ pub const CONTEST_STATUS_CANCELLED: &str = "cancelled";
 
 pub const PARTICIPANT_STATUS_QUEUED: &str = "queued";
 pub const PARTICIPANT_STATUS_ACTIVE: &str = "active";
+pub const PARTICIPANT_STATUS_DISCONNECTED: &str = "disconnected";
+pub const PARTICIPANT_STATUS_TIMED_OUT: &str = "timed_out";
 pub const PARTICIPANT_STATUS_FINISHED: &str = "finished";
 
 /// Only players whose rating spread fits inside this window may share a room.
@@ -84,6 +86,17 @@ pub struct CancelMatchResponse {
 pub struct FinishContestResponse {
     pub finished: bool,
     pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContestHeartbeatResponse {
+    pub contest_id: i32,
+    pub status: String,
+    pub my_status: String,
+    pub ends_at: DateTime<Utc>,
+    pub disconnected_at: Option<DateTime<Utc>>,
+    pub reconnect_grace_seconds: i64,
+    pub server_time: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, FromRow)]

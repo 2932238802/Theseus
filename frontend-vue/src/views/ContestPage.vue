@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import axios from 'axios'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
 import { toast } from '../store/toast'
-import { fetchContest, finishContest } from '../api/contests'
+import { fetchContest, finishContest, sendContestHeartbeat } from '../api/contests'
 import { useAuthStore } from '../store/auth'
 import type {
   ContestDetail,
@@ -35,9 +36,12 @@ const actionError = ref('')
 const isFinishing = ref(false)
 const serverOffset = ref(0)
 const serverNow = ref(Date.now())
+const connectionState = ref<'online' | 'reconnecting' | 'timedOut'>('online')
 
 let pollTimer: number | null = null
 let tickTimer: number | null = null
+let heartbeatTimer: number | null = null
+let heartbeating = false
 let syncing = false
 
 const STATUS_LABELS: Record<ContestStatus, string> = {
@@ -62,6 +66,72 @@ const startPolling = (): void => {
   }, 5000)
 }
 
+const stopHeartbeat = (): void => {
+  if (heartbeatTimer !== null) {
+    window.clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+}
+
+const isPlaying = (status: ContestDetail['my_status'] | undefined): boolean =>
+  status === 'active' || status === 'disconnected'
+
+const canHeartbeat = (): boolean =>
+  detail.value?.status === 'running' && isPlaying(detail.value.my_status)
+
+const startHeartbeat = (): void => {
+  if (heartbeatTimer !== null) return
+  heartbeatTimer = window.setInterval(() => {
+    void sendHeartbeat()
+  }, 10000)
+}
+
+const sendHeartbeat = async (): Promise<void> => {
+  if (!contestIdRef.value || heartbeating) return
+  if (!canHeartbeat()) {
+    stopHeartbeat()
+    return
+  }
+  heartbeating = true
+  try {
+    const data = await sendContestHeartbeat(contestIdRef.value)
+    if (detail.value) {
+      detail.value.status = data.status
+      detail.value.my_status = data.my_status
+      detail.value.ends_at = data.ends_at
+    }
+    if (data.my_status === 'timed_out') {
+      connectionState.value = 'timedOut'
+      stopHeartbeat()
+    } else if (data.my_status === 'finished') {
+      connectionState.value = 'online'
+      stopHeartbeat()
+    } else {
+      connectionState.value = 'online'
+      startHeartbeat()
+    }
+  } catch (exception: unknown) {
+    // 409 means the contest already ended or was cancelled; the detail poll
+    // decides whether to redirect to results or show the cancelled notice.
+    if (axios.isAxiosError(exception) && exception.response?.status === 409) {
+      void loadContest(true)
+    } else {
+      connectionState.value = 'reconnecting'
+    }
+  } finally {
+    heartbeating = false
+  }
+}
+
+const keepHeartbeat = (data: ContestDetail): void => {
+  if (data.status === 'running' && isPlaying(data.my_status)) {
+    startHeartbeat()
+    void sendHeartbeat()
+  } else {
+    stopHeartbeat()
+  }
+}
+
 const loadContest = async (silent = false): Promise<void> => {
   if (!contestIdRef.value || syncing) return
   syncing = true
@@ -72,14 +142,18 @@ const loadContest = async (silent = false): Promise<void> => {
     const serverTime = new Date(data.server_time).getTime()
     serverOffset.value = Number.isFinite(serverTime) ? serverTime - Date.now() : 0
     serverNow.value = Date.now() + serverOffset.value
-    enabledRef.value = data.status === 'running' && data.my_status !== 'finished'
+    enabledRef.value = data.status === 'running' && isPlaying(data.my_status)
+    if (data.my_status === 'timed_out') connectionState.value = 'timedOut'
+    else if (data.status !== 'running') connectionState.value = 'online'
     if (data.status === 'finished') {
       stopPolling()
+      stopHeartbeat()
       await router.replace(`/contests/${data.id}/result`)
       return
     }
     if (data.status === 'running' || data.status === 'settling') startPolling()
     else stopPolling()
+    keepHeartbeat(data)
   } catch (exception: unknown) {
     if (!silent) error.value = toErrorMessage(exception)
   } finally {
@@ -114,6 +188,8 @@ const problems = computed(() =>
 const participantStatusLabel = (participant: ContestParticipant): string => {
   if (participant.status === 'queued') return '排队中'
   if (participant.status === 'active') return '作答中'
+  if (participant.status === 'disconnected') return '断线重连中'
+  if (participant.status === 'timed_out') return '断线超时'
   return detail.value?.status === 'finished' ? '已结算' : '已离场'
 }
 
@@ -137,6 +213,7 @@ const finishAndLeave = async (): Promise<void> => {
     const result = await finishContest(contestIdRef.value)
     toast.success(result.message || '已离场，成绩将在比赛结束后公布')
     enabledRef.value = false
+    stopHeartbeat()
     await loadContest(true)
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
@@ -149,6 +226,12 @@ const tick = (): void => {
   serverNow.value = Date.now() + serverOffset.value
 }
 
+const handleVisibilityChange = (): void => {
+  if (document.visibilityState !== 'visible' || !contestIdRef.value) return
+  void loadContest(true)
+  void sendHeartbeat()
+}
+
 watch(
   () => route.params.id,
   async () => {
@@ -157,6 +240,8 @@ watch(
     enabledRef.value = false
     await flushContestEvents()
     stopPolling()
+    stopHeartbeat()
+    connectionState.value = 'online'
     contestIdRef.value = nextId
     detail.value = null
     error.value = ''
@@ -172,6 +257,7 @@ watch(
 
 onMounted(() => {
   tickTimer = window.setInterval(tick, 1000)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   if (contestIdRef.value) void loadContest(false)
   else {
     isLoading.value = false
@@ -181,6 +267,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopPolling()
+  stopHeartbeat()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (tickTimer !== null) {
     window.clearInterval(tickTimer)
     tickTimer = null
@@ -220,6 +308,12 @@ onBeforeUnmount(() => {
 
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
+      <p v-if="connectionState === 'reconnecting'" class="contest-connection-banner" role="status">
+        网络中断，正在重连
+      </p>
+      <p v-else-if="connectionState === 'timedOut'" class="form-error" role="alert">
+        断线超过 120 秒，成绩按断线时结算
+      </p>
 
       <section v-if="detail.status === 'cancelled'" class="teaching-panel contest-cancelled">
         <p class="form-error">本场比赛已取消，成绩不会结算</p>
@@ -228,9 +322,18 @@ onBeforeUnmount(() => {
 
       <section class="teaching-panel contest-finish-panel">
         <div>
-          <strong>{{ detail.my_status === 'finished' ? '你已离场' : '完成后可以提前离场' }}</strong>
+          <strong>
+            {{ detail.my_status === 'finished'
+              ? '你已离场'
+              : detail.my_status === 'timed_out'
+                ? '断线超时'
+                : '完成后可以提前离场' }}
+          </strong>
           <p v-if="detail.my_status === 'finished'" class="teaching-subtle">
             成绩将在{{ detail.event_id ? '赛事结束' : '比赛结束' }}后公布，你可以继续留在本页查看题目与选手状态
+          </p>
+          <p v-else-if="detail.my_status === 'timed_out'" class="teaching-subtle">
+            成绩按断线前已提交的内容结算，不能再提交本场比赛
           </p>
           <p v-else class="teaching-subtle">
             离场后不能再提交本场比赛的题目，比赛结束时间为
@@ -240,10 +343,16 @@ onBeforeUnmount(() => {
         <button
           class="primary-button"
           type="button"
-          :disabled="detail.my_status === 'finished' || isFinishing || detail.status !== 'running'"
+          :disabled="detail.my_status !== 'active' || isFinishing || detail.status !== 'running'"
           @click="finishAndLeave"
         >
-          {{ detail.my_status === 'finished' ? '已离场' : isFinishing ? '正在离场' : '完成并离场' }}
+          {{ detail.my_status === 'finished'
+            ? '已离场'
+            : detail.my_status === 'timed_out'
+              ? '已超时'
+              : isFinishing
+                ? '正在离场'
+                : '完成并离场' }}
         </button>
       </section>
 

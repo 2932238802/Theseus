@@ -15,19 +15,21 @@ use crate::{
         CONTEST_STATUS_RUNNING, CONTEST_STATUS_SETTLING, CancelMatchResponse,
         ContestDetailResponse, ContestEventCard, ContestEventDetailResponse, ContestEventInput,
         ContestEventListQuery, ContestEventListResponse, ContestEventsRequest,
-        ContestEventsResponse, ContestParticipantRow, ContestParticipantView, ContestProblemDetail,
-        ContestProblemDetailRow, ContestProblemSummary, ContestRankingItem, ContestResultContest,
-        ContestResultMine, ContestResultResponse, ContestRow, ContestScoreDetail, ContestSummary,
+        ContestEventsResponse, ContestHeartbeatResponse, ContestParticipantRow,
+        ContestParticipantView, ContestProblemDetail, ContestProblemDetailRow,
+        ContestProblemSummary, ContestRankingItem, ContestResultContest, ContestResultMine,
+        ContestResultResponse, ContestRow, ContestScoreDetail, ContestSummary,
         CurrentContestResponse, DEFAULT_CONTEST_RATING, EVENT_ACTION_CLOSED, EVENT_ACTION_DETAILS,
         EVENT_ACTION_ENTER, EVENT_ACTION_FULL, EVENT_ACTION_JOIN, EVENT_ACTION_REGISTER,
         EVENT_STATUS_FINISHED, EVENT_STATUS_FULL, EVENT_STATUS_REGISTRATION, EVENT_STATUS_RUNNING,
         EVENT_STATUS_UPCOMING, EnterEventResponse, EventForumSyncResponse, EventLeaderboardEntry,
         EventLeaderboardResponse, EventRuleGroup, FeaturedContestsResponse, FinishContestResponse,
         FollowEventResponse, MatchRequest, MatchResponse, PARTICIPANT_STATUS_ACTIVE,
-        PARTICIPANT_STATUS_FINISHED, ProctorContestInfo, ProctorEventItem,
-        ProctorEventListResponse, ProctorReviewInput, ProctorReviewResponse, RATING_GAIN_FIRST,
-        RATING_GAIN_SECOND, RATING_LOSS_FOURTH, RATING_WINDOW, RankedConfig,
-        RankedLeaderboardEntry, RankedLeaderboardResponse, SCREEN_PERMISSIONS,
+        PARTICIPANT_STATUS_DISCONNECTED, PARTICIPANT_STATUS_FINISHED, PARTICIPANT_STATUS_TIMED_OUT,
+        ProctorContestInfo, ProctorEventItem, ProctorEventListResponse, ProctorReviewInput,
+        ProctorReviewResponse, RATING_GAIN_FIRST, RATING_GAIN_SECOND, RATING_LOSS_FOURTH,
+        RATING_WINDOW, RankedConfig, RankedLeaderboardEntry, RankedLeaderboardResponse,
+        SCREEN_PERMISSIONS,
     },
     models::forum::{AdminPinRequest, CreatePostRequest, MAX_TITLE_CHARS},
     services::{forum_service, notification_service},
@@ -42,6 +44,11 @@ const CODING_WEIGHT: f64 = 0.15;
 const MAX_EVENTS_PER_REQUEST: usize = 100;
 const MAX_EVENT_ID_CHARS: usize = 64;
 const SETTLE_GRACE_SECONDS: i64 = 20;
+/// A player with no heartbeat for this long is treated as disconnected.
+const DISCONNECT_AFTER_SECONDS: i64 = 30;
+/// A disconnected player may still reconnect and resume until this long after
+/// the last heartbeat, at which point the score is frozen.
+const RECONNECT_GRACE_SECONDS: i64 = 120;
 const MATCH_FALLBACK_THREE_SECONDS: i64 = 180;
 const MATCH_FALLBACK_TWO_SECONDS: i64 = 300;
 const FALLBACK_RATING_WINDOW: i32 = 150;
@@ -404,7 +411,8 @@ pub async fn finish(
     }
 
     let remaining: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM contest_participants WHERE contest_id = $1 AND status = 'active'",
+        "SELECT COUNT(*) FROM contest_participants WHERE contest_id = $1 \
+         AND status IN ('active', 'disconnected')",
     )
     .bind(contest_id)
     .fetch_one(pool)
@@ -436,6 +444,89 @@ pub async fn finish(
             },
         })
     }
+}
+
+/// Records that the player is still on the contest page. A heartbeat from a
+/// `disconnected` player restores `active`; other statuses are returned
+/// read-only so the client can show the right message.
+pub async fn heartbeat(
+    pool: &PgPool,
+    user_id: i32,
+    contest_id: i32,
+) -> Result<ContestHeartbeatResponse, AppError> {
+    #[derive(FromRow)]
+    struct HeartbeatRow {
+        contest_status: String,
+        ends_at: DateTime<Utc>,
+        my_status: String,
+        disconnected_at: Option<DateTime<Utc>>,
+        disqualified_at: Option<DateTime<Utc>>,
+    }
+
+    let row = sqlx::query_as::<_, HeartbeatRow>(
+        "SELECT c.status AS contest_status, c.ends_at, p.status AS my_status, \
+                p.disconnected_at, p.disqualified_at \
+         FROM contests c JOIN contest_participants p ON p.contest_id = c.id AND p.user_id = $2 \
+         WHERE c.id = $1",
+    )
+    .bind(contest_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or_else(|| AppError::NotFound("比赛不存在".to_owned()))?;
+
+    if row.contest_status != CONTEST_STATUS_RUNNING {
+        return Err(AppError::ConflictWith("比赛已结束".to_owned()));
+    }
+
+    let mut my_status = row.my_status;
+    let mut disconnected_at = row.disconnected_at;
+    let can_report = row.disqualified_at.is_none()
+        && (my_status == PARTICIPANT_STATUS_ACTIVE || my_status == PARTICIPANT_STATUS_DISCONNECTED);
+
+    if can_report {
+        let updated: Option<(String, Option<DateTime<Utc>>)> = sqlx::query_as(
+            "UPDATE contest_participants SET last_seen_at = CURRENT_TIMESTAMP, \
+             status = CASE WHEN status = 'disconnected' THEN 'active' ELSE status END, \
+             disconnected_at = CASE WHEN status = 'disconnected' THEN NULL \
+                                    ELSE disconnected_at END \
+             WHERE contest_id = $1 AND user_id = $2 \
+               AND status IN ('active', 'disconnected') \
+             RETURNING status, disconnected_at",
+        )
+        .bind(contest_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        match updated {
+            Some((status, disconnected)) => {
+                my_status = status;
+                disconnected_at = disconnected;
+            }
+            // The presence sweep froze the score between our read and update.
+            None => {
+                my_status = participant_status(pool, contest_id, user_id)
+                    .await?
+                    .unwrap_or(my_status);
+                if my_status == PARTICIPANT_STATUS_TIMED_OUT {
+                    disconnected_at = None;
+                }
+            }
+        }
+    }
+
+    Ok(ContestHeartbeatResponse {
+        contest_id,
+        status: row.contest_status,
+        my_status,
+        ends_at: row.ends_at,
+        disconnected_at,
+        reconnect_grace_seconds: RECONNECT_GRACE_SECONDS,
+        server_time: Utc::now(),
+    })
 }
 
 pub async fn result(
@@ -477,7 +568,7 @@ pub async fn result(
          (p.disqualified_at IS NOT NULL) AS disqualified, \
          p.rating_before, p.rating_after, p.rating_delta \
          FROM contest_participants p JOIN users u ON u.id = p.user_id \
-         WHERE p.contest_id = $1 AND p.status IN ('active', 'finished') \
+         WHERE p.contest_id = $1 AND p.status IN ('active', 'disconnected', 'timed_out', 'finished') \
          ORDER BY p.rank NULLS LAST, p.total_score DESC NULLS LAST, p.user_id",
     )
     .bind(contest_id)
@@ -1079,7 +1170,7 @@ async fn rerank_contest(
                 COALESCE(p.rating_before, u.contest_rating) AS rating_before, \
                 p.rating_after, p.rank, p.disqualified_at \
          FROM contest_participants p JOIN users u ON u.id = p.user_id \
-         WHERE p.contest_id = $1 AND p.status IN ('active', 'finished')",
+         WHERE p.contest_id = $1 AND p.status IN ('active', 'disconnected', 'timed_out', 'finished')",
     )
     .bind(contest_id)
     .fetch_all(&mut **transaction)
@@ -1256,7 +1347,12 @@ pub async fn precheck_submission(
         return Err(AppError::ConflictWith("比赛已结束".to_owned()));
     }
     if row.participant_status != PARTICIPANT_STATUS_ACTIVE {
-        return Err(AppError::ConflictWith("你已离场，无法继续提交".to_owned()));
+        let message = match row.participant_status.as_str() {
+            PARTICIPANT_STATUS_DISCONNECTED => "网络中断，正在重连，请稍后再试",
+            PARTICIPANT_STATUS_TIMED_OUT => "断线超时，成绩已冻结，无法继续提交",
+            _ => "你已离场，无法继续提交",
+        };
+        return Err(AppError::ConflictWith(message.to_owned()));
     }
     if row.disqualified_at.is_some() {
         return Err(AppError::ConflictWith(
@@ -1270,6 +1366,173 @@ pub async fn precheck_submission(
         run_config: row.run_config,
         judge_cases: row.judge_cases,
     })
+}
+
+/// Advances participant presence for running contests. Called from the same
+/// scheduler as settlement, so it runs every 5 seconds in the API process.
+///
+/// 1. `active` -> `disconnected` after 30 seconds without a heartbeat;
+/// 2. `disconnected` -> `timed_out` once the 120-second grace period from the
+///    last heartbeat expires, with a notification explaining the frozen score;
+/// 3. ranked contests where everyone timed out are cancelled instead of being
+///    settled, so no rating is awarded for an empty room;
+/// 4. ranked contests with nobody active or reconnecting are settled as soon
+///    as at least one player finished, instead of waiting for `ends_at + 20s`.
+pub async fn sweep_contest_presence(pool: &PgPool) -> Result<usize, AppError> {
+    let disconnected = sqlx::query(
+        "UPDATE contest_participants p SET status = 'disconnected', \
+             disconnected_at = CURRENT_TIMESTAMP \
+         FROM contests c \
+         WHERE c.id = p.contest_id AND c.status = 'running' \
+           AND p.status = 'active' AND p.disqualified_at IS NULL \
+           AND p.last_seen_at <= CURRENT_TIMESTAMP - make_interval(secs => $1::double precision)",
+    )
+    .bind(DISCONNECT_AFTER_SECONDS as f64)
+    .execute(pool)
+    .await
+    .map_err(AppError::Database)?
+    .rows_affected() as usize;
+
+    let timed_out = timeout_silent_participants(pool).await?;
+    let cancelled = cancel_abandoned_ranked_contests(pool).await?;
+    let settled = settle_abandoned_ranked_contests(pool).await?;
+    Ok(disconnected + timed_out + cancelled + settled)
+}
+
+/// Freezes the score of players whose reconnect grace expired and tells them
+/// why further submissions are rejected.
+async fn timeout_silent_participants(pool: &PgPool) -> Result<usize, AppError> {
+    let rows: Vec<(i32, i32)> = sqlx::query_as(
+        "SELECT p.contest_id, p.user_id \
+         FROM contest_participants p JOIN contests c ON c.id = p.contest_id \
+         WHERE c.status = 'running' AND p.status = 'disconnected' \
+           AND p.disqualified_at IS NULL \
+           AND p.last_seen_at <= CURRENT_TIMESTAMP - make_interval(secs => $1::double precision) \
+         ORDER BY p.last_seen_at LIMIT 200",
+    )
+    .bind(RECONNECT_GRACE_SECONDS as f64)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    let mut count = 0;
+    for (contest_id, user_id) in rows {
+        let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+        let updated = sqlx::query(
+            "UPDATE contest_participants SET status = 'timed_out', \
+                 timed_out_at = CURRENT_TIMESTAMP \
+             WHERE contest_id = $1 AND user_id = $2 AND status = 'disconnected'",
+        )
+        .bind(contest_id)
+        .bind(user_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?
+        .rows_affected();
+        if updated == 1 {
+            notification_service::create(
+                &mut transaction,
+                user_id,
+                "contest_disconnected",
+                None,
+                "比赛断线超时",
+                Some("你已超过 120 秒未重连，成绩按断线前已提交的内容结算。"),
+                Some(&format!("/contests/{contest_id}")),
+                Some("contest"),
+                Some(i64::from(contest_id)),
+            )
+            .await?;
+            count += 1;
+        }
+        transaction.commit().await.map_err(AppError::Database)?;
+    }
+    Ok(count)
+}
+
+/// Ranked contests where every participant timed out are cancelled: no rank,
+/// no rating change, no rating history. Event contests keep their fixed end
+/// time and are never cancelled by this sweep.
+async fn cancel_abandoned_ranked_contests(pool: &PgPool) -> Result<usize, AppError> {
+    let ids: Vec<i32> = sqlx::query_scalar(
+        "SELECT c.id FROM contests c \
+         WHERE c.status = 'running' AND c.official_event_id IS NULL \
+           AND EXISTS (SELECT 1 FROM contest_participants p WHERE p.contest_id = c.id) \
+           AND NOT EXISTS (SELECT 1 FROM contest_participants p \
+                           WHERE p.contest_id = c.id AND p.status <> 'timed_out') \
+         ORDER BY c.ends_at LIMIT 20",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    let mut count = 0;
+    for contest_id in ids {
+        let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+        let updated = sqlx::query(
+            "UPDATE contests SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP, \
+                 updated_at = CURRENT_TIMESTAMP \
+             WHERE id = $1 AND status = 'running' AND official_event_id IS NULL",
+        )
+        .bind(contest_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?
+        .rows_affected();
+        if updated == 0 {
+            transaction.commit().await.map_err(AppError::Database)?;
+            continue;
+        }
+        let user_ids: Vec<i32> =
+            sqlx::query_scalar("SELECT user_id FROM contest_participants WHERE contest_id = $1")
+                .bind(contest_id)
+                .fetch_all(&mut *transaction)
+                .await
+                .map_err(AppError::Database)?;
+        for user_id in user_ids {
+            notification_service::create(
+                &mut transaction,
+                user_id,
+                "contest_cancelled",
+                None,
+                "比赛已取消",
+                Some("全员断线超过宽限时间，本场排位赛已取消，段位分不变。"),
+                Some(&format!("/contests/{contest_id}")),
+                Some("contest"),
+                Some(i64::from(contest_id)),
+            )
+            .await?;
+        }
+        transaction.commit().await.map_err(AppError::Database)?;
+        tracing::info!(contest_id, "contest cancelled after everyone timed out");
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// Settles ranked contests where nobody can still submit: no `active` player
+/// and no one inside the reconnect window, but at least one player finished.
+async fn settle_abandoned_ranked_contests(pool: &PgPool) -> Result<usize, AppError> {
+    let ids: Vec<i32> = sqlx::query_scalar(
+        "SELECT c.id FROM contests c \
+         WHERE c.status = 'running' AND c.official_event_id IS NULL \
+           AND NOT EXISTS (SELECT 1 FROM contest_participants p \
+                           WHERE p.contest_id = c.id \
+                             AND p.status IN ('active', 'disconnected')) \
+           AND EXISTS (SELECT 1 FROM contest_participants p \
+                       WHERE p.contest_id = c.id AND p.status = 'finished') \
+         ORDER BY c.ends_at LIMIT 20",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    let mut count = 0;
+    for contest_id in ids {
+        if settle_contest(pool, contest_id).await? {
+            count += 1;
+        }
+    }
+    Ok(count)
 }
 
 pub async fn settle_due_contests(pool: &PgPool) -> Result<usize, AppError> {
@@ -1334,7 +1597,7 @@ pub async fn settle_contest(pool: &PgPool, contest_id: i32) -> Result<bool, AppE
     let participants: Vec<(i32, Option<DateTime<Utc>>, i32)> = sqlx::query_as(
         "SELECT p.user_id, p.finished_at, COALESCE(p.rating_before, u.contest_rating) \
          FROM contest_participants p JOIN users u ON u.id = p.user_id \
-         WHERE p.contest_id = $1 AND p.status IN ('active', 'finished') \
+         WHERE p.contest_id = $1 AND p.status IN ('active', 'disconnected', 'timed_out', 'finished') \
            AND p.disqualified_at IS NULL",
     )
     .bind(contest_id)
@@ -1575,7 +1838,7 @@ async fn active_contest_id(pool: &PgPool, user_id: i32) -> Result<Option<i32>, A
     sqlx::query_scalar(
         "SELECT c.id FROM contest_participants p JOIN contests c ON c.id = p.contest_id \
          WHERE p.user_id = $1 AND c.status IN ('running', 'settling') \
-           AND p.status IN ('active', 'finished') \
+           AND p.status IN ('active', 'disconnected', 'timed_out', 'finished') \
          ORDER BY c.starts_at DESC LIMIT 1",
     )
     .bind(user_id)
@@ -2812,7 +3075,10 @@ pub async fn enter_event(
     sqlx::query(
         "INSERT INTO contest_participants (contest_id, user_id, status, rating_before) \
          VALUES ($1, $2, 'active', (SELECT contest_rating FROM users WHERE id = $2)) \
-         ON CONFLICT (contest_id, user_id) DO UPDATE SET status = 'active', finished_at = NULL",
+         ON CONFLICT (contest_id, user_id) DO UPDATE \
+             SET status = 'active', finished_at = NULL, \
+                 last_seen_at = CURRENT_TIMESTAMP, disconnected_at = NULL \
+             WHERE contest_participants.status <> 'timed_out'",
     )
     .bind(contest_id)
     .bind(user_id)
@@ -2863,7 +3129,7 @@ pub async fn event_leaderboard(
                      WHERE s.contest_id = p.contest_id AND s.user_id = p.user_id \
                        AND s.status = 'accepted') AS solved_count \
              FROM contest_participants p JOIN users u ON u.id = p.user_id \
-             WHERE p.contest_id = $1 AND p.status IN ('active', 'finished') \
+             WHERE p.contest_id = $1 AND p.status IN ('active', 'disconnected', 'timed_out', 'finished') \
              ORDER BY p.rank NULLS LAST, solved_count DESC, p.joined_at, p.user_id",
         )
         .bind(contest_id)
