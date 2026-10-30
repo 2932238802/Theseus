@@ -307,6 +307,11 @@ fn category_for_type(notification_type: &str) -> Option<&'static str> {
         "assignment_published" | "assignment_grades_published" | "assignment_override_granted" => {
             Some("assignment")
         }
+        "cheat_report_created"
+        | "cheat_report_confirmed"
+        | "cheat_report_dismissed"
+        | "cheat_appeal_created"
+        | "cheat_appeal_resolved" => Some("assignment"),
         "forum_reply" | "forum_comment" | "forum_mention" => Some("forum"),
         "forum_moderation" | "forum_mute" | "reputation_notice" | "problem_review" => {
             Some("account")

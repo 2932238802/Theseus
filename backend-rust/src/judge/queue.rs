@@ -45,10 +45,36 @@ pub async fn enqueue(
     stream: &str,
     run_id: i64,
 ) -> Result<(), AppError> {
+    enqueue_field(conn, stream, "run_id", run_id, "运行任务入队失败").await
+}
+
+/// 防作弊扫描任务复用同一条 Stream 机制，但使用独立的字段名，避免与判题消息混淆。
+pub async fn enqueue_anticheat(
+    conn: &mut ConnectionManager,
+    stream: &str,
+    submission_id: i64,
+) -> Result<(), AppError> {
+    enqueue_field(
+        conn,
+        stream,
+        "submission_id",
+        submission_id,
+        "防作弊扫描任务入队失败",
+    )
+    .await
+}
+
+async fn enqueue_field(
+    conn: &mut ConnectionManager,
+    stream: &str,
+    field: &str,
+    id: i64,
+    error_prefix: &str,
+) -> Result<(), AppError> {
     let _: String = conn
-        .xadd(stream, "*", &[("run_id", run_id.to_string())])
+        .xadd(stream, "*", &[(field, id.to_string())])
         .await
-        .map_err(|error| AppError::Internal(format!("运行任务入队失败: {error}")))?;
+        .map_err(|error| AppError::Internal(format!("{error_prefix}: {error}")))?;
     Ok(())
 }
 
@@ -58,6 +84,27 @@ pub async fn read_one(
     group: &str,
     consumer: &str,
     block_ms: usize,
+) -> Result<Option<(String, i64)>, AppError> {
+    read_one_field(conn, stream, group, consumer, block_ms, "run_id").await
+}
+
+pub async fn read_one_anticheat(
+    conn: &mut ConnectionManager,
+    stream: &str,
+    group: &str,
+    consumer: &str,
+    block_ms: usize,
+) -> Result<Option<(String, i64)>, AppError> {
+    read_one_field(conn, stream, group, consumer, block_ms, "submission_id").await
+}
+
+async fn read_one_field(
+    conn: &mut ConnectionManager,
+    stream: &str,
+    group: &str,
+    consumer: &str,
+    block_ms: usize,
+    field: &str,
 ) -> Result<Option<(String, i64)>, AppError> {
     let options = StreamReadOptions::default()
         .group(group, consumer)
@@ -72,13 +119,14 @@ pub async fn read_one(
     };
     for key in reply.keys {
         for entry in key.ids {
-            let run_id: Option<i64> = entry.get("run_id");
-            match run_id {
-                Some(run_id) => return Ok(Some((entry.id, run_id))),
+            let id: Option<i64> = entry.get(field);
+            match id {
+                Some(id) => return Ok(Some((entry.id, id))),
                 None => {
                     tracing::warn!(
                         message_id = %entry.id,
-                        "ignoring run queue message without numeric run_id"
+                        field,
+                        "ignoring queue message without numeric id"
                     );
                     let _: i64 = conn
                         .xack(stream, group, &[entry.id])
@@ -119,6 +167,52 @@ pub async fn claim_stale(
     count: usize,
     cursor: &mut String,
 ) -> Result<Vec<ClaimedEntry>, AppError> {
+    claim_stale_field(
+        conn,
+        stream,
+        group,
+        consumer,
+        min_idle_ms,
+        count,
+        cursor,
+        "run_id",
+    )
+    .await
+}
+
+pub async fn claim_stale_anticheat(
+    conn: &mut ConnectionManager,
+    stream: &str,
+    group: &str,
+    consumer: &str,
+    min_idle_ms: u64,
+    count: usize,
+    cursor: &mut String,
+) -> Result<Vec<ClaimedEntry>, AppError> {
+    claim_stale_field(
+        conn,
+        stream,
+        group,
+        consumer,
+        min_idle_ms,
+        count,
+        cursor,
+        "submission_id",
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn claim_stale_field(
+    conn: &mut ConnectionManager,
+    stream: &str,
+    group: &str,
+    consumer: &str,
+    min_idle_ms: u64,
+    count: usize,
+    cursor: &mut String,
+    field: &str,
+) -> Result<Vec<ClaimedEntry>, AppError> {
     let options = StreamAutoClaimOptions::default().count(count);
     let reply: StreamAutoClaimReply = conn
         .xautoclaim_options(
@@ -134,10 +228,10 @@ pub async fn claim_stale(
     *cursor = reply.next_stream_id.clone();
     let mut claimed = Vec::new();
     for entry in reply.claimed {
-        if let Some(run_id) = entry.get::<i64>("run_id") {
+        if let Some(id) = entry.get::<i64>(field) {
             claimed.push(ClaimedEntry {
                 message_id: entry.id,
-                run_id,
+                run_id: id,
             });
         }
     }
@@ -150,14 +244,30 @@ pub async fn enqueue_dead(
     run_id: i64,
     reason: &str,
 ) -> Result<(), AppError> {
+    enqueue_dead_field(conn, stream, "run_id", run_id, reason).await
+}
+
+pub async fn enqueue_dead_anticheat(
+    conn: &mut ConnectionManager,
+    stream: &str,
+    submission_id: i64,
+    reason: &str,
+) -> Result<(), AppError> {
+    enqueue_dead_field(conn, stream, "submission_id", submission_id, reason).await
+}
+
+async fn enqueue_dead_field(
+    conn: &mut ConnectionManager,
+    stream: &str,
+    field: &str,
+    id: i64,
+    reason: &str,
+) -> Result<(), AppError> {
     let _: String = conn
         .xadd(
             stream,
             "*",
-            &[
-                ("run_id", run_id.to_string()),
-                ("reason", reason.to_owned()),
-            ],
+            &[(field, id.to_string()), ("reason", reason.to_owned())],
         )
         .await
         .map_err(|error| AppError::Internal(format!("写入死信队列失败: {error}")))?;
@@ -174,6 +284,10 @@ pub fn worker_heartbeat_key(worker_name: &str) -> String {
 
 pub fn submit_worker_heartbeat_key(worker_name: &str) -> String {
     format!("theseus:submit:worker:{worker_name}")
+}
+
+pub fn anticheat_worker_heartbeat_key(worker_name: &str) -> String {
+    format!("theseus:anticheat:worker:{worker_name}")
 }
 
 /// Returns whether at least one judge worker has a live heartbeat key.

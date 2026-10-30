@@ -49,6 +49,20 @@ pub struct Config {
     pub submit_stale_timeout_secs: u64,
     pub submit_run_timeout_secs: u64,
     pub submit_max_cases: usize,
+    pub anticheat_enabled: bool,
+    pub anticheat_stream: String,
+    pub anticheat_consumer_group: String,
+    pub anticheat_dead_stream: String,
+    pub anticheat_worker_name: String,
+    pub anticheat_worker_concurrency: usize,
+    pub anticheat_max_deliveries: u32,
+    pub anticheat_claim_interval_secs: u64,
+    pub anticheat_window_days: i64,
+    pub anticheat_max_candidates: i64,
+    pub anticheat_record_threshold: f64,
+    pub anticheat_report_threshold: f64,
+    pub anticheat_high_threshold: f64,
+    pub anticheat_min_tokens: usize,
     pub forum_enabled: bool,
     pub forum_post_cooldown_secs: u64,
     pub forum_post_daily_limit: u64,
@@ -237,6 +251,55 @@ impl Config {
             .and_then(|value| value.parse::<usize>().ok())
             .unwrap_or(50)
             .max(1);
+        let anticheat_enabled = env_bool("ANTICHEAT_ENABLED", true)?;
+        let anticheat_stream =
+            env::var("ANTICHEAT_STREAM").unwrap_or_else(|_| "theseus:anticheat:scan".to_owned());
+        let anticheat_consumer_group =
+            env::var("ANTICHEAT_CONSUMER_GROUP").unwrap_or_else(|_| "anticheat-workers".to_owned());
+        let anticheat_dead_stream = env::var("ANTICHEAT_DEAD_STREAM")
+            .unwrap_or_else(|_| "theseus:anticheat:scan:dead".to_owned());
+        let anticheat_worker_name =
+            env::var("ANTICHEAT_WORKER_NAME").unwrap_or_else(|_| "anticheat-1".to_owned());
+        let anticheat_worker_concurrency = env::var("ANTICHEAT_WORKER_CONCURRENCY")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(1)
+            .max(1);
+        let anticheat_max_deliveries = env::var("ANTICHEAT_MAX_DELIVERIES")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(3)
+            .max(1);
+        let anticheat_claim_interval_secs = env::var("ANTICHEAT_CLAIM_INTERVAL_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(30)
+            .max(5);
+        let anticheat_window_days = env::var("ANTICHEAT_WINDOW_DAYS")
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(30)
+            .max(1);
+        let anticheat_max_candidates = env::var("ANTICHEAT_MAX_CANDIDATES")
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(200)
+            .max(1);
+        let anticheat_record_threshold = env_ratio("ANTICHEAT_RECORD_THRESHOLD", 0.60)?;
+        let anticheat_report_threshold = env_ratio("ANTICHEAT_REPORT_THRESHOLD", 0.80)?;
+        let anticheat_high_threshold = env_ratio("ANTICHEAT_HIGH_THRESHOLD", 0.92)?;
+        if anticheat_record_threshold > anticheat_report_threshold
+            || anticheat_report_threshold > anticheat_high_threshold
+        {
+            return Err(AppError::Internal(
+                "相似度阈值必须满足 RECORD <= REPORT <= HIGH".to_owned(),
+            ));
+        }
+        let anticheat_min_tokens = env::var("ANTICHEAT_MIN_TOKENS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(40)
+            .max(1);
         let forum_enabled = env_bool("FORUM_ENABLED", true)?;
         let forum_post_cooldown_secs = env::var("FORUM_POST_COOLDOWN_SECS")
             .ok()
@@ -323,6 +386,20 @@ impl Config {
             submit_stale_timeout_secs,
             submit_run_timeout_secs,
             submit_max_cases,
+            anticheat_enabled,
+            anticheat_stream,
+            anticheat_consumer_group,
+            anticheat_dead_stream,
+            anticheat_worker_name,
+            anticheat_worker_concurrency,
+            anticheat_max_deliveries,
+            anticheat_claim_interval_secs,
+            anticheat_window_days,
+            anticheat_max_candidates,
+            anticheat_record_threshold,
+            anticheat_report_threshold,
+            anticheat_high_threshold,
+            anticheat_min_tokens,
             forum_enabled,
             forum_post_cooldown_secs,
             forum_post_daily_limit,
@@ -333,6 +410,22 @@ impl Config {
             forum_max_pinned,
         })
     }
+}
+
+fn env_ratio(key: &str, default: f64) -> Result<f64, AppError> {
+    let value = match env::var(key) {
+        Ok(value) => value
+            .trim()
+            .parse::<f64>()
+            .map_err(|_| AppError::Internal(format!("{key} 必须是 0 到 1 之间的小数")))?,
+        Err(_) => default,
+    };
+    if !(0.0..=1.0).contains(&value) {
+        return Err(AppError::Internal(format!(
+            "{key} 必须是 0 到 1 之间的小数"
+        )));
+    }
+    Ok(value)
 }
 
 fn env_bool(key: &str, default: bool) -> Result<bool, AppError> {

@@ -93,6 +93,14 @@ cargo run
 | GET | `/api/assignments/{id}/statistics` | 学生/教师 | 匿名组织统计；学生需作业开启统计 |
 | GET | `/api/assignments/{id}/policy-audits` | 教师 | 策略、例外和解析发布审计 |
 | GET | `/api/assignments/{id}/problems/{problem_id}/peer-submissions` | 学生/教师 | 同学 AC 代码；需作业开启开关 |
+| GET | `/api/teacher/cheat-reports` | 教师 | 自己组织作业的相似度报告，支持 `status`、`assignment_id`、`page`、`size` |
+| GET | `/api/teacher/cheat-reports/{id}` | 教师 | 报告详情：双方提交代码、匹配证据、申诉与审计轨迹 |
+| POST | `/api/teacher/cheat-reports/{id}/review` | 教师 | 复核 `{decision,note,apply_zero}`；`decision` 为 `confirmed`/`dismissed` |
+| GET | `/api/teacher/appeals` | 用户 | 当前用户作为处理人的待裁定申诉 |
+| POST | `/api/teacher/appeals/{id}/resolve` | 处理人 | 裁定 `{decision,note}`；`decision` 为 `upheld`/`overturned` |
+| GET | `/api/cheat-reports/mine` | 用户 | 当前用户已确认/申诉中的作弊报告 |
+| GET | `/api/cheat-reports/{id}` | 当事人 | 报告详情，仅返回自己的提交，不含对方身份与代码 |
+| POST | `/api/cheat-reports/{id}/appeal` | 当事人 | 提交一次申诉 `{reason}`，报告必须为 `confirmed` |
 
 ### `GET /api/problems` 查询参数
 
@@ -510,3 +518,87 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 - 没有历史记录时 `continue_learning = null`，`recent_activity = []`
 
 `GET /api/problems/random` 从 `review_status = 'approved'` 的题目中随机返回一题，题库为空时返回 404。
+
+## 防作弊复核与申诉接口
+
+设计见 `doc/2610301_防作弊代码相似度设计方案.md`。扫描只覆盖带 `assignment_id` 的作业提交，按同作业、同题、同语言、最近 `ANTICHEAT_WINDOW_DAYS` 天比对，默认阈值 `0.60/0.80/0.92`。相似度不自动处分。
+
+### 教师报告队列
+
+`GET /api/teacher/cheat-reports?status=open&assignment_id=1&page=1&size=20`
+
+- 只返回当前教师自己组织作业的报告；`size` 上限 50。
+- `status` 可取 `open`、`confirmed`、`dismissed`、`appealed`、`upheld`、`overturned`，省略或 `all` 表示全部。
+- 返回 `{total,page,size,pending_count,items[]}`；`pending_count` 为 `open` 数量。
+- 列表项含 `target_username`、`matched_username`、`score`、`severity`、`status`、`penalty_applied`、`appeal_status`。
+
+`GET /api/teacher/cheat-reports/{id}` 返回：
+
+```json
+{
+  "report": {},
+  "evidence": {
+    "algorithm": "winnowing-token",
+    "target_submission": {"id": 2, "user_id": 2, "username": "...", "language": "python", "status": "accepted", "submitted_at": "...", "code": "..."},
+    "pairs": [{"submission_id": 1, "username": "...", "score": 0.96, "detail": {}, "code": "..."}]
+  },
+  "appeal": null,
+  "actions": [{"action": "created", "actor_username": null, "note": "...", "created_at": "..."}]
+}
+```
+
+非本人组织或报告不存在统一返回 404。
+
+### 复核
+
+`POST /api/teacher/cheat-reports/{id}/review`
+
+```json
+{"decision": "confirmed", "note": "复核说明", "apply_zero": true}
+```
+
+- `decision` 只能是 `confirmed` 或 `dismissed`，`note` 不超过 500 字。
+- 只有 `open` 可以复核，重复提交返回 409。
+- `confirmed` 时若 `apply_zero=true`，把该题 `assignment_problem_grades.manual_score` 置 0，并把判零前的人工分、评语、批改人保存到 `cheat_reports.penalty_before`；该题不在作业中时返回 409。
+- `dismissed` 不改成绩。
+- 返回 `{message,status,penalty_applied}`，并向学生写入站内信。
+
+### 学生申诉
+
+`GET /api/cheat-reports/mine` 只返回 `target_user_id` 为当前用户且状态为 `confirmed`、`appealed`、`upheld`、`overturned` 的报告。`GET /api/cheat-reports/{id}` 只返回本人提交，不含比对对方信息。
+
+`POST /api/cheat-reports/{id}/appeal`
+
+```json
+{"reason": "申诉理由"}
+```
+
+- 只有报告当事人、且报告为 `confirmed` 时可用；每份报告只能申诉一次。
+- 成功后报告变为 `appealed`，申诉为 `pending`，通知该报告的 `reviewer_id`（无则通知作业教师）。
+- 重复申诉或状态不符返回 409，非当事人返回 404。
+
+### 申诉裁定
+
+`GET /api/teacher/appeals` 返回当前用户作为 `reviewer_id` 的待处理申诉，按提交时间正序。
+
+`POST /api/teacher/appeals/{id}/resolve`
+
+```json
+{"decision": "overturned", "note": "处理说明"}
+```
+
+- `decision` 只能是 `upheld` 或 `overturned`；只有该报告的处理人可裁定，其他人返回 403。
+- `upheld`：报告变为 `upheld`，维持作弊结论。
+- `overturned`：报告变为 `overturned`；若此前判零，按 `penalty_before` 恢复成绩（无原人工分则删除判零记录），返回 `penalty_restored`。
+- 成功后通知学生，并追加 `upheld`/`overturned` 与必要的 `penalty_restored` 审计记录。
+
+### 错误与限制
+
+| 场景 | 状态码 |
+|---|---|
+| 参数无效、理由为空或超长 | 400 |
+| 非本人组织报告 / 非当事人报告 | 404 |
+| 非处理人裁定申诉 | 403 |
+| 重复复核、重复申诉、状态不符、题目已移出作业 | 409 |
+
+报告与申诉不返回隐藏用例、其他学生成绩或对方身份给当事人；完整比对代码只对作业所属教师开放。

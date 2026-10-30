@@ -18,10 +18,12 @@ FRONTEND="$ROOT/frontend-vue"
 LOGDIR="$ROOT/.dev-logs"
 API_BIN="$BACKEND/target/debug/backend-rust"
 WORKER_BIN="$BACKEND/target/debug/judge_worker"
+ANTICHEAT_BIN="$BACKEND/target/debug/anticheat_worker"
 
 mkdir -p "$LOGDIR"
 : >"$LOGDIR/api.log"
 : >"$LOGDIR/worker.log"
+: >"$LOGDIR/anticheat.log"
 : >"$LOGDIR/frontend.log"
 
 pids=()
@@ -64,6 +66,10 @@ port_in_use() {
 
 worker_running() {
     pgrep -f "target/debug/judge_worker" >/dev/null 2>&1
+}
+
+anticheat_running() {
+    pgrep -f "target/debug/anticheat_worker" >/dev/null 2>&1
 }
 
 # 等待旧进程退出（Ctrl+C 之后 Worker 可能还在优雅退出，最长 60s）。
@@ -127,8 +133,8 @@ if worker_running; then
 fi
 
 if ((need_api || need_worker)); then
-    say "编译 backend-rust（backend-rust / judge_worker）"
-    ( cd "$BACKEND" && cargo build --bin backend-rust --bin judge_worker )
+    say "编译 backend-rust（backend-rust / judge_worker / anticheat_worker）"
+    ( cd "$BACKEND" && cargo build --bin backend-rust --bin judge_worker --bin anticheat_worker )
 fi
 
 # ---------- API ----------
@@ -158,6 +164,14 @@ else
     warn "已有 judge_worker 进程在运行，跳过 Worker"
 fi
 
+# ---------- Anti-cheat Worker ----------
+# 相似度扫描不需要 docker，和判题 Worker 分开启动。
+if anticheat_running; then
+    warn "已有 anticheat_worker 进程在运行，跳过防作弊扫描"
+else
+    start_service anticheat "$BACKEND" "$ANTICHEAT_BIN"
+fi
+
 # ---------- 前端 ----------
 if port_in_use 5173; then
     warn ":5173 已被占用，跳过前端（若是旧进程请先停止）"
@@ -181,11 +195,25 @@ if [[ " ${started[*]} " == *" worker "* ]]; then
     fi
 fi
 
+if [[ " ${started[*]} " == *" anticheat "* ]]; then
+    heartbeat_ok=0
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if [[ -n "$(redis-cli --scan --pattern 'theseus:anticheat:worker:*' 2>/dev/null | head -n 1)" ]]; then
+            heartbeat_ok=1
+            break
+        fi
+        sleep 0.5
+    done
+    if ((heartbeat_ok == 0)); then
+        warn "防作弊 Worker 已启动但未写出心跳；请查看 .dev-logs/anticheat.log"
+    fi
+fi
+
 if ((${#started[@]})); then
     say "启动完成：${started[*]}"
     echo "    API        http://127.0.0.1:3000"
     echo "    前端       http://127.0.0.1:5173"
-    echo "    日志       .dev-logs/{api,worker,frontend}.log"
+    echo "    日志       .dev-logs/{api,worker,anticheat,frontend}.log"
     echo "    Ctrl+C 停止全部"
 else
     warn "没有启动任何服务"

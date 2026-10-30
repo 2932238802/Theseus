@@ -2177,10 +2177,7 @@ fn best_rating_group(
         if (now - ready_at).num_seconds() < min_wait_seconds {
             continue;
         }
-        if best
-            .as_ref()
-            .map_or(true, |(current, _)| ready_at < *current)
-        {
+        if best.as_ref().is_none_or(|(current, _)| ready_at < *current) {
             best = Some((ready_at, window.to_vec()));
         }
     }
@@ -3764,13 +3761,14 @@ pub async fn sync_event_forum(
     admin: &AuthUser,
     event_id: i32,
 ) -> Result<EventForumSyncResponse, AppError> {
-    let row: Option<(
+    type EventForumRow = (
         String,
         Option<String>,
         DateTime<Utc>,
         DateTime<Utc>,
         Option<i64>,
-    )> = sqlx::query_as(
+    );
+    let row: Option<EventForumRow> = sqlx::query_as(
         "SELECT status, description, starts_at, ends_at, forum_post_id \
              FROM official_events WHERE id = $1",
     )

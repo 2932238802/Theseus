@@ -906,7 +906,15 @@ async fn process_submission(
     {
         Ok(SandboxStart::Ready(session)) => session,
         Ok(SandboxStart::CompileError { output }) => {
-            finish_submission_compile_error(&context.pool, redis, &row, total, &output).await;
+            finish_submission_compile_error(
+                &context.pool,
+                redis,
+                &context.config,
+                &row,
+                total,
+                &output,
+            )
+            .await;
             return true;
         }
         Err(error) => {
@@ -1015,6 +1023,7 @@ async fn process_submission(
                 runtime_ms = ?runtime_ms,
                 "submission finished"
             );
+            enqueue_similarity_scan(&context.config, redis, submission_id).await;
             true
         }
         Ok(false) => {
@@ -1036,6 +1045,27 @@ async fn process_submission(
     }
 }
 
+/// 判题落库成功后把提交投递到独立的防作弊 Stream。
+/// 入队失败只记日志：相似度扫描是异步增强能力，不能影响判题结果。
+async fn enqueue_similarity_scan(
+    config: &Config,
+    redis: &mut ConnectionManager,
+    submission_id: i32,
+) {
+    if !config.anticheat_enabled {
+        return;
+    }
+    if let Err(error) =
+        queue::enqueue_anticheat(redis, &config.anticheat_stream, i64::from(submission_id)).await
+    {
+        tracing::error!(
+            submission_id,
+            error = %error,
+            "failed to enqueue similarity scan"
+        );
+    }
+}
+
 fn verdict_for_case(case_status: &str) -> &'static str {
     match case_status {
         "timeout" => SUBMISSION_STATUS_TIME_LIMIT_EXCEEDED,
@@ -1048,6 +1078,7 @@ fn verdict_for_case(case_status: &str) -> &'static str {
 async fn finish_submission_compile_error(
     pool: &PgPool,
     redis: &mut ConnectionManager,
+    config: &Config,
     row: &SubmissionRow,
     total: i32,
     output: &str,
@@ -1078,6 +1109,7 @@ async fn finish_submission_compile_error(
             Some("编译失败".to_owned()),
         )
         .await;
+        enqueue_similarity_scan(config, redis, row.id).await;
     }
     release_submission_lock(redis, row.user_id, i64::from(row.id)).await;
     tracing::info!(submission_id = row.id, "submission failed to compile");

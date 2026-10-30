@@ -8,10 +8,11 @@ use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use crate::{
     AppState,
     handlers::{
-        admin_forum_handler, admin_user_handler, assignment_handler, auth_handler, badge_handler,
-        class_handler, contest_handler, draft_handler, favorite_handler, forum_handler,
-        home_handler, invitation_handler, notification_handler, problem_handler, profile_handler,
-        ranking_handler, run_handler, submission_handler, ws_handler,
+        admin_forum_handler, admin_user_handler, anticheat_handler, assignment_handler,
+        auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
+        favorite_handler, forum_handler, home_handler, invitation_handler, notification_handler,
+        problem_handler, profile_handler, ranking_handler, run_handler, submission_handler,
+        ws_handler,
     },
 };
 
@@ -185,6 +186,35 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/assignments/{id}/grades/{user_id}/problems/{problem_id}",
             put(assignment_handler::update_problem_grade),
+        )
+        .route(
+            "/api/teacher/cheat-reports",
+            get(anticheat_handler::teacher_list),
+        )
+        .route(
+            "/api/teacher/cheat-reports/{id}",
+            get(anticheat_handler::teacher_detail),
+        )
+        .route(
+            "/api/teacher/cheat-reports/{id}/review",
+            post(anticheat_handler::teacher_review),
+        )
+        .route("/api/teacher/appeals", get(anticheat_handler::appeal_queue))
+        .route(
+            "/api/teacher/appeals/{id}/resolve",
+            post(anticheat_handler::appeal_resolve),
+        )
+        .route(
+            "/api/cheat-reports/mine",
+            get(anticheat_handler::my_reports),
+        )
+        .route(
+            "/api/cheat-reports/{id}",
+            get(anticheat_handler::my_report_detail),
+        )
+        .route(
+            "/api/cheat-reports/{id}/appeal",
+            post(anticheat_handler::submit_appeal),
         )
         .route(
             "/api/runs",

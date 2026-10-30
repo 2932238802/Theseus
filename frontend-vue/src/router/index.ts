@@ -31,6 +31,8 @@ import ProblemsPage from '../views/ProblemsPage.vue'
 import ProfilePage from '../views/ProfilePage.vue'
 import ProfileFavoritesPage from '../views/ProfileFavoritesPage.vue'
 import ResetPasswordPage from '../views/ResetPasswordPage.vue'
+import StudentAppealsPage from '../views/StudentAppealsPage.vue'
+import TeacherCheatReportsPage from '../views/TeacherCheatReportsPage.vue'
 import TeacherProblemComposePage from '../views/TeacherProblemComposePage.vue'
 import TeacherProblemsPage from '../views/TeacherProblemsPage.vue'
 import VerifyEmailPage from '../views/VerifyEmailPage.vue'
@@ -48,6 +50,7 @@ const router = createRouter({
     { path: '/problem/:id', name: 'problem', component: OjPage, props: true },
     { path: '/profile', name: 'profile', component: ProfilePage, meta: { requiresAuth: true } },
     { path: '/profile/favorites', name: 'profile-favorites', component: ProfileFavoritesPage, meta: { requiresAuth: true } },
+    { path: '/profile/appeals', name: 'profile-appeals', component: StudentAppealsPage, meta: { requiresAuth: true } },
     {
       path: '/profile/assignments',
       name: 'profile-assignments',
@@ -106,6 +109,12 @@ const router = createRouter({
       path: '/teacher/problems',
       name: 'teacher-problems',
       component: TeacherProblemsPage,
+      meta: { requiresAuth: true, requiresTeacher: true },
+    },
+    {
+      path: '/teacher/anticheat',
+      name: 'teacher-anticheat',
+      component: TeacherCheatReportsPage,
       meta: { requiresAuth: true, requiresTeacher: true },
     },
     {

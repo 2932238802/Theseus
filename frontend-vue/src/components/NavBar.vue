@@ -239,9 +239,18 @@ onBeforeUnmount(() => {
           <RouterLink role="menuitem" to="/profile/favorites" @click="closeProfileMenu">
             个人收藏
           </RouterLink>
+          <RouterLink
+            v-if="authStore.isStudent"
+            role="menuitem"
+            to="/profile/appeals"
+            @click="closeProfileMenu"
+          >
+            我的申诉
+          </RouterLink>
         </div>
       </div>
       <RouterLink v-if="authStore.isTeacher" class="nav-teacher-problems" to="/teacher/problems">出题</RouterLink>
+      <RouterLink v-if="authStore.isTeacher" class="nav-teacher-problems" to="/teacher/anticheat">复核</RouterLink>
       <div v-if="authStore.isAdmin" ref="manageRef" class="nav-menu" :class="{ 'is-active': isAdminArea }">
         <button
           id="admin-menu-button"

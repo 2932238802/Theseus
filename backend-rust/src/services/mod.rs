@@ -1,4 +1,5 @@
 pub mod admin_user_service;
+pub mod anticheat_service;
 pub mod assignment_policy;
 pub mod assignment_service;
 pub mod auth_service;
@@ -16,4 +17,5 @@ pub mod notification_service;
 pub mod profile_service;
 pub mod ranking_service;
 pub mod run_service;
+pub mod similarity;
 pub mod submission_service;

@@ -1,3 +1,4 @@
+pub mod anticheat;
 pub mod badge;
 pub mod contest;
 pub mod draft;
