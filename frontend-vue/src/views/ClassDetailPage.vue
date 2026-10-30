@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import MarkdownBody from '../components/MarkdownBody.vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
+import { importClassMembers } from '../api/classes'
 import { toast } from '../store/toast'
 import {
   fetchClassInvitations,
@@ -14,6 +15,7 @@ import { sendNotification } from '../api/notifications'
 import { useClassStore } from '../store/classes'
 import type {
   AssignmentSummary,
+  ImportMemberRow,
   InviteCandidate,
   OwnerInvitation,
 } from '../types/teaching'
@@ -46,6 +48,13 @@ const invitationsError = ref('')
 const isSearchingInvites = ref(false)
 const isSendingInvites = ref(false)
 const hasSearchedInvites = ref(false)
+
+const importCsv = ref('')
+const importRows = ref<ImportMemberRow[]>([])
+const importSummary = ref('')
+const importError = ref('')
+const isImporting = ref(false)
+const importFileInput = ref<HTMLInputElement | null>(null)
 
 const notifyForm = reactive({
   audience: 'all' as 'all' | 'selected',
@@ -178,6 +187,46 @@ const sendInvitations = async (): Promise<void> => {
   }
 }
 
+const onImportFile = async (event: Event): Promise<void> => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  importError.value = ''
+  importRows.value = []
+  importSummary.value = ''
+  if (file.size > 512 * 1024) {
+    importError.value = 'CSV 文件不能超过 512 KB'
+    input.value = ''
+    return
+  }
+  try {
+    importCsv.value = await file.text()
+  } catch {
+    importError.value = '读取文件失败'
+    input.value = ''
+  }
+}
+
+const submitImport = async (): Promise<void> => {
+  if (!detail.value || !importCsv.value.trim() || isImporting.value) return
+  importError.value = ''
+  isImporting.value = true
+  try {
+    const result = await importClassMembers(detail.value.id, importCsv.value)
+    importRows.value = result.rows
+    importSummary.value = result.addedCount
+      ? `新增 ${result.addedCount} 人${result.skippedCount ? `，跳过 ${result.skippedCount} 行` : ''}`
+      : `没有新增成员，跳过 ${result.skippedCount} 行`
+    importCsv.value = ''
+    if (importFileInput.value) importFileInput.value.value = ''
+    await classStore.refreshCurrent()
+  } catch (exception: unknown) {
+    importError.value = toErrorMessage(exception)
+  } finally {
+    isImporting.value = false
+  }
+}
+
 const toggleNotifyMember = (userId: number): void => {
   const index = selectedNotifyIds.value.indexOf(userId)
   if (index >= 0) selectedNotifyIds.value.splice(index, 1)
@@ -268,6 +317,11 @@ const resetInvitationState = (): void => {
   invitationsError.value = ''
   isSearchingInvites.value = false
   isSendingInvites.value = false
+  importCsv.value = ''
+  importRows.value = []
+  importSummary.value = ''
+  importError.value = ''
+  isImporting.value = false
   notifyForm.audience = 'all'
   notifyForm.title = ''
   notifyForm.body = ''
@@ -402,6 +456,57 @@ watch(classId, load)
             </article>
           </div>
         </details>
+      </section>
+
+      <section v-if="isOwner && !isArchived" class="teaching-panel">
+        <div class="section-heading">
+          <h2>批量导入学生</h2>
+          <span class="teaching-subtle">CSV 每行一个用户名或邮箱</span>
+        </div>
+        <div class="teaching-form">
+          <label>
+            <span>CSV 文件</span>
+            <input
+              ref="importFileInput"
+              type="file"
+              accept=".csv,text/csv"
+              @change="onImportFile"
+            />
+          </label>
+          <label>
+            <span>或直接粘贴</span>
+            <textarea
+              v-model="importCsv"
+              rows="6"
+              placeholder="username,email&#10;alice,alice@example.com"
+            ></textarea>
+          </label>
+          <div class="teaching-form-actions">
+            <button
+              class="primary-button"
+              type="button"
+              :disabled="isImporting || !importCsv.trim()"
+              @click="submitImport"
+            >
+              {{ isImporting ? '导入中' : '导入' }}
+            </button>
+          </div>
+        </div>
+        <p v-if="importError" class="form-error" role="alert">{{ importError }}</p>
+        <template v-if="importRows.length">
+          <p class="teaching-subtle">{{ importSummary }}</p>
+          <div class="teaching-member-list">
+            <article
+              v-for="row in importRows.filter((item) => item.status !== 'added')"
+              :key="`${row.line}-${row.identifier}`"
+            >
+              <div>
+                <strong>{{ row.username || row.identifier }}</strong>
+                <span>第 {{ row.line }} 行 · {{ row.reason }}</span>
+              </div>
+            </article>
+          </div>
+        </template>
       </section>
 
       <section v-if="isOwner && !isArchived" class="teaching-panel">

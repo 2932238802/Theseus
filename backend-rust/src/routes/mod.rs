@@ -9,7 +9,7 @@ use crate::{
     AppState,
     handlers::{
         admin_forum_handler, admin_user_handler, anticheat_handler, assignment_handler,
-        auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
+        audit_handler, auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
         favorite_handler, forum_handler, home_handler, invitation_handler, notification_handler,
         problem_handler, profile_handler, ranking_handler, run_handler, submission_handler,
         ws_handler,
@@ -95,6 +95,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/classes/{id}/members", post(class_handler::add_member))
         .route(
+            "/api/classes/{id}/import",
+            post(class_handler::import_members).layer(DefaultBodyLimit::max(1024 * 1024)),
+        )
+        .route(
             "/api/classes/{id}/invite-candidates",
             get(invitation_handler::search_candidates),
         )
@@ -150,6 +154,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/assignments/{id}/gradebook",
             get(assignment_handler::gradebook),
+        )
+        .route(
+            "/api/assignments/{id}/gradebook/export",
+            get(assignment_handler::export_gradebook),
         )
         .route(
             "/api/assignments/{id}/solutions/publish",
@@ -436,6 +444,9 @@ pub fn router(state: AppState) -> Router {
             "/api/admin/forum/actions",
             get(admin_forum_handler::list_actions),
         )
+        .route("/api/admin/audit-logs", get(audit_handler::list))
+        .route("/api/admin/audit-logs/meta", get(audit_handler::meta))
+        .route("/api/admin/audit-logs/export", get(audit_handler::export))
         .nest_service("/uploads", ServeDir::new(upload_dir))
         .with_state(state)
         .layer(CorsLayer::permissive())

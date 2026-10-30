@@ -6,12 +6,15 @@ use crate::{
         error::AppError,
         response::{created, ok},
     },
-    middleware::auth::authenticate,
+    middleware::auth::{AuthUser, authenticate},
     models::user::{
         ForgotPasswordRequest, LoginRequest, LoginResponse, PublicUser, RegisterRequest,
         RegisterResponse, ResetPasswordRequest, VerifyEmailRequest,
     },
-    services::auth_service,
+    services::{
+        audit_service::{self, AuditContext, AuditRecord},
+        auth_service,
+    },
 };
 
 pub async fn register(
@@ -26,6 +29,7 @@ pub async fn register(
 
 pub async fn login(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(request): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let (user, token) = auth_service::login(
@@ -35,6 +39,25 @@ pub async fn login(
         state.config.jwt_expiration_hours,
     )
     .await?;
+    let actor = AuthUser {
+        id: user.id,
+        username: user.username.clone(),
+        role: user.role.clone(),
+        email_verified: user.email_verified_at.is_some(),
+    };
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &actor,
+        &context,
+        AuditRecord::new(
+            "auth.login",
+            "user",
+            Some(i64::from(user.id)),
+            format!("用户 {} 登录成功", user.username),
+        ),
+    )
+    .await;
     Ok(ok(LoginResponse {
         token,
         user: PublicUser::from(&user),

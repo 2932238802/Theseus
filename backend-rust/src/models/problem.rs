@@ -5,6 +5,8 @@ use sqlx::FromRow;
 #[derive(Debug, Clone, FromRow)]
 pub struct ProblemRow {
     pub id: i32,
+    /// 题库中的顺序题号：按已发布题目的数据库 id 升序从 1 开始连续编号。
+    pub number: i64,
     pub title: String,
     pub description: String,
     pub difficulty: String,
@@ -24,6 +26,7 @@ pub struct ProblemRow {
 #[derive(Debug, Clone, Serialize)]
 pub struct ProblemResponse {
     pub id: i32,
+    pub number: i64,
     pub title: String,
     pub description: String,
     pub difficulty: String,
@@ -44,6 +47,7 @@ impl ProblemRow {
     pub fn response(self, status: Option<String>, favorited: bool) -> ProblemResponse {
         ProblemResponse {
             id: self.id,
+            number: self.number,
             title: self.title,
             description: self.description,
             difficulty: self.difficulty,

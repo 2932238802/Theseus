@@ -38,6 +38,28 @@ export interface ClassMember {
   removedAt?: string
 }
 
+export type ImportMemberStatus =
+  | 'added'
+  | 'already_member'
+  | 'not_found'
+  | 'not_student'
+  | 'duplicate'
+  | 'invalid'
+
+export interface ImportMemberRow {
+  line: number
+  identifier: string
+  username?: string | null
+  status: ImportMemberStatus
+  reason?: string | null
+}
+
+export interface ImportMembersResult {
+  addedCount: number
+  skippedCount: number
+  rows: ImportMemberRow[]
+}
+
 export interface ClassDetail extends ClassSummary {
   createdAt: string
   inviteCode?: string

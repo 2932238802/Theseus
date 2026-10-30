@@ -1,15 +1,20 @@
 use chrono::Utc;
+use serde_json::json;
 use sqlx::{PgPool, Postgres, QueryBuilder, Transaction};
 
 use crate::{
     common::error::AppError,
+    middleware::auth::AuthUser,
     models::teaching::{
         AdminUserItem, AdminUserListQuery, AdminUserListResponse, ChangeRoleRequest,
         ChangeRoleResponse, ChangeUserStatusRequest, ChangeUserStatusResponse, DeleteUserResponse,
         ROLE_ADMIN, ROLE_STUDENT, ROLE_TEACHER, RestoreReputationRequest,
         RestoreReputationResponse,
     },
-    services::notification_service,
+    services::{
+        audit_service::{self, AuditContext, AuditRecord},
+        notification_service,
+    },
 };
 
 const DEFAULT_PAGE: u32 = 1;
@@ -91,10 +96,12 @@ fn push_filters(builder: &mut QueryBuilder<'_, Postgres>, q: Option<&str>, role:
 
 pub async fn change_role(
     pool: &PgPool,
-    actor_id: i32,
+    actor: &AuthUser,
     target_id: i32,
     request: &ChangeRoleRequest,
+    context: &AuditContext,
 ) -> Result<ChangeRoleResponse, AppError> {
+    let actor_id = actor.id;
     let target_role = request.role.trim();
     validate_role(target_role)?;
     if actor_id == target_id {
@@ -178,6 +185,24 @@ pub async fn change_role(
     .await
     .map_err(AppError::Database)?;
 
+    audit_service::record_tx(
+        &mut transaction,
+        actor,
+        context,
+        AuditRecord::new(
+            "user.role_change",
+            "user",
+            Some(i64::from(target_id)),
+            format!("将用户 {username} 的角色从 {current_role} 改为 {target_role}"),
+        )
+        .before(json!({ "role": current_role }))
+        .after(json!({
+            "role": target_role,
+            "archived_class_count": archived_class_count,
+        })),
+    )
+    .await?;
+
     transaction.commit().await.map_err(AppError::Database)?;
     tracing::info!(
         actor_id,
@@ -198,10 +223,12 @@ pub async fn change_role(
 
 pub async fn change_status(
     pool: &PgPool,
-    actor_id: i32,
+    actor: &AuthUser,
     target_id: i32,
     request: &ChangeUserStatusRequest,
+    context: &AuditContext,
 ) -> Result<ChangeUserStatusResponse, AppError> {
+    let actor_id = actor.id;
     let next_status = request.status.trim();
     if !matches!(next_status, STATUS_ACTIVE | STATUS_DISABLED) {
         return Err(AppError::BadRequest(
@@ -254,6 +281,22 @@ pub async fn change_status(
     .execute(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
+
+    audit_service::record_tx(
+        &mut transaction,
+        actor,
+        context,
+        AuditRecord::new(
+            "user.status_change",
+            "user",
+            Some(i64::from(id)),
+            format!("将用户 {username} 的状态从 {current_status} 改为 {next_status}"),
+        )
+        .before(json!({ "status": current_status }))
+        .after(json!({ "status": next_status })),
+    )
+    .await?;
+
     transaction.commit().await.map_err(AppError::Database)?;
     tracing::info!(
         actor_id,
@@ -276,10 +319,12 @@ pub async fn change_status(
 
 pub async fn restore_reputation(
     pool: &PgPool,
-    actor_id: i32,
+    actor: &AuthUser,
     target_id: i32,
     request: &RestoreReputationRequest,
+    context: &AuditContext,
 ) -> Result<RestoreReputationResponse, AppError> {
+    let actor_id = actor.id;
     let score_after = round1(request.score);
     if !score_after.is_finite() || !(0.0..=100.0).contains(&score_after) {
         return Err(AppError::BadRequest(
@@ -395,6 +440,27 @@ pub async fn restore_reputation(
     )
     .await?;
 
+    audit_service::record_tx(
+        &mut transaction,
+        actor,
+        context,
+        AuditRecord::new(
+            "user.reputation_restore",
+            "user",
+            Some(i64::from(id)),
+            format!(
+                "将用户 {username} 的信誉分从 {score_before:.1} 恢复为 {score_after:.1}{}",
+                if unban { "，并解除封禁" } else { "" }
+            ),
+        )
+        .before(json!({ "reputation_score": score_before, "status": current_status }))
+        .after(json!({
+            "reputation_score": score_after,
+            "status": if unban { STATUS_ACTIVE } else { current_status.as_str() },
+        })),
+    )
+    .await?;
+
     transaction.commit().await.map_err(AppError::Database)?;
     tracing::info!(
         actor_id,
@@ -428,21 +494,24 @@ fn round1(value: f64) -> f64 {
 
 pub async fn delete_user(
     pool: &PgPool,
-    actor_id: i32,
+    actor: &AuthUser,
     target_id: i32,
+    context: &AuditContext,
 ) -> Result<DeleteUserResponse, AppError> {
+    let actor_id = actor.id;
     if actor_id == target_id {
         return Err(AppError::BadRequest("不能删除自己的账号".to_owned()));
     }
 
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
-    let target: Option<(i32, String, String)> =
-        sqlx::query_as("SELECT id, role, status FROM users WHERE id = $1 FOR UPDATE")
+    let target: Option<(i32, String, String, String)> =
+        sqlx::query_as("SELECT id, username, role, status FROM users WHERE id = $1 FOR UPDATE")
             .bind(target_id)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(AppError::Database)?;
-    let (id, role, status) = target.ok_or_else(|| AppError::NotFound("用户不存在".to_owned()))?;
+    let (id, username, role, status) =
+        target.ok_or_else(|| AppError::NotFound("用户不存在".to_owned()))?;
 
     if status == STATUS_DELETED {
         transaction.commit().await.map_err(AppError::Database)?;
@@ -509,8 +578,22 @@ pub async fn delete_user(
     .await
     .map_err(AppError::Database)?;
 
+    audit_service::record_tx(
+        &mut transaction,
+        actor,
+        context,
+        AuditRecord::new(
+            "user.delete",
+            "user",
+            Some(i64::from(id)),
+            format!("删除用户 {username}（原角色 {role}，原状态 {status}）"),
+        )
+        .before(json!({ "username": username, "role": role, "status": status }))
+        .after(json!({ "status": STATUS_DELETED })),
+    )
+    .await?;
+
     transaction.commit().await.map_err(AppError::Database)?;
-    tracing::info!(actor_id, target_id = id, "user deleted by admin");
     Ok(DeleteUserResponse {
         id,
         message: "账号已删除".to_owned(),

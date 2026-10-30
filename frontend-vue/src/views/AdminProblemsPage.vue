@@ -218,7 +218,7 @@ onMounted(() => {
             <tr>
               <th>题目</th>
               <th>难度</th>
-              <th>出题教师</th>
+              <th>出题人</th>
               <th>状态</th>
               <th>提交时间</th>
               <th>操作</th>
@@ -268,7 +268,7 @@ onMounted(() => {
         <header>
           <div>
             <h2 id="problem-review-title">{{ detail?.title || '题目审核' }}</h2>
-            <p v-if="detail">#{{ detail.id }} · {{ detail.createdByUsername || '未知教师' }}</p>
+            <p v-if="detail">#{{ detail.id }} · {{ detail.createdByUsername || '未知用户' }}</p>
           </div>
           <button type="button" aria-label="关闭" @click="closeDetail">×</button>
         </header>

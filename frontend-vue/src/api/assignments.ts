@@ -198,6 +198,14 @@ export const fetchGradebook = async (id: number, includeRemoved: boolean): Promi
   return mapGradebook(data)
 }
 
+export const exportGradebook = async (id: number, includeRemoved: boolean): Promise<Blob> => {
+  const response = await http.get<Blob>(`/assignments/${id}/gradebook/export`, {
+    params: { include_removed: includeRemoved ? 1 : 0 },
+    responseType: 'blob',
+  })
+  return response.data
+}
+
 export const updateProblemGrade = async (
   assignmentId: number,
   userId: number,

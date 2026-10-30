@@ -155,6 +155,79 @@ pub async fn gradebook(
     compute_gradebook_with_context(pool, &context, include_removed).await
 }
 
+/// 导出批改台为 CSV（UTF-8 BOM，Excel 可直接打开）。
+pub async fn export_gradebook(
+    pool: &PgPool,
+    user: &AuthUser,
+    id: i32,
+    query: &GradebookQuery,
+) -> Result<String, AppError> {
+    let gradebook = gradebook(pool, user, id, query).await?;
+    Ok(gradebook_csv(&gradebook))
+}
+
+fn gradebook_csv(gradebook: &GradebookResponse) -> String {
+    let mut lines = Vec::with_capacity(gradebook.students.len() + 1);
+    let mut header = vec![
+        "用户名".to_owned(),
+        "邮箱".to_owned(),
+        "成员状态".to_owned(),
+    ];
+    header.extend(
+        gradebook
+            .problems
+            .iter()
+            .map(|problem| format!("{}（{} 分）", problem.title, problem.points)),
+    );
+    header.push("总分".to_owned());
+    header.push("整体评语".to_owned());
+    lines.push(
+        header
+            .iter()
+            .map(|value| csv_field(value))
+            .collect::<Vec<_>>()
+            .join(","),
+    );
+
+    for student in &gradebook.students {
+        let mut row = vec![
+            student.username.clone(),
+            student.email.clone(),
+            if student.status == "removed" {
+                "已移除".to_owned()
+            } else {
+                "正常".to_owned()
+            },
+        ];
+        for problem in &gradebook.problems {
+            let score = student
+                .problems
+                .iter()
+                .find(|cell| cell.problem_id == problem.problem_id)
+                .map_or(0, |cell| cell.final_score);
+            row.push(score.to_string());
+        }
+        row.push(student.total_score.to_string());
+        row.push(student.overall_feedback.clone().unwrap_or_default());
+        lines.push(
+            row.iter()
+                .map(|value| csv_field(value))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+    }
+
+    format!("\u{feff}{}\n", lines.join("\n"))
+}
+
+fn csv_field(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_owned()
+    }
+}
+
 pub async fn compute_gradebook(
     pool: &PgPool,
     id: i32,
@@ -581,7 +654,10 @@ fn normalize_feedback(
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_feedback;
+    use super::{csv_field, gradebook_csv, normalize_feedback};
+    use crate::models::teaching::{
+        GradebookAssignment, GradebookCell, GradebookProblem, GradebookResponse, GradebookStudent,
+    };
 
     #[test]
     fn feedback_is_trimmed_and_bounded() {
@@ -594,5 +670,69 @@ mod tests {
             None
         );
         assert!(normalize_feedback(Some("12345678901"), 10, "评语").is_err());
+    }
+
+    #[test]
+    fn csv_fields_are_quoted_when_needed() {
+        assert_eq!(csv_field("alice"), "alice");
+        assert_eq!(csv_field("a,b"), "\"a,b\"");
+        assert_eq!(csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(csv_field("line1\nline2"), "\"line1\nline2\"");
+    }
+
+    #[test]
+    fn gradebook_csv_has_bom_header_and_scores() {
+        let gradebook = GradebookResponse {
+            assignment: GradebookAssignment {
+                id: 1,
+                title: "作业 1".to_owned(),
+                due_at: None,
+                grades_published_at: None,
+                late_policy: "none".to_owned(),
+                scoring_policy: "highest".to_owned(),
+            },
+            problems: vec![GradebookProblem {
+                problem_id: 7,
+                title: "两数之和".to_owned(),
+                points: 100,
+            }],
+            students: vec![GradebookStudent {
+                user_id: 2,
+                username: "alice".to_owned(),
+                email: "alice@example.test".to_owned(),
+                status: "active".to_owned(),
+                overall_feedback: Some("不错，,继续".to_owned()),
+                total_score: 80,
+                problems: vec![GradebookCell {
+                    problem_id: 7,
+                    attempts: 2,
+                    attempts_limit: None,
+                    accepted: true,
+                    is_late: false,
+                    late_days: 0,
+                    late_deduction: 0,
+                    exempt: false,
+                    exemption_mode: None,
+                    included_in_total: true,
+                    auto_score: 80,
+                    manual_score: None,
+                    final_score: 80,
+                    feedback: None,
+                    last_submission_id: Some(3),
+                    last_status: Some("accepted".to_owned()),
+                }],
+            }],
+        };
+        let csv = gradebook_csv(&gradebook);
+        assert!(csv.starts_with('\u{feff}'));
+        let lines: Vec<&str> = csv.trim_start_matches('\u{feff}').lines().collect();
+        assert_eq!(
+            lines[0],
+            "用户名,邮箱,成员状态,两数之和（100 分）,总分,整体评语"
+        );
+        assert_eq!(
+            lines[1],
+            "alice,alice@example.test,正常,80,80,\"不错，,继续\""
+        );
     }
 }

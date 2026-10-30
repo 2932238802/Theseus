@@ -18,7 +18,7 @@ cp .env.example .env
 cargo run
 ```
 
-数据库迁移在服务启动时自动执行。题目提交会先返回 `pending`，随后由 `JudgeService` 进入 `judging` 并在评测器未配置时记录 `runtime_error`；该服务边界不会执行不受信任的用户代码。自定义题目通过 `POST /api/problems/custom` 提交，管理员通过待审核接口审批后才会公开。
+数据库迁移在服务启动时自动执行。题目提交会先返回 `pending`，随后由 `JudgeService` 进入 `judging` 并在评测器未配置时记录 `runtime_error`；该服务边界不会执行不受信任的用户代码。学生和教师均可通过 `POST /api/problems/custom` 提交个人题目，管理员通过待审核接口审批后才会公开。
 
 ## 接口清单
 
@@ -37,7 +37,10 @@ cargo run
 | GET | `/api/problems/{id}/draft` | 用户 | 读取云端草稿，查询参数 `language`，返回 `{draft:{language,code,updated_at}\|null}` |
 | PUT | `/api/problems/{id}/draft` | 用户 | 保存云端草稿 `{language,code}`；`code` 为空或全空白时删除草稿 |
 | GET | `/api/stats` | 否 | `{total_problems,total_submissions,accepted_submissions}` |
-| POST | `/api/problems/custom` | 用户 | 提交自定义题目，状态为 `pending`；迁移后仅 `teacher` 可提交 |
+| POST | `/api/problems/custom` | 学生 / 教师 | 个人出题，题目以 `pending` 状态落库，管理员审核通过后公开；管理员请使用管理端接口 |
+| GET | `/api/problems/mine` | 学生 / 教师 | 当前用户提交的题目，支持 `status`、`page`、`size` |
+| GET | `/api/problems/mine/{id}` | 学生 / 教师 | 查看本人提交的题目详情，非本人返回 404 |
+| PUT | `/api/problems/mine/{id}` | 学生 / 教师 | 仅 `rejected` 题目可修改并重新进入 `pending` |
 | POST | `/api/admin/problems` | 管理员 | 创建题目 |
 | GET | `/api/admin/problems/pending` | 管理员 | 待审核题目 |
 | PUT | `/api/admin/problems/{id}/review` | 管理员 | 审核题目 |
@@ -84,6 +87,9 @@ cargo run
 | POST | `/api/admin/events/{id}/forum` | 管理员 | 同步赛事到校园墙并置顶 |
 | GET | `/api/admin/contests/{id}/proctor-events` | 管理员 | 疑似粘贴事件与复核状态 |
 | POST | `/api/admin/contests/{id}/proctor-events/{event_id}/review` | 管理员 | 提交复核结论 `{status,note}`；确认后扣分并重新结算 |
+| GET | `/api/admin/audit-logs` | 管理员 | 审计日志分页，支持 `page`、`size`、`action`、`target_type`、`actor_id`、`q`、`from`、`to` |
+| GET | `/api/admin/audit-logs/meta` | 管理员 | 动作与对象类型去重计数，供筛选下拉 |
+| GET | `/api/admin/audit-logs/export` | 管理员 | 按当前筛选导出审计 CSV（UTF-8 BOM，最多 10000 行） |
 | PUT | `/api/admin/users/{id}/reputation` | 管理员 | 定量恢复信誉分 `{score,note}`；恢复到 0 分以上自动解封 |
 | PUT | `/api/assignments/{id}` | 教师 | 修改作业；发布后仅允许延长截止时间 |
 | POST | `/api/assignments/{id}/solutions/publish` | 教师 | 发布答案解析，要求作业已截止 |
@@ -91,6 +97,9 @@ cargo run
 | PUT | `/api/assignments/{id}/overrides/{user_id}/problems/{problem_id}` | 教师 | 设置补交/免修 |
 | DELETE | `/api/assignments/{id}/overrides/{user_id}/problems/{problem_id}` | 教师 | 撤销补交/免修 |
 | GET | `/api/assignments/{id}/statistics` | 学生/教师 | 匿名组织统计；学生需作业开启统计 |
+| GET | `/api/assignments/{id}/gradebook` | 教师 | 批改台，`include_removed=1` 包含已移除成员 |
+| GET | `/api/assignments/{id}/gradebook/export` | 教师 | 导出成绩 CSV（UTF-8 BOM），参数同批改台 |
+| POST | `/api/classes/{id}/import` | 教师 | CSV 批量导入学生，逐行返回 `added/skipped` 结果 |
 | GET | `/api/assignments/{id}/policy-audits` | 教师 | 策略、例外和解析发布审计 |
 | GET | `/api/assignments/{id}/problems/{problem_id}/peer-submissions` | 学生/教师 | 同学 AC 代码；需作业开启开关 |
 | GET | `/api/teacher/cheat-reports` | 教师 | 自己组织作业的相似度报告，支持 `status`、`assignment_id`、`page`、`size` |
@@ -117,6 +126,22 @@ cargo run
 
 非法 `sort`/`order` 返回 400。登录失败（用户不存在或密码错误）返回 401 与 `用户名或密码错误`。
 
+题目列表与详情额外返回 `number`：按已发布题目的数据库 `id` 升序连续编号的题号（1、2、3…），用于题库展示；`id` 仍是路由与判题使用的数据库主键。
+
+### 个人出题
+
+学生和教师均可提交题目：`POST /api/problems/custom` 落库为 `pending`，管理员通过 `/api/admin/problems/{id}/review` 审核通过后才进入题库。`/api/problems/mine*` 仅返回和操作当前用户自己提交的题目；管理员调用个人出题接口返回 403，应使用 `/api/admin/problems`。
+
+
+### 审计日志
+
+管理员可通过 `GET /api/admin/audit-logs` 查询敏感操作留痕，按 `action`、`target_type`、`actor_id` 精确筛选，`q` 模糊匹配操作者/动作/摘要/IP，`from`/`to` 接受 `YYYY-MM-DD` 或 RFC3339（日期按 UTC 整天）。`size` 上限 100，默认 20。
+
+返回 `{total,page,size,logs[]}`，每条记录包含 `actor_id`、`actor_username`、`actor_role`、`action`、`target_type`、`target_id`、`summary`、`before`、`after`、`ip`、`user_agent`、`created_at`。`GET /api/admin/audit-logs/meta` 返回动作与对象类型的去重计数。
+
+`GET /api/admin/audit-logs/export` 使用相同筛选参数导出 CSV，列为时间、操作者、角色、动作、对象类型、对象ID、摘要、变更前、变更后、IP、User-Agent；每次导出本身也会写一条 `audit.export`。
+
+审计日志只追加，后端不提供修改或删除接口。成绩相关动作只记录操作者、作业与学生/题目 id，不写入分数或评语，避免管理员借审计接口读取教学数据。完整动作清单见 `doc/2610303_审计中心设计方案.md`。
 
 ## 作业策略接口
 
@@ -182,6 +207,66 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 | 次数用尽 | 409 | 该题提交次数已用完 |
 | 发布后修改锁定策略 | 409 | 作业已发布，计分、次数、迟交和可见性策略不可修改 |
 | 未截止发布解析 | 409 | 作业尚未截止，不能发布解析 |
+
+
+## 教学数据导入与导出
+
+设计见 `doc/2610302_教学数据导入导出设计方案.md`。
+
+### 批量导入学生
+
+```http
+POST /api/classes/{id}/import
+Authorization: Bearer <teacher>
+Content-Type: application/json
+```
+
+```json
+{
+  "csv": "username,email\nalice,alice@example.com\nbob,\ncarol,carol@example.com"
+}
+```
+
+- 仅组织 owner 教师可调用；组织已归档返回 409，非 owner 返回 404。
+- CSV 支持 `username,email` 表头（中英文均可），也可省略表头；每行按顺序尝试用户名、邮箱。
+- 有效行直接加入组织（与单条添加成员一致），不发送邀请；已是成员的行保持原状态。
+- 单行失败不影响其他行，响应逐行给出结果：
+
+```json
+{
+  "success": true,
+  "data": {
+    "added_count": 2,
+    "skipped_count": 4,
+    "rows": [
+      {"line": 2, "identifier": "alice", "username": "alice", "status": "added", "reason": null},
+      {"line": 3, "identifier": "bob", "username": "bob", "status": "already_member", "reason": "已经是组织成员"},
+      {"line": 4, "identifier": "carol", "username": "carol", "status": "duplicate", "reason": "CSV 中重复出现"},
+      {"line": 5, "identifier": "ghost", "username": null, "status": "not_found", "reason": "未找到该用户名或邮箱"},
+      {"line": 6, "identifier": "teacher1", "username": "teacher1", "status": "not_student", "reason": "教师或管理员账号不能加入组织"}
+    ]
+  },
+  "error": null
+}
+```
+
+`status` 取值：`added`、`already_member`、`not_found`、`not_student`、`duplicate`、`invalid`。
+
+限制：请求体 ≤1 MB，CSV ≤512 KB、最多 500 名学生、10 列、单字段 320 字符；超限或引号未闭合返回 400。空行与以 `#` 开头的行会被忽略。
+
+### 导出成绩
+
+```http
+GET /api/assignments/{id}/gradebook/export?include_removed=0
+Authorization: Bearer <teacher>
+```
+
+- 仅作业所属教师可调用；学生返回 403，非 owner 教师返回 404。
+- 返回 `text/csv; charset=utf-8`，带 UTF-8 BOM，`Content-Disposition: attachment; filename="assignment-{id}-grades.csv"`。
+- 列为：用户名、邮箱、成员状态、各题最终分（`题目名（N 分）`）、总分、整体评语；含逗号、引号或换行的字段按 CSV 规则转义。
+- `include_removed=1` 与批改台一致，包含已移除但仍有提交或成绩的成员。
+
+成绩发布仍走既有通知链路：`POST /api/assignments/{id}/grades/publish` 写入 `assignment_grades_published` 站内信，后台邮件循环按 `assignment` 类别偏好投递邮件。
 
 
 ## 个人中心接口

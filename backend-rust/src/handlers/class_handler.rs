@@ -13,7 +13,8 @@ use crate::{
     },
     middleware::auth::{authenticate, require_student, require_teacher, require_verified_email},
     models::teaching::{
-        AddClassMemberRequest, CreateClassRequest, JoinClassRequest, UpdateClassRequest,
+        AddClassMemberRequest, CreateClassRequest, ImportClassMembersRequest, JoinClassRequest,
+        UpdateClassRequest,
     },
     services::class_service,
 };
@@ -78,6 +79,17 @@ pub async fn add_member(
     let user = require_teacher(&state.pool, &headers, &state.config).await?;
     let data = class_service::add_member(&state.pool, &user, id, &request).await?;
     Ok(created(data))
+}
+
+pub async fn import_members(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+    Json(request): Json<ImportClassMembersRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let data = class_service::import_members(&state.pool, &user, id, &request).await?;
+    Ok(ok(data))
 }
 
 pub async fn remove_member(

@@ -4,6 +4,7 @@ use axum::{
     http::HeaderMap,
     response::IntoResponse,
 };
+use serde_json::json;
 
 use crate::{
     AppState,
@@ -12,7 +13,10 @@ use crate::{
     models::notification::{
         NotificationListQuery, SendNotificationRequest, UpdateNotificationPreferencesRequest,
     },
-    services::notification_service,
+    services::{
+        audit_service::{self, AuditContext, AuditRecord},
+        notification_service,
+    },
 };
 
 pub async fn send(
@@ -28,6 +32,30 @@ pub async fn send(
     }
     require_verified_email(&user)?;
     let data = notification_service::send_custom(&state.pool, &user, &request).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &user,
+        &context,
+        AuditRecord::new(
+            "notification.send",
+            "notification",
+            None,
+            format!(
+                "发送通知《{}》，接收人 {} 位",
+                request.title.trim(),
+                data.recipient_count
+            ),
+        )
+        .after(json!({
+            "recipient_count": data.recipient_count,
+            "class_id": request.class_id,
+            "role": request.role,
+            "all": request.all,
+            "user_ids": request.user_ids,
+        })),
+    )
+    .await;
     Ok(ok(data))
 }
 

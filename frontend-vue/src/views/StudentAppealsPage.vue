@@ -129,7 +129,9 @@ onMounted(() => {
         </p>
       </article>
     </div>
-    <div v-else class="anticheat-empty">暂无作弊记录</div>
+    <div v-else class="anticheat-empty">
+      暂无可申诉记录。教师确认相似度报告后，可在这里提交一次申诉。
+    </div>
 
     <div v-if="detail || detailLoading" class="anticheat-dialog" @click.self="closeDetail">
       <section class="anticheat-dialog-panel" role="dialog" aria-modal="true" aria-label="报告详情">

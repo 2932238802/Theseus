@@ -46,7 +46,7 @@ const contestRef = ref<HTMLElement | null>(null)
 const isProfileMenuOpen = ref(false)
 const profileMenuRef = ref<HTMLElement | null>(null)
 const isCampusArea = computed(() =>
-  ['/classes', '/assignments'].some(
+  ['/classes', '/assignments', '/campus'].some(
     (prefix) => route.path === prefix || route.path.startsWith(`${prefix}/`),
   ) || route.path === '/profile/assignments',
 )
@@ -55,7 +55,10 @@ const isContestArea = computed(
 )
 const isProfileArea = computed(
   () =>
-    (route.path === '/profile' || route.path.startsWith('/profile/')) &&
+    (route.path === '/profile' ||
+      route.path.startsWith('/profile/') ||
+      route.path === '/personal' ||
+      route.path.startsWith('/personal/')) &&
     route.path !== '/profile/assignments',
 )
 
@@ -211,6 +214,14 @@ onBeforeUnmount(() => {
           >
             我的作业
           </span>
+          <RouterLink
+            v-if="authStore.isTeacher"
+            role="menuitem"
+            to="/campus/anticheat"
+            @click="closeCampus"
+          >
+            作弊复核
+          </RouterLink>
         </div>
       </div>
       <div
@@ -236,6 +247,14 @@ onBeforeUnmount(() => {
           aria-label="个人"
         >
           <RouterLink role="menuitem" to="/profile" @click="closeProfileMenu">个人界面</RouterLink>
+          <RouterLink
+            v-if="canBrowseAssignments"
+            role="menuitem"
+            to="/personal/problems"
+            @click="closeProfileMenu"
+          >
+            个人出题
+          </RouterLink>
           <RouterLink role="menuitem" to="/profile/favorites" @click="closeProfileMenu">
             个人收藏
           </RouterLink>
@@ -249,8 +268,6 @@ onBeforeUnmount(() => {
           </RouterLink>
         </div>
       </div>
-      <RouterLink v-if="authStore.isTeacher" class="nav-teacher-problems" to="/teacher/problems">出题</RouterLink>
-      <RouterLink v-if="authStore.isTeacher" class="nav-teacher-problems" to="/teacher/anticheat">复核</RouterLink>
       <div v-if="authStore.isAdmin" ref="manageRef" class="nav-menu" :class="{ 'is-active': isAdminArea }">
         <button
           id="admin-menu-button"
@@ -274,6 +291,7 @@ onBeforeUnmount(() => {
           <RouterLink role="menuitem" to="/admin/forum" @click="closeManage">论坛管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/users" @click="closeManage">用户管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/notifications" @click="closeManage">通知管理</RouterLink>
+          <RouterLink role="menuitem" to="/admin/audit" @click="closeManage">审计日志</RouterLink>
         </div>
       </div>
     </nav>
@@ -304,7 +322,7 @@ onBeforeUnmount(() => {
           <strong>{{ authStore.user?.username }}</strong>
           <span>{{ authStore.user?.email }}</span>
           <hr />
-          <RouterLink v-if="authStore.isTeacher" to="/teacher/problems" @click="isMenuOpen = false">我的题目</RouterLink>
+          <RouterLink v-if="canBrowseAssignments" to="/personal/problems" @click="isMenuOpen = false">个人出题</RouterLink>
           <RouterLink to="/profile" @click="isMenuOpen = false">个人</RouterLink>
           <button type="button" @click="logout">退出登录</button>
         </div>

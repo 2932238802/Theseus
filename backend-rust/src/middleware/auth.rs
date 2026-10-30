@@ -10,6 +10,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct AuthUser {
     pub id: i32,
+    pub username: String,
     pub role: String,
     pub email_verified: bool,
 }
@@ -38,20 +39,22 @@ pub async fn authenticate(
 ) -> Result<AuthUser, AppError> {
     let token = bearer_token(headers).ok_or(AppError::Unauthorized)?;
     let Claims { sub, ver, .. } = decode_token(token, &config.jwt_secret)?;
-    let row: Option<(String, bool, i32, String)> = sqlx::query_as(
-        "SELECT role, email_verified_at IS NOT NULL, token_version, status \
+    let row: Option<(String, String, bool, i32, String)> = sqlx::query_as(
+        "SELECT username, role, email_verified_at IS NOT NULL, token_version, status \
          FROM users WHERE id = $1",
     )
     .bind(sub)
     .fetch_optional(pool)
     .await
     .map_err(AppError::Database)?;
-    let (role, email_verified, token_version, status) = row.ok_or(AppError::Unauthorized)?;
+    let (username, role, email_verified, token_version, status) =
+        row.ok_or(AppError::Unauthorized)?;
     if status != "active" || ver != token_version {
         return Err(AppError::Unauthorized);
     }
     Ok(AuthUser {
         id: sub,
+        username,
         role,
         email_verified,
     })
@@ -148,16 +151,19 @@ mod tests {
     fn roles_are_mutually_exclusive() {
         let student = AuthUser {
             id: 1,
+            username: "student".to_owned(),
             role: "student".to_owned(),
             email_verified: true,
         };
         let teacher = AuthUser {
             id: 2,
+            username: "teacher".to_owned(),
             role: "teacher".to_owned(),
             email_verified: true,
         };
         let admin = AuthUser {
             id: 3,
+            username: "admin".to_owned(),
             role: "admin".to_owned(),
             email_verified: true,
         };

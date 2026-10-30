@@ -277,7 +277,7 @@ pub async fn scan_submission(
                     None,
                     "新的代码相似度报告",
                     Some(&body),
-                    Some("/teacher/anticheat"),
+                    Some("/campus/anticheat"),
                     Some("cheat_report"),
                     Some(id),
                 )
@@ -963,7 +963,7 @@ pub async fn submit_appeal(
         Some(user.id),
         "学生提交了作弊申诉",
         Some(&body),
-        Some("/teacher/anticheat"),
+        Some("/campus/anticheat"),
         Some("appeal"),
         Some(appeal_id),
     )

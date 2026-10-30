@@ -1,4 +1,11 @@
-import type { ClassDetail, ClassMember, ClassSummary } from '../types/teaching'
+import type {
+  ClassDetail,
+  ClassMember,
+  ClassSummary,
+  ImportMemberRow,
+  ImportMemberStatus,
+  ImportMembersResult,
+} from '../types/teaching'
 import { type ApiEnvelope, unwrap } from './client'
 import {
   type BackendClassDetail,
@@ -67,6 +74,42 @@ export const addClassMember = async (classId: number, identifier: string): Promi
     http.post<ApiEnvelope<BackendClassMember>>(`/classes/${classId}/members`, { identifier }),
   )
   return mapClassMember(data)
+}
+
+interface BackendImportMemberRow {
+  line: number
+  identifier: string
+  username: string | null
+  status: ImportMemberStatus
+  reason: string | null
+}
+
+interface BackendImportMembersResult {
+  added_count: number
+  skipped_count: number
+  rows: BackendImportMemberRow[]
+}
+
+const mapImportRow = (row: BackendImportMemberRow): ImportMemberRow => ({
+  line: row.line,
+  identifier: row.identifier,
+  username: row.username,
+  status: row.status,
+  reason: row.reason,
+})
+
+export const importClassMembers = async (
+  classId: number,
+  csv: string,
+): Promise<ImportMembersResult> => {
+  const data = await unwrap(
+    http.post<ApiEnvelope<BackendImportMembersResult>>(`/classes/${classId}/import`, { csv }),
+  )
+  return {
+    addedCount: data.added_count,
+    skippedCount: data.skipped_count,
+    rows: data.rows.map(mapImportRow),
+  }
 }
 
 export const removeClassMember = async (classId: number, userId: number): Promise<void> => {

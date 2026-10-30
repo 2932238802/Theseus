@@ -193,6 +193,7 @@ const loadEditTarget = async (): Promise<void> => {
     if (post.problem) {
       selectedProblem.value = {
         id: post.problem.id,
+        number: post.problem.id,
         title: post.problem.title,
         difficulty: post.problem.difficulty as Difficulty,
         acceptance: 0,

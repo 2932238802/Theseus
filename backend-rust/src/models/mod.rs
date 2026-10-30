@@ -1,4 +1,5 @@
 pub mod anticheat;
+pub mod audit;
 pub mod badge;
 pub mod contest;
 pub mod draft;

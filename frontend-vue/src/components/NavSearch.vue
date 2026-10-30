@@ -39,8 +39,32 @@ const targets = computed<SearchTarget[]>(() => {
   if (authStore.isStudent || authStore.isTeacher) {
     items.push({ label: '我的组织', hint: '组织、成员与作业', group: '教学', to: '/classes', keywords: 'classes 组织 作业' })
   }
+  if (authStore.isStudent || authStore.isTeacher) {
+    items.push({
+      label: '个人出题',
+      hint: '提交题目，管理员审核后发布',
+      group: '个人',
+      to: '/personal/problems',
+      keywords: 'personal problems 出题 我的题目 投稿',
+    })
+  }
+  if (authStore.isStudent) {
+    items.push({
+      label: '我的申诉',
+      hint: '对已确认的作弊报告申诉一次',
+      group: '个人',
+      to: '/profile/appeals',
+      keywords: 'appeal 申诉 作弊 复核',
+    })
+  }
   if (authStore.isTeacher) {
-    items.push({ label: '出题', hint: '创建与维护题目', group: '教学', to: '/teacher/problems', keywords: 'teacher problems 出题 我的题目' })
+    items.push({
+      label: '作弊复核',
+      hint: '代码相似度报告与学生申诉',
+      group: '教学',
+      to: '/campus/anticheat',
+      keywords: 'anticheat 作弊 复核 申诉',
+    })
   }
   if (authStore.isAdmin) {
     items.push(
@@ -49,6 +73,7 @@ const targets = computed<SearchTarget[]>(() => {
       { label: '用户管理', hint: '用户与角色管理', group: '管理', to: '/admin/users', keywords: 'admin users 用户 角色' },
       { label: '赛事管理', hint: '创建赛事并配置规则与题目', group: '管理', to: '/admin/events', keywords: 'admin events 竞赛 赛事 报名 规则' },
       { label: '通知管理', hint: '向用户或角色发送通知', group: '管理', to: '/admin/notifications', keywords: 'admin notifications 通知 广播' },
+      { label: '审计日志', hint: '敏感操作留痕、筛选与导出', group: '管理', to: '/admin/audit', keywords: 'audit 审计 日志 操作记录' },
     )
   }
   return items

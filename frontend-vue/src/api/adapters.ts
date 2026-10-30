@@ -27,6 +27,7 @@ export interface BackendUser {
 
 export interface BackendProblem {
   id: number
+  number?: number
   title: string
   description: string
   difficulty: string
@@ -230,6 +231,7 @@ export const mapUser = (user: BackendUser): User => ({
 
 export const mapProblem = (problem: BackendProblem): Problem => ({
   id: problem.id,
+  number: typeof problem.number === 'number' ? problem.number : problem.id,
   title: problem.title,
   difficulty: normalizeDifficulty(problem.difficulty),
   acceptance: Number(problem.acceptance_rate) || 0,

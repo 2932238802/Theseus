@@ -138,6 +138,28 @@ pub struct AddClassMemberRequest {
     pub identifier: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ImportClassMembersRequest {
+    pub csv: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportClassMemberRow {
+    pub line: usize,
+    pub identifier: String,
+    pub username: Option<String>,
+    /// `added` / `already_member` / `not_found` / `not_student` / `duplicate` / `invalid`
+    pub status: String,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportClassMembersResponse {
+    pub added_count: usize,
+    pub skipped_count: usize,
+    pub rows: Vec<ImportClassMemberRow>,
+}
+
 #[derive(Debug, Serialize, Clone, FromRow)]
 pub struct ClassMemberView {
     pub user_id: i32,

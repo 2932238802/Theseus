@@ -4,7 +4,7 @@ use axum::{
     http::HeaderMap,
     response::IntoResponse,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use sqlx::{FromRow, PgPool, Postgres, QueryBuilder};
 
 use crate::{
@@ -17,23 +17,38 @@ use crate::{
         cpp_template, java_template, javascript_template, python_template, validate_judge_cases,
         validate_run_config,
     },
-    middleware::auth::{optional_authenticate, require_admin, require_teacher},
+    middleware::auth::{AuthUser, authenticate, optional_authenticate, require_admin},
     models::problem::{
         AdminProblemListItem, AdminProblemListQuery, AdminProblemListResponse,
         AdminProblemResponse, MyProblemListItem, MyProblemListQuery, MyProblemListResponse,
         PendingProblemResponse, ProblemListQuery, ProblemListResponse, ProblemMutationResponse,
         ProblemRequest, ProblemResponse, ProblemReviewRequest, ProblemRow, StatsResponse,
     },
-    services::notification_service,
+    services::{
+        audit_service::{self, AuditContext, AuditRecord},
+        notification_service,
+    },
 };
 
 const DEFAULT_PAGE: u32 = 1;
 const DEFAULT_SIZE: u32 = 20;
 const MAX_PAGE_SIZE: u32 = 100;
 
+/// 个人出题面向学生与教师；管理员通过管理端接口直接创建。
+async fn require_author(state: &AppState, headers: &HeaderMap) -> Result<AuthUser, AppError> {
+    let user = authenticate(&state.pool, headers, &state.config).await?;
+    if user.is_admin() {
+        return Err(AppError::ForbiddenWith(
+            "管理员请使用管理端接口创建题目".to_owned(),
+        ));
+    }
+    Ok(user)
+}
+
 #[derive(Debug, FromRow)]
 struct ProblemWithStatusRow {
     id: i32,
+    number: i64,
     title: String,
     description: String,
     difficulty: String,
@@ -64,6 +79,7 @@ impl ProblemWithStatusRow {
     fn response(self) -> ProblemResponse {
         ProblemRow {
             id: self.id,
+            number: self.number,
             title: self.title,
             description: self.description,
             difficulty: self.difficulty,
@@ -149,7 +165,7 @@ pub async fn get(
         .await
         .map(|user| user.id);
     let row = sqlx::query_as::<_, ProblemWithStatusRow>(
-        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status, EXISTS (SELECT 1 FROM favorites f WHERE f.problem_id = p.id AND f.user_id = $2) AS favorited FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = $2 WHERE p.id = $1 AND p.review_status = 'approved'",
+        "SELECT p.id, (SELECT COUNT(*) FROM problems ranked WHERE ranked.review_status = 'approved' AND ranked.id <= p.id) AS number, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status, EXISTS (SELECT 1 FROM favorites f WHERE f.problem_id = p.id AND f.user_id = $2) AS favorited FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = $2 WHERE p.id = $1 AND p.review_status = 'approved'",
     )
     .bind(id)
     .bind(user_id)
@@ -165,7 +181,7 @@ pub async fn mine(
     headers: HeaderMap,
     Query(query): Query<MyProblemListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let user = require_author(&state, &headers).await?;
     let page = query.page.unwrap_or(DEFAULT_PAGE).max(1);
     let size = query.size.unwrap_or(DEFAULT_SIZE).clamp(1, MAX_PAGE_SIZE);
     let status = validate_review_status(query.status.as_deref())?;
@@ -288,6 +304,20 @@ pub async fn create(
     .execute(&state.pool)
     .await
     .map_err(AppError::Database)?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "problem.create",
+            "problem",
+            Some(i64::from(id)),
+            format!("创建官方题目《{}》", request.title.trim()),
+        )
+        .after(json!({ "review_status": "approved" })),
+    )
+    .await;
     Ok(created(ProblemMutationResponse {
         id,
         message: "题目创建成功".to_owned(),
@@ -299,7 +329,7 @@ pub async fn submit_custom(
     headers: HeaderMap,
     Json(request): Json<ProblemRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let user = require_author(&state, &headers).await?;
     validate_problem(&request)?;
     let (run_config, code_template, judge_cases) = prepare_problem_judging(&request)?;
     let id = insert_problem(
@@ -312,6 +342,20 @@ pub async fn submit_custom(
         "pending",
     )
     .await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &user,
+        &context,
+        AuditRecord::new(
+            "problem.submit",
+            "problem",
+            Some(i64::from(id)),
+            format!("提交个人题目《{}》，等待审核", request.title.trim()),
+        )
+        .after(json!({ "review_status": "pending" })),
+    )
+    .await;
     Ok(created(ProblemMutationResponse {
         id,
         message: "题目已提交，等待管理员审核".to_owned(),
@@ -323,7 +367,7 @@ pub async fn mine_get(
     headers: HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let user = require_author(&state, &headers).await?;
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
@@ -337,7 +381,7 @@ pub async fn update_mine(
     Path(id): Path<i32>,
     Json(request): Json<ProblemRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let user = require_author(&state, &headers).await?;
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
@@ -436,6 +480,7 @@ pub async fn review(
     Json(request): Json<ProblemReviewRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    let context = AuditContext::from_headers(&headers);
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
@@ -508,12 +553,35 @@ pub async fn review(
             Some(admin.id),
             &title,
             (!body.is_empty()).then_some(body.as_str()),
-            Some("/teacher/problems"),
+            Some("/personal/problems"),
             Some("problem"),
             Some(i64::from(id)),
         )
         .await?;
     }
+
+    audit_service::record_tx(
+        &mut transaction,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "problem.review",
+            "problem",
+            Some(i64::from(id)),
+            format!(
+                "审核题目《{}》：{}",
+                problem.title,
+                if status == "approved" {
+                    "通过"
+                } else {
+                    "拒绝"
+                }
+            ),
+        )
+        .before(json!({ "review_status": problem.review_status }))
+        .after(json!({ "review_status": status, "note": note })),
+    )
+    .await?;
 
     transaction.commit().await.map_err(AppError::Database)?;
     Ok(ok(ProblemMutationResponse {
@@ -532,7 +600,8 @@ pub async fn update(
     Path(id): Path<i32>,
     Json(request): Json<ProblemRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin(&state.pool, &headers, &state.config).await?;
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    let context = AuditContext::from_headers(&headers);
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
@@ -567,6 +636,18 @@ pub async fn update(
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("题目不存在".to_owned()));
     }
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "problem.update",
+            "problem",
+            Some(i64::from(id)),
+            format!("修改题目《{}》", request.title.trim()),
+        ),
+    )
+    .await;
     Ok(ok(ProblemMutationResponse {
         id,
         message: "题目更新成功".to_owned(),
@@ -578,18 +659,33 @@ pub async fn delete(
     headers: HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin(&state.pool, &headers, &state.config).await?;
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    let context = AuditContext::from_headers(&headers);
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
-    let result = sqlx::query("DELETE FROM problems WHERE id = $1")
-        .bind(id)
-        .execute(&state.pool)
-        .await
-        .map_err(AppError::Database)?;
-    if result.rows_affected() == 0 {
+    let title: Option<String> =
+        sqlx::query_scalar("DELETE FROM problems WHERE id = $1 RETURNING title")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(AppError::Database)?;
+    let Some(title) = title else {
         return Err(AppError::NotFound("题目不存在".to_owned()));
-    }
+    };
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "problem.delete",
+            "problem",
+            Some(i64::from(id)),
+            format!("删除题目《{title}》"),
+        )
+        .before(json!({ "title": title })),
+    )
+    .await;
     Ok(ok(ProblemMutationResponse {
         id,
         message: "题目删除成功".to_owned(),
@@ -638,11 +734,11 @@ async fn fetch_problem_page(
 
     let offset = (page.saturating_sub(1) as i64) * i64::from(size);
     let mut builder = QueryBuilder::<Postgres>::new(
-        "SELECT p.id, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status, EXISTS (SELECT 1 FROM favorites f WHERE f.problem_id = p.id AND f.user_id = ",
+        "WITH ranked AS (SELECT id, ROW_NUMBER() OVER (ORDER BY id ASC) AS number FROM problems WHERE review_status = 'approved') SELECT p.id, ranked.number, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status, EXISTS (SELECT 1 FROM favorites f WHERE f.problem_id = p.id AND f.user_id = ",
     );
     builder.push_bind(user_id);
     builder.push(
-        ") AS favorited FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = ",
+        ") AS favorited FROM problems p JOIN ranked ON ranked.id = p.id LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = ",
     );
     builder.push_bind(user_id);
     builder.push(" WHERE p.review_status = 'approved'");

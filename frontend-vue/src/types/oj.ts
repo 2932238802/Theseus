@@ -46,6 +46,8 @@ export interface ProblemExample {
 
 export interface Problem {
   id: number
+  /** 题库顺序题号，按已发布题目 id 升序连续编号。 */
+  number: number
   title: string
   difficulty: Difficulty
   acceptance: number

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Theseus 教师出题 / 管理员审核冒烟测试。
+# Theseus 个人出题 / 管理员审核冒烟测试。
 #
 # 只操作真实运行的 API + PostgreSQL，不 mock 任何一层。覆盖：
-#   教师创建题目进入待审核 / 教师不能自审 / 待审核题目不公开 /
+#   教师创建题目进入待审核 / 学生投稿同样进入待审核 / 教师不能自审 / 待审核题目不公开 /
 #   教师不能修改未退回题目 / 管理员列表与详情 / 退回必须填写原因 /
 #   退回后教师收到通知并可编辑重提 / 重提清空审核意见 / 通过后公开 /
 #   审核通过前必须配置可评测用例 / 重复审核拒绝 / 清理。
@@ -50,6 +50,9 @@ TEACHER_TOKEN=""
 OTHER_USER=""
 OTHER_ID=""
 OTHER_TOKEN=""
+STUDENT_USER=""
+STUDENT_ID=""
+STUDENT_TOKEN=""
 USER_IDS=()
 
 PROBLEM_ID=""
@@ -410,6 +413,7 @@ main() {
     ADMIN_USER="psmoke_admin_${suffix}"
     TEACHER_USER="psmoke_teacher_${suffix}"
     OTHER_USER="psmoke_other_${suffix}"
+    STUDENT_USER="psmoke_student_${suffix}"
 
     register_and_login "$ADMIN_USER" "${ADMIN_USER}@example.test" "$password"
     ADMIN_ID=$REG_USER_ID
@@ -420,6 +424,9 @@ main() {
     register_and_login "$OTHER_USER" "${OTHER_USER}@example.test" "$password"
     OTHER_ID=$REG_USER_ID
     USER_IDS+=("$OTHER_ID")
+    register_and_login "$STUDENT_USER" "${STUDENT_USER}@example.test" "$password"
+    STUDENT_ID=$REG_USER_ID
+    USER_IDS+=("$STUDENT_ID")
 
     db_scalar "UPDATE users SET role = 'admin' WHERE id = $ADMIN_ID" >/dev/null ||
         fatal_preflight "无法将测试账号提升为管理员"
@@ -434,7 +441,9 @@ main() {
     TEACHER_TOKEN=$REG_TOKEN
     login_only "$OTHER_USER" "$password"
     OTHER_TOKEN=$REG_TOKEN
-    CHECK_NOTE="admin/teacher/other"
+    login_only "$STUDENT_USER" "$password"
+    STUDENT_TOKEN=$REG_TOKEN
+    CHECK_NOTE="admin/teacher/other/student"
     end_check
 
     # ------------------------------------------------------------------
@@ -466,6 +475,35 @@ main() {
     api_request GET "/api/problems/$PROBLEM_ID" "" ""
     assert_status "待审核题目公开详情" "404"
     CHECK_NOTE="problem=$PROBLEM_ID"
+    end_check
+
+    # ------------------------------------------------------------------
+    # 学生个人出题：提交后同样进入管理员审核
+    # ------------------------------------------------------------------
+    begin_check student_submit
+    body=$(problem_body "学生投稿题目 ${suffix}" \
+        '[{"args": [2, 3], "expected": 5}]' \
+        '[{"args": [20, 30], "expected": 50}]')
+    api_request POST /api/problems/custom "$STUDENT_TOKEN" "$body"
+    assert_status "学生提交题目" "201"
+    STUDENT_PROBLEM_ID=$(jq -r '.data.id // empty' <<<"$API_BODY")
+    assert_nonempty "student_problem_id" "$STUDENT_PROBLEM_ID"
+    assert_eq "学生题目落库状态" "pending" \
+        "$(db_scalar "SELECT review_status FROM problems WHERE id = $STUDENT_PROBLEM_ID")"
+    assert_eq "学生题目创建者" "$STUDENT_ID" \
+        "$(db_scalar "SELECT created_by FROM problems WHERE id = $STUDENT_PROBLEM_ID")"
+
+    api_request GET '/api/problems/mine?status=pending&size=20' "$STUDENT_TOKEN" ""
+    assert_status "学生待审核列表" "200"
+    assert_eq "学生列表包含投稿" "1" \
+        "$(jq -r --argjson id "$STUDENT_PROBLEM_ID" '[.data.problems[] | select(.id == $id)] | length' <<<"$API_BODY")"
+
+    api_request GET "/api/problems/$STUDENT_PROBLEM_ID" "" ""
+    assert_status "学生待审核题目不公开" "404"
+
+    api_request GET "/api/problems/mine/$STUDENT_PROBLEM_ID" "$OTHER_TOKEN" ""
+    assert_status "他人查看学生题目" "404"
+    CHECK_NOTE="student_problem=$STUDENT_PROBLEM_ID"
     end_check
 
     # ------------------------------------------------------------------

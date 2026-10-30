@@ -13,7 +13,7 @@ import type { ProblemEditorPayload, ReviewedProblemDetail } from '../types/probl
 
 const route = useRoute()
 const router = useRouter()
-const isEdit = computed(() => route.name === 'teacher-problem-edit')
+const isEdit = computed(() => route.name === 'personal-problem-edit')
 const problemId = computed(() => Number(route.params.id))
 
 const initial = ref<ReviewedProblemDetail | null>(null)
@@ -53,7 +53,7 @@ const submit = async (payload: ProblemEditorPayload): Promise<void> => {
     } else {
       await createMyProblem(payload)
     }
-    await router.push('/teacher/problems')
+    await router.push('/personal/problems')
   } catch (exception: unknown) {
     submitError.value = toErrorMessage(exception)
   } finally {
@@ -73,7 +73,7 @@ onMounted(() => {
       <div>
         <h1>{{ isEdit ? '编辑题目' : '新建题目' }}</h1>
       </div>
-      <RouterLink class="teaching-secondary-button" to="/teacher/problems">返回我的题目</RouterLink>
+      <RouterLink class="teaching-secondary-button" to="/personal/problems">返回个人出题</RouterLink>
     </header>
 
     <p v-if="loading" class="teaching-subtle">正在加载题目</p>

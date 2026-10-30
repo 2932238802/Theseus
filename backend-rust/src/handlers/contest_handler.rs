@@ -4,6 +4,7 @@ use axum::{
     http::HeaderMap,
     response::IntoResponse,
 };
+use serde_json::json;
 
 use crate::{
     AppState,
@@ -13,7 +14,10 @@ use crate::{
         AdminEventInput, ContestEventListQuery, ContestEventsRequest, MatchRequest,
         ProctorReviewInput, RankedLeaderboardQuery,
     },
-    services::contest_service,
+    services::{
+        audit_service::{self, AuditContext, AuditRecord},
+        contest_service,
+    },
 };
 
 pub async fn start_match(
@@ -276,6 +280,29 @@ pub async fn admin_review_proctor_event(
     let response =
         contest_service::review_proctor_event(&state.pool, contest_id, event_id, user.id, &input)
             .await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &user,
+        &context,
+        AuditRecord::new(
+            "contest.proctor_review",
+            "contest",
+            Some(i64::from(contest_id)),
+            format!(
+                "复核竞赛 #{contest_id} 的监考事件 #{event_id}：{}",
+                input.status.trim()
+            ),
+        )
+        .after(json!({
+            "event_id": event_id,
+            "review_status": response.review_status,
+            "disqualified": response.disqualified,
+            "rating_reranked": response.rating_reranked,
+            "note": input.note,
+        })),
+    )
+    .await;
     Ok(ok(response))
 }
 
@@ -296,6 +323,24 @@ pub async fn admin_create_event(
 ) -> Result<impl IntoResponse, AppError> {
     let admin = require_admin(&state.pool, &headers, &state.config).await?;
     let response = contest_service::admin_create_event(&state.pool, admin.id, request).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "contest.event_create",
+            "contest_event",
+            Some(i64::from(response.id)),
+            format!("创建赛事《{}》", response.title),
+        )
+        .after(json!({
+            "title": response.title,
+            "type": response.event_type,
+            "scope": response.scope,
+        })),
+    )
+    .await;
     Ok(ok(response))
 }
 
@@ -305,8 +350,22 @@ pub async fn admin_update_event(
     Path(event_id): Path<i32>,
     Json(request): Json<AdminEventInput>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_admin(&state.pool, &headers, &state.config).await?;
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
     let response = contest_service::admin_update_event(&state.pool, event_id, request).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "contest.event_update",
+            "contest_event",
+            Some(i64::from(event_id)),
+            format!("更新赛事《{}》", response.title),
+        )
+        .after(json!({ "title": response.title, "type": response.event_type })),
+    )
+    .await;
     Ok(ok(response))
 }
 
@@ -318,5 +377,22 @@ pub async fn sync_event_forum(
     let admin = require_admin(&state.pool, &headers, &state.config).await?;
     let response =
         contest_service::sync_event_forum(&state.pool, &state.config, &admin, event_id).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "contest.event_forum",
+            "contest_event",
+            Some(i64::from(event_id)),
+            format!("将赛事 #{event_id} 同步到校园墙"),
+        )
+        .after(json!({
+            "forum_post_id": response.forum_post_id,
+            "pinned": response.pinned,
+        })),
+    )
+    .await;
     Ok(ok(response))
 }

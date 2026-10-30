@@ -2,6 +2,7 @@ pub mod admin_user_service;
 pub mod anticheat_service;
 pub mod assignment_policy;
 pub mod assignment_service;
+pub mod audit_service;
 pub mod auth_service;
 pub mod badge_service;
 pub mod class_service;

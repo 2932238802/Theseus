@@ -5,6 +5,7 @@ import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
 import { toast } from '../store/toast'
 import {
+  exportGradebook,
   fetchAssignmentSubmissions,
   publishGrades,
   updateOverallGrade,
@@ -31,6 +32,7 @@ const gradebook = computed(() => assignmentStore.gradebook)
 const includeRemoved = ref(false)
 const actionError = ref('')
 const isPublishing = ref(false)
+const isExporting = ref(false)
 const overrides = ref<OverrideItem[]>([])
 const overrideMakeup = ref('')
 const overrideWaive = ref(true)
@@ -215,6 +217,27 @@ const publish = async (): Promise<void> => {
   }
 }
 
+const exportCsv = async (): Promise<void> => {
+  if (isExporting.value) return
+  actionError.value = ''
+  isExporting.value = true
+  try {
+    const blob = await exportGradebook(assignmentId.value, includeRemoved.value)
+    const title = (gradebook.value?.assignment.title ?? 'gradebook').replace(/[\\/:*?"<>|]/g, '_')
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${title}-成绩.csv`
+    anchor.click()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+    toast.success('成绩已导出')
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    isExporting.value = false
+  }
+}
+
 const cellLabel = (cell: GradebookCell): string => {
   if (cell.exempt) return '免修'
   if (cell.accepted) return '已通过'
@@ -317,6 +340,9 @@ watch(includeRemoved, load)
           </label>
           <button class="teaching-secondary-button" type="button" :disabled="!duePassed" @click="publishSolutionsNow">
             发布解析
+          </button>
+          <button class="teaching-secondary-button" type="button" :disabled="isExporting" @click="exportCsv">
+            {{ isExporting ? '导出中' : '导出成绩' }}
           </button>
           <button class="teaching-secondary-button" type="button" @click="openAudits">
             策略审计

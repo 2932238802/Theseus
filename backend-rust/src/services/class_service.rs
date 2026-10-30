@@ -3,11 +3,15 @@ use rand::Rng;
 use sqlx::{FromRow, PgPool};
 
 use crate::{
-    common::error::{AppError, is_unique_violation},
+    common::{
+        csv::{self, CsvRecord},
+        error::{AppError, is_unique_violation},
+    },
     middleware::auth::AuthUser,
     models::teaching::{
         AddClassMemberRequest, ClassDetail, ClassListResponse, ClassMemberView,
-        ClassMutationResponse, ClassOwner, ClassSummary, CreateClassRequest, InviteCodeResponse,
+        ClassMutationResponse, ClassOwner, ClassSummary, CreateClassRequest, ImportClassMemberRow,
+        ImportClassMembersRequest, ImportClassMembersResponse, InviteCodeResponse,
         JoinClassRequest, UpdateClassRequest,
     },
     services::assignment_service,
@@ -19,6 +23,8 @@ const MAX_NAME_CHARS: usize = 100;
 const MAX_COURSE_CHARS: usize = 100;
 const MAX_TERM_CHARS: usize = 30;
 const MAX_DESCRIPTION_CHARS: usize = 5_000;
+const MAX_IMPORT_ROWS: usize = 500;
+const MAX_IMPORT_BYTES: usize = 512 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassView {
@@ -406,7 +412,7 @@ pub async fn add_member(
     .await
     .map_err(AppError::Database)?;
     let member: ClassMemberView = sqlx::query_as(
-        "SELECT user_id, username, email, status, joined_at, removed_at \
+        "SELECT cm.user_id, u.username, u.email, cm.status, cm.joined_at, cm.removed_at \
          FROM class_members cm JOIN users u ON u.id = cm.user_id \
          WHERE cm.class_id = $1 AND cm.user_id = $2",
     )
@@ -416,6 +422,218 @@ pub async fn add_member(
     .await
     .map_err(AppError::Database)?;
     Ok(member)
+}
+
+/// 从 CSV 批量添加学生。每行一个用户名或邮箱，可带 `username,email` 表头。
+///
+/// 逐行返回结果，单行失败不影响其他行；只有 CSV 本身不可解析或超限时才整体失败。
+pub async fn import_members(
+    pool: &PgPool,
+    user: &AuthUser,
+    class_id: i32,
+    request: &ImportClassMembersRequest,
+) -> Result<ImportClassMembersResponse, AppError> {
+    let class = access_owned_class(pool, user, class_id).await?;
+    if class.archived_at.is_some() {
+        return Err(AppError::Conflict("组织已归档".to_owned()));
+    }
+    if request.csv.len() > MAX_IMPORT_BYTES {
+        return Err(AppError::BadRequest("CSV 文件不能超过 512 KB".to_owned()));
+    }
+
+    let records = csv::parse(&request.csv, MAX_IMPORT_ROWS + 1)?;
+    let (username_col, email_col, rows) = split_import_header(&records);
+    if rows.is_empty() {
+        return Err(AppError::BadRequest("CSV 没有可导入的学生记录".to_owned()));
+    }
+    if rows.len() > MAX_IMPORT_ROWS {
+        return Err(AppError::BadRequest(format!(
+            "一次最多导入 {MAX_IMPORT_ROWS} 名学生"
+        )));
+    }
+
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let mut result_rows = Vec::with_capacity(rows.len());
+    let mut seen = std::collections::HashSet::new();
+    let mut added_count = 0usize;
+
+    for record in rows {
+        let identifiers = row_identifiers(record, username_col, email_col);
+        let Some(identifier) = identifiers.first().cloned() else {
+            result_rows.push(import_row(
+                record,
+                String::new(),
+                None,
+                "invalid",
+                Some("缺少用户名或邮箱"),
+            ));
+            continue;
+        };
+        if !seen.insert(identifier.to_ascii_lowercase()) {
+            result_rows.push(import_row(
+                record,
+                identifier,
+                None,
+                "duplicate",
+                Some("CSV 中重复出现"),
+            ));
+            continue;
+        }
+
+        let mut found = None;
+        for candidate in &identifiers {
+            found = find_import_student(&mut transaction, class_id, candidate).await?;
+            if found.is_some() {
+                break;
+            }
+        }
+        let Some((target_id, username, role, is_member)) = found else {
+            result_rows.push(import_row(
+                record,
+                identifier,
+                None,
+                "not_found",
+                Some("未找到该用户名或邮箱"),
+            ));
+            continue;
+        };
+
+        if role != "student" {
+            result_rows.push(import_row(
+                record,
+                identifier,
+                Some(username),
+                "not_student",
+                Some("教师或管理员账号不能加入组织"),
+            ));
+            continue;
+        }
+        if is_member {
+            result_rows.push(import_row(
+                record,
+                identifier,
+                Some(username),
+                "already_member",
+                Some("已经是组织成员"),
+            ));
+            continue;
+        }
+
+        sqlx::query(
+            "INSERT INTO class_members (class_id, user_id, status) VALUES ($1, $2, 'active') \
+             ON CONFLICT (class_id, user_id) DO UPDATE SET \
+                 joined_at = CASE WHEN class_members.status = 'removed' THEN CURRENT_TIMESTAMP ELSE class_members.joined_at END, \
+                 status = 'active', removed_at = NULL",
+        )
+        .bind(class_id)
+        .bind(target_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        added_count += 1;
+        result_rows.push(import_row(
+            record,
+            identifier,
+            Some(username),
+            "added",
+            None,
+        ));
+    }
+    transaction.commit().await.map_err(AppError::Database)?;
+
+    Ok(ImportClassMembersResponse {
+        added_count,
+        skipped_count: result_rows.len() - added_count,
+        rows: result_rows,
+    })
+}
+
+fn split_import_header(records: &[CsvRecord]) -> (Option<usize>, Option<usize>, &[CsvRecord]) {
+    let Some(first) = records.first() else {
+        return (None, None, records);
+    };
+    let names: Vec<String> = first
+        .cells
+        .iter()
+        .map(|cell| cell.to_ascii_lowercase())
+        .collect();
+    let has_header = names
+        .iter()
+        .any(|name| matches!(name.as_str(), "username" | "email" | "用户名" | "邮箱"));
+    if !has_header {
+        return (None, None, records);
+    }
+    let username_col = names
+        .iter()
+        .position(|name| name == "username" || name == "用户名");
+    let email_col = names
+        .iter()
+        .position(|name| name == "email" || name == "邮箱");
+    (username_col, email_col, &records[1..])
+}
+
+fn row_identifiers(
+    record: &CsvRecord,
+    username_col: Option<usize>,
+    email_col: Option<usize>,
+) -> Vec<String> {
+    let mut identifiers = Vec::new();
+    if username_col.is_some() || email_col.is_some() {
+        for column in [username_col, email_col].into_iter().flatten() {
+            if let Some(value) = record.cells.get(column) {
+                let value = value.trim();
+                if !value.is_empty() {
+                    identifiers.push(value.to_owned());
+                }
+            }
+        }
+    } else {
+        identifiers.extend(
+            record
+                .cells
+                .iter()
+                .map(|cell| cell.trim())
+                .filter(|cell| !cell.is_empty())
+                .map(str::to_owned),
+        );
+    }
+    identifiers
+}
+
+async fn find_import_student(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    class_id: i32,
+    identifier: &str,
+) -> Result<Option<(i32, String, String, bool)>, AppError> {
+    sqlx::query_as(
+        "SELECT u.id, u.username, u.role, \
+         EXISTS(SELECT 1 FROM class_members cm \
+                WHERE cm.class_id = $2 AND cm.user_id = u.id AND cm.status = 'active') AS is_member \
+         FROM users u \
+         WHERE u.username = $1 OR LOWER(u.email) = LOWER($1) \
+         ORDER BY (u.username = $1) DESC, u.id ASC LIMIT 1",
+    )
+    .bind(identifier)
+    .bind(class_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(AppError::Database)
+}
+
+fn import_row(
+    record: &CsvRecord,
+    identifier: String,
+    username: Option<String>,
+    status: &str,
+    reason: Option<&str>,
+) -> ImportClassMemberRow {
+    ImportClassMemberRow {
+        line: record.line,
+        identifier,
+        username,
+        status: status.to_owned(),
+        reason: reason.map(str::to_owned),
+    }
 }
 
 pub async fn remove_member(

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../store/auth'
+import AdminAuditPage from '../views/AdminAuditPage.vue'
 import AdminEventsPage from '../views/AdminEventsPage.vue'
 import AdminForumPage from '../views/AdminForumPage.vue'
 import AdminNotifyPage from '../views/AdminNotifyPage.vue'
@@ -28,13 +29,13 @@ import NotFoundPage from '../views/NotFoundPage.vue'
 import NotificationsPage from '../views/NotificationsPage.vue'
 import OjPage from '../views/OjPage.vue'
 import ProblemsPage from '../views/ProblemsPage.vue'
+import PersonalProblemComposePage from '../views/PersonalProblemComposePage.vue'
+import PersonalProblemsPage from '../views/PersonalProblemsPage.vue'
 import ProfilePage from '../views/ProfilePage.vue'
 import ProfileFavoritesPage from '../views/ProfileFavoritesPage.vue'
 import ResetPasswordPage from '../views/ResetPasswordPage.vue'
 import StudentAppealsPage from '../views/StudentAppealsPage.vue'
 import TeacherCheatReportsPage from '../views/TeacherCheatReportsPage.vue'
-import TeacherProblemComposePage from '../views/TeacherProblemComposePage.vue'
-import TeacherProblemsPage from '../views/TeacherProblemsPage.vue'
 import VerifyEmailPage from '../views/VerifyEmailPage.vue'
 
 const router = createRouter({
@@ -106,29 +107,36 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTeacher: true },
     },
     {
-      path: '/teacher/problems',
-      name: 'teacher-problems',
-      component: TeacherProblemsPage,
-      meta: { requiresAuth: true, requiresTeacher: true },
+      path: '/personal/problems',
+      name: 'personal-problems',
+      component: PersonalProblemsPage,
+      meta: { requiresAuth: true, requiresTeaching: true },
     },
     {
-      path: '/teacher/anticheat',
-      name: 'teacher-anticheat',
+      path: '/personal/problems/new',
+      name: 'personal-problem-new',
+      component: PersonalProblemComposePage,
+      meta: { requiresAuth: true, requiresTeaching: true },
+    },
+    {
+      path: '/personal/problems/:id/edit',
+      name: 'personal-problem-edit',
+      component: PersonalProblemComposePage,
+      meta: { requiresAuth: true, requiresTeaching: true },
+    },
+    {
+      path: '/campus/anticheat',
+      name: 'campus-anticheat',
       component: TeacherCheatReportsPage,
       meta: { requiresAuth: true, requiresTeacher: true },
     },
-    {
-      path: '/teacher/problems/new',
-      name: 'teacher-problem-new',
-      component: TeacherProblemComposePage,
-      meta: { requiresAuth: true, requiresTeacher: true },
-    },
+    { path: '/teacher/problems', redirect: { name: 'personal-problems' } },
+    { path: '/teacher/problems/new', redirect: { name: 'personal-problem-new' } },
     {
       path: '/teacher/problems/:id/edit',
-      name: 'teacher-problem-edit',
-      component: TeacherProblemComposePage,
-      meta: { requiresAuth: true, requiresTeacher: true },
+      redirect: (to) => ({ name: 'personal-problem-edit', params: to.params }),
     },
+    { path: '/teacher/anticheat', redirect: { name: 'campus-anticheat' } },
     {
       path: '/admin/problems',
       name: 'admin-problems',
@@ -157,6 +165,12 @@ const router = createRouter({
       path: '/admin/notifications',
       name: 'admin-notifications',
       component: AdminNotifyPage,
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: '/admin/audit',
+      name: 'admin-audit',
+      component: AdminAuditPage,
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },

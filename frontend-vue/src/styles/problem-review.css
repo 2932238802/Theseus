@@ -188,12 +188,6 @@
   }
 }
 
-@media (max-width: 480px) {
-  .main-nav .nav-teacher-problems {
-    display: none;
-  }
-}
-
 .email-verify-banner {
   display: flex;
   align-items: center;

@@ -12,7 +12,7 @@ use crate::{
     models::teaching::{
         AdminUserListQuery, ChangeRoleRequest, ChangeUserStatusRequest, RestoreReputationRequest,
     },
-    services::admin_user_service,
+    services::{admin_user_service, audit_service::AuditContext},
 };
 
 pub async fn list(
@@ -32,7 +32,8 @@ pub async fn change_role(
     Json(request): Json<ChangeRoleRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let admin = require_admin(&state.pool, &headers, &state.config).await?;
-    let data = admin_user_service::change_role(&state.pool, admin.id, id, &request).await?;
+    let context = AuditContext::from_headers(&headers);
+    let data = admin_user_service::change_role(&state.pool, &admin, id, &request, &context).await?;
     Ok(ok(data))
 }
 
@@ -43,7 +44,9 @@ pub async fn change_status(
     Json(request): Json<ChangeUserStatusRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let admin = require_admin(&state.pool, &headers, &state.config).await?;
-    let data = admin_user_service::change_status(&state.pool, admin.id, id, &request).await?;
+    let context = AuditContext::from_headers(&headers);
+    let data =
+        admin_user_service::change_status(&state.pool, &admin, id, &request, &context).await?;
     Ok(ok(data))
 }
 
@@ -54,7 +57,9 @@ pub async fn restore_reputation(
     Json(request): Json<RestoreReputationRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let admin = require_admin(&state.pool, &headers, &state.config).await?;
-    let data = admin_user_service::restore_reputation(&state.pool, admin.id, id, &request).await?;
+    let context = AuditContext::from_headers(&headers);
+    let data =
+        admin_user_service::restore_reputation(&state.pool, &admin, id, &request, &context).await?;
     Ok(ok(data))
 }
 
@@ -64,6 +69,7 @@ pub async fn delete_user(
     Path(id): Path<i32>,
 ) -> Result<impl IntoResponse, AppError> {
     let admin = require_admin(&state.pool, &headers, &state.config).await?;
-    let data = admin_user_service::delete_user(&state.pool, admin.id, id).await?;
+    let context = AuditContext::from_headers(&headers);
+    let data = admin_user_service::delete_user(&state.pool, &admin, id, &context).await?;
     Ok(ok(data))
 }

@@ -72,9 +72,9 @@ onMounted(() => {
   <main class="teaching-page teaching-wide page-shell">
     <header class="teaching-page-header">
       <div>
-        <h1>我的题目</h1>
+        <h1>个人出题</h1>
       </div>
-      <RouterLink class="primary-button" to="/teacher/problems/new">新建题目</RouterLink>
+      <RouterLink class="primary-button" to="/personal/problems/new">新建题目</RouterLink>
     </header>
 
     <nav class="admin-tabs problem-review-tabs" aria-label="题目状态">
@@ -94,7 +94,7 @@ onMounted(() => {
 
     <section v-else-if="!problems.length" class="empty-state">
       <p>这个状态下还没有题目</p>
-      <RouterLink class="primary-button" to="/teacher/problems/new">去出题</RouterLink>
+      <RouterLink class="primary-button" to="/personal/problems/new">去出题</RouterLink>
     </section>
 
     <section v-else class="teaching-panel">
@@ -128,7 +128,7 @@ onMounted(() => {
                 <RouterLink
                   v-if="problem.reviewStatus === 'rejected'"
                   class="teaching-secondary-button"
-                  :to="`/teacher/problems/${problem.id}/edit`"
+                  :to="`/personal/problems/${problem.id}/edit`"
                 >
                   编辑重提
                 </RouterLink>

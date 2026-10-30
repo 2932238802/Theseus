@@ -1,8 +1,8 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::HeaderMap,
-    response::IntoResponse,
+    http::{HeaderMap, HeaderValue, header},
+    response::{IntoResponse, Response},
 };
 
 use crate::{
@@ -17,7 +17,11 @@ use crate::{
         GradebookQuery, OverallGradeRequest, ProblemGradeRequest, UpdateAssignmentRequest,
         UpdateOverrideRequest,
     },
-    services::{assignment_service, grade_service},
+    services::{
+        assignment_service,
+        audit_service::{self, AuditContext, AuditRecord},
+        grade_service,
+    },
 };
 
 pub async fn list(
@@ -125,6 +129,29 @@ pub async fn gradebook(
     Ok(ok(data))
 }
 
+pub async fn export_gradebook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+    Query(query): Query<GradebookQuery>,
+) -> Result<Response, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let csv = grade_service::export_gradebook(&state.pool, &user, id, &query).await?;
+    let disposition = HeaderValue::from_str(&format!(
+        "attachment; filename=\"assignment-{id}-grades.csv\""
+    ))
+    .map_err(|error| AppError::Internal(format!("导出文件名无效: {error}")))?;
+    let mut response = csv.into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/csv; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CONTENT_DISPOSITION, disposition);
+    Ok(response)
+}
+
 pub async fn update_problem_grade(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -141,6 +168,19 @@ pub async fn update_problem_grade(
         &request,
     )
     .await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &user,
+        &context,
+        AuditRecord::new(
+            "grade.problem_update",
+            "assignment",
+            Some(i64::from(id)),
+            format!("修改作业 #{id} 学生 #{student_id} 题目 #{problem_id} 的单题批改"),
+        ),
+    )
+    .await;
     Ok(ok(data))
 }
 
@@ -153,6 +193,19 @@ pub async fn update_overall_grade(
     let user = require_teacher(&state.pool, &headers, &state.config).await?;
     let data =
         grade_service::update_overall_grade(&state.pool, &user, id, student_id, &request).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &user,
+        &context,
+        AuditRecord::new(
+            "grade.overall_update",
+            "assignment",
+            Some(i64::from(id)),
+            format!("修改作业 #{id} 学生 #{student_id} 的整体评语"),
+        ),
+    )
+    .await;
     Ok(ok(data))
 }
 
@@ -163,6 +216,19 @@ pub async fn publish_grades(
 ) -> Result<impl IntoResponse, AppError> {
     let user = require_teacher(&state.pool, &headers, &state.config).await?;
     let data = grade_service::publish_grades(&state.pool, &user, id).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &user,
+        &context,
+        AuditRecord::new(
+            "grade.publish",
+            "assignment",
+            Some(i64::from(id)),
+            format!("发布作业 #{id} 的成绩"),
+        ),
+    )
+    .await;
     Ok(ok(data))
 }
 
