@@ -53,6 +53,8 @@ services:
       dockerfile: Dockerfile
       args:
         CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-1}
+        CARGO_MIRROR: ${CARGO_MIRROR:-}
+        APT_MIRROR: ${APT_MIRROR:-}
     image: theseus/backend:latest
     restart: unless-stopped
     init: true
@@ -119,6 +121,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: /api
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
     image: theseus/frontend:latest
     restart: unless-stopped
     ports:

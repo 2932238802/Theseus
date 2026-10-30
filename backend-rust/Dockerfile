@@ -2,8 +2,16 @@
 FROM rust:1-slim-bookworm AS builder
 # 默认单任务编译：2 GB 内存的服务器上并发编译容易 OOM，可通过 build arg 覆盖。
 ARG CARGO_BUILD_JOBS=1
+# 中国大陆服务器可传 https://rsproxy.cn/index/ 加速 crate 下载。
+ARG CARGO_MIRROR=
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 WORKDIR /src
+
+RUN if [ -n "$CARGO_MIRROR" ]; then \
+        mkdir -p "${CARGO_HOME:-/usr/local/cargo}" \
+        && printf '[source.crates-io]\nreplace-with = "mirrored"\n[source.mirrored]\nregistry = "sparse+%s"\n' \
+            "$CARGO_MIRROR" > "${CARGO_HOME:-/usr/local/cargo}/config.toml"; \
+    fi
 
 COPY Cargo.toml Cargo.lock ./
 COPY migrations ./migrations
@@ -21,7 +29,13 @@ RUN cargo build --release --bins \
 FROM docker:27-cli AS dockercli
 
 FROM debian:bookworm-slim
-RUN apt-get update \
+# 中国大陆服务器可传 mirrors.aliyun.com。
+ARG APT_MIRROR=
+RUN if [ -n "$APT_MIRROR" ]; then \
+        sed -i "s|deb.debian.org|$APT_MIRROR|g; s|security.debian.org|$APT_MIRROR|g" \
+            /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
+    fi \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
     && rm -rf /var/lib/apt/lists/*
 

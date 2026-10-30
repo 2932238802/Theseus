@@ -3,7 +3,13 @@ FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# 中国大陆服务器可传 https://registry.npmmirror.com。
+ARG NPM_REGISTRY=
+RUN if [ -n "$NPM_REGISTRY" ]; then \
+        npm ci --registry="$NPM_REGISTRY"; \
+    else \
+        npm ci; \
+    fi
 
 COPY . .
 ARG VITE_API_BASE_URL=/api

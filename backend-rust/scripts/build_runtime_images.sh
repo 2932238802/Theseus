@@ -37,6 +37,14 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
+# 可选镜像加速（留空则使用官方源）：
+#   APT_MIRROR=mirrors.aliyun.com
+#   JSON_URL=https://cdn.jsdelivr.net/gh/nlohmann/json@v3.11.3/single_include/nlohmann/json.hpp
+#   GSON_URL=https://maven.aliyun.com/repository/public/com/google/code/gson/gson/2.11.0/gson-2.11.0.jar
+APT_MIRROR=${APT_MIRROR:-}
+JSON_URL=${JSON_URL:-}
+GSON_URL=${GSON_URL:-}
+
 # 基础镜像。部分网络环境下 dockerd 的 mirror 回退会卡在 registry-1.docker.io，
 # 因此优先用镜像代理的完整仓库名显式拉取，再打回标准 tag。
 BASE_IMAGES=(
@@ -77,6 +85,9 @@ done
 for runtime in python node cpp java; do
     echo "==> 构建 theseus/runner-${runtime}:dev"
     docker build \
+        --build-arg APT_MIRROR="${APT_MIRROR}" \
+        --build-arg JSON_URL="${JSON_URL}" \
+        --build-arg GSON_URL="${GSON_URL}" \
         -f "docker/runners/${runtime}.Dockerfile" \
         -t "theseus/runner-${runtime}:dev" \
         docker/runners
