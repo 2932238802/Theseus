@@ -31,6 +31,7 @@ export interface User {
   username: string
   email: string
   role?: string
+  grade?: string | null
   avatar?: string
   avatarUrl?: string
   pendingEmail?: string

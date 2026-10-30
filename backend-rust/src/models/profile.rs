@@ -10,6 +10,12 @@ pub struct UpdateUsernameRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct UpdateGradeRequest {
+    #[serde(default)]
+    pub grade: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct UpdateEmailRequest {
     pub email: String,
 }

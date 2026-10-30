@@ -13,11 +13,14 @@ import type {
   ContestHeartbeat,
   ContestMatchResult,
   ContestResult,
+  ContestAppeal,
+  ContestAppealList,
   EnterContestEvent,
   EventLeaderboard,
   ProctorEventListResponse,
   ProctorReviewResponse,
   RankedLeaderboard,
+  SeasonList,
   ScreenPermission,
 } from '../types/contest'
 import { type ApiEnvelope, unwrap } from './client'
@@ -74,8 +77,29 @@ export const enterContestEvent = async (id: number): Promise<EnterContestEvent> 
 export const fetchContestEventLeaderboard = async (id: number): Promise<EventLeaderboard> =>
   unwrap(http.get<ApiEnvelope<EventLeaderboard>>(`/contests/events/${id}/leaderboard`))
 
-export const fetchRankedContestLeaderboard = async (limit = 20): Promise<RankedLeaderboard> =>
-  unwrap(http.get<ApiEnvelope<RankedLeaderboard>>('/contests/rankings', { params: { limit } }))
+export const fetchRankedContestLeaderboard = async (
+  limit = 20,
+  seasonId?: number,
+): Promise<RankedLeaderboard> =>
+  unwrap(
+    http.get<ApiEnvelope<RankedLeaderboard>>('/contests/rankings', {
+      params: { limit, season_id: seasonId },
+    }),
+  )
+
+export const fetchSeasons = async (): Promise<SeasonList> =>
+  unwrap(http.get<ApiEnvelope<SeasonList>>('/contests/seasons'))
+
+export const fetchMyContestAppeals = async (): Promise<ContestAppealList> =>
+  unwrap(http.get<ApiEnvelope<ContestAppealList>>('/contests/appeals/mine'))
+
+export const submitContestAppeal = async (
+  contestId: number,
+  reason: string,
+): Promise<ContestAppeal> =>
+  unwrap(
+    http.post<ApiEnvelope<ContestAppeal>>(`/contests/${contestId}/appeal`, { reason }),
+  )
 
 export const fetchContest = async (id: number): Promise<ContestDetail> =>
   unwrap(http.get<ApiEnvelope<ContestDetail>>(`/contests/${id}`))

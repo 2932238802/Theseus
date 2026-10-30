@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import {
   createAdminEvent,
+  downloadAdminEventResults,
   fetchAdminEvents,
   syncAdminEventForum,
   updateAdminEvent,
@@ -44,6 +45,7 @@ interface EventForm {
   description: string
   type: ContestEventType
   scope: string
+  gradeScope: string
   capacity: string
   registration_mode: 'open' | 'invite' | 'external'
   class_id: string
@@ -62,6 +64,7 @@ const loading = ref(true)
 const error = ref('')
 const forumError = ref('')
 const syncingId = ref<number | null>(null)
+const exportingId = ref<number | null>(null)
 const saving = ref(false)
 
 const formOpen = ref(false)
@@ -82,6 +85,7 @@ function emptyForm(): EventForm {
     description: '',
     type: 'official',
     scope: '',
+    gradeScope: '',
     capacity: '',
     registration_mode: 'open',
     class_id: '',
@@ -176,6 +180,7 @@ const openEdit = (event: AdminEventView): void => {
     description: event.description ?? '',
     type: event.type,
     scope: event.scope ?? '',
+    gradeScope: event.grade_scope.join(', '),
     capacity: event.capacity === null ? '' : String(event.capacity),
     registration_mode: event.registration_mode,
     class_id: event.class_id === null ? '' : String(event.class_id),
@@ -263,6 +268,10 @@ const buildPayload = (): AdminEventInput | null => {
     description: form.description.trim() || null,
     type: form.type,
     scope: form.scope.trim() || null,
+    grade_scope: form.gradeScope
+      .split(/[,，、]/)
+      .map((item) => item.trim())
+      .filter(Boolean),
     capacity: form.capacity.trim() ? Number(form.capacity) : null,
     registration_mode: form.registration_mode,
     class_id: form.class_id.trim() ? Number(form.class_id) : null,
@@ -291,6 +300,19 @@ const syncForum = async (event: AdminEventView): Promise<void> => {
     forumError.value = toErrorMessage(exception)
   } finally {
     syncingId.value = null
+  }
+}
+
+const exportResults = async (event: AdminEventView): Promise<void> => {
+  if (exportingId.value !== null) return
+  exportingId.value = event.id
+  forumError.value = ''
+  try {
+    await downloadAdminEventResults(event.id)
+  } catch (exception: unknown) {
+    forumError.value = toErrorMessage(exception)
+  } finally {
+    exportingId.value = null
   }
 }
 
@@ -331,7 +353,15 @@ onMounted(() => {
         <h1>赛事管理</h1>
         <p class="teaching-subtle">创建官方、老师和学校赛事，配置规则与题目</p>
       </div>
-      <button class="primary-button" type="button" @click="openCreate">新建赛事</button>
+      <div class="teaching-toolbar">
+        <RouterLink class="forum-secondary-button" :to="{ name: 'admin-seasons' }">
+          赛季管理
+        </RouterLink>
+        <RouterLink class="forum-secondary-button" :to="{ name: 'admin-contest-appeals' }">
+          赛事申诉
+        </RouterLink>
+        <button class="primary-button" type="button" @click="openCreate">新建赛事</button>
+      </div>
     </header>
 
     <p v-if="forumError" class="form-error" role="alert">{{ forumError }}</p>
@@ -375,6 +405,15 @@ onMounted(() => {
         <label class="contest-admin-field">
           <span>参会范围说明</span>
           <input v-model="form.scope" type="text" maxlength="200" placeholder="面向全体学生" />
+        </label>
+        <label class="contest-admin-field">
+          <span>限定年级</span>
+          <input
+            v-model="form.gradeScope"
+            type="text"
+            maxlength="300"
+            placeholder="用逗号分隔，留空表示不限"
+          />
         </label>
         <label class="contest-admin-field">
           <span>名额上限</span>
@@ -547,7 +586,12 @@ onMounted(() => {
                 {{ formatDateTime(event.starts_at) }}
                 <div class="teaching-subtle">至 {{ formatDateTime(event.ends_at) }}</div>
               </td>
-              <td>{{ event.registered_count }}</td>
+              <td>
+                {{ event.registered_count }}
+                <div v-if="event.grade_scope.length" class="teaching-subtle">
+                  {{ event.grade_scope.join('、') }}
+                </div>
+              </td>
               <td>
                 <div class="contest-admin-actions">
                   <button class="forum-secondary-button" type="button" @click="openEdit(event)">
@@ -560,6 +604,15 @@ onMounted(() => {
                   >
                     粘贴复核
                   </RouterLink>
+                  <button
+                    v-if="event.contest_id"
+                    class="forum-secondary-button"
+                    type="button"
+                    :disabled="exportingId === event.id"
+                    @click="exportResults(event)"
+                  >
+                    {{ exportingId === event.id ? '导出中' : '导出成绩' }}
+                  </button>
                   <RouterLink
                     v-if="event.forum_post_id"
                     class="forum-secondary-button"

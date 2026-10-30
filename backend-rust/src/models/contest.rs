@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::FromRow;
 
+use crate::models::season::SeasonSummary;
+
 pub const CONTEST_STATUS_MATCHING: &str = "matching";
 pub const CONTEST_STATUS_RUNNING: &str = "running";
 pub const CONTEST_STATUS_SETTLING: &str = "settling";
@@ -331,6 +333,7 @@ pub struct ProctorReviewResponse {
 pub struct ContestRow {
     pub id: i32,
     pub official_event_id: Option<i32>,
+    pub season_id: Option<i32>,
     pub status: String,
     pub duration_seconds: i32,
     pub problem_count: i32,
@@ -375,6 +378,7 @@ pub struct RankedConfig {
     pub rating_window: i32,
     pub my_rating: i32,
     pub rules: Vec<EventRuleGroup>,
+    pub season: Option<SeasonSummary>,
 }
 
 /// One card in the homepage "limited-time events" list.
@@ -399,6 +403,7 @@ pub struct ContestEventCard {
     pub ineligible_reason: Option<String>,
     pub action: String,
     pub rules_summary: Option<String>,
+    pub grade_scope: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -503,6 +508,8 @@ pub struct RankedLeaderboardResponse {
     pub my_rank: Option<i64>,
     pub my_rating: i32,
     pub total: i64,
+    pub season: Option<SeasonSummary>,
+    pub seasons: Vec<SeasonSummary>,
     pub server_time: DateTime<Utc>,
 }
 
@@ -518,6 +525,8 @@ pub struct AdminEventInput {
     pub event_type: String,
     #[serde(default)]
     pub scope: Option<String>,
+    #[serde(default)]
+    pub grade_scope: Vec<String>,
     #[serde(default)]
     pub capacity: Option<i32>,
     #[serde(default)]
@@ -549,6 +558,7 @@ pub struct AdminEventView {
     pub event_type: String,
     pub description: Option<String>,
     pub scope: Option<String>,
+    pub grade_scope: Vec<String>,
     pub capacity: Option<i32>,
     pub registration_mode: String,
     pub class_id: Option<i32>,
@@ -575,6 +585,8 @@ pub struct AdminEventListResponse {
 pub struct RankedLeaderboardQuery {
     #[serde(default)]
     pub limit: Option<i64>,
+    #[serde(default)]
+    pub season_id: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -583,4 +595,56 @@ pub struct EventForumSyncResponse {
     pub forum_post_id: i64,
     pub pinned: bool,
     pub message: String,
+}
+
+// ── 赛事成绩申诉 ───────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct ContestAppealInput {
+    pub reason: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct ContestAppealQuery {
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContestAppealItem {
+    pub id: i64,
+    pub contest_id: i32,
+    pub event_id: Option<i32>,
+    pub event_title: Option<String>,
+    pub user_id: i32,
+    pub username: String,
+    pub reason: String,
+    pub status: String,
+    pub handle_note: Option<String>,
+    pub handled_by: Option<String>,
+    pub disqualified: bool,
+    pub created_at: DateTime<Utc>,
+    pub handled_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContestAppealListResponse {
+    pub items: Vec<ContestAppealItem>,
+    pub total: i64,
+    pub server_time: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ContestAppealResolveInput {
+    pub status: String,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContestAppealResolveResponse {
+    pub message: String,
+    pub status: String,
+    pub disqualified: bool,
+    pub rating_reranked: bool,
 }

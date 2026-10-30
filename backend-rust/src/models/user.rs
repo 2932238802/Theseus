@@ -10,6 +10,7 @@ pub struct User {
     #[serde(skip_serializing)]
     pub password_hash: String,
     pub role: String,
+    pub grade: Option<String>,
     pub email_verified_at: Option<DateTime<Utc>>,
     pub avatar_path: Option<String>,
     pub pending_email: Option<String>,
@@ -26,6 +27,7 @@ pub struct PublicUser {
     pub username: String,
     pub email: String,
     pub role: String,
+    pub grade: Option<String>,
     pub email_verified: bool,
     pub avatar_url: Option<String>,
     pub pending_email: Option<String>,
@@ -39,6 +41,7 @@ impl From<&User> for PublicUser {
             username: user.username.clone(),
             email: user.email.clone(),
             role: user.role.clone(),
+            grade: user.grade.clone(),
             email_verified: user.email_verified_at.is_some(),
             avatar_url: user
                 .avatar_path

@@ -12,27 +12,30 @@ use crate::{
     models::contest::{
         AdminEventInput, AdminEventListResponse, AdminEventView, CAMERA_PERMISSIONS,
         CONTEST_EVENT_TYPES, CONTEST_STATUS_CANCELLED, CONTEST_STATUS_FINISHED,
-        CONTEST_STATUS_RUNNING, CONTEST_STATUS_SETTLING, CancelMatchResponse,
-        ContestDetailResponse, ContestEventCard, ContestEventDetailResponse, ContestEventInput,
-        ContestEventListQuery, ContestEventListResponse, ContestEventsRequest,
-        ContestEventsResponse, ContestHeartbeatResponse, ContestParticipantRow,
-        ContestParticipantView, ContestProblemDetail, ContestProblemDetailRow,
-        ContestProblemSummary, ContestRankingItem, ContestResultContest, ContestResultMine,
-        ContestResultResponse, ContestRow, ContestScoreDetail, ContestSummary,
-        CurrentContestResponse, DEFAULT_CONTEST_RATING, EVENT_ACTION_CLOSED, EVENT_ACTION_DETAILS,
-        EVENT_ACTION_ENTER, EVENT_ACTION_FULL, EVENT_ACTION_JOIN, EVENT_ACTION_REGISTER,
-        EVENT_STATUS_FINISHED, EVENT_STATUS_FULL, EVENT_STATUS_REGISTRATION, EVENT_STATUS_RUNNING,
-        EVENT_STATUS_UPCOMING, EnterEventResponse, EventForumSyncResponse, EventLeaderboardEntry,
-        EventLeaderboardResponse, EventRuleGroup, FeaturedContestsResponse, FinishContestResponse,
-        FollowEventResponse, MatchRequest, MatchResponse, PARTICIPANT_STATUS_ACTIVE,
-        PARTICIPANT_STATUS_DISCONNECTED, PARTICIPANT_STATUS_FINISHED, PARTICIPANT_STATUS_TIMED_OUT,
-        ProctorContestInfo, ProctorEventItem, ProctorEventListResponse, ProctorReviewInput,
-        ProctorReviewResponse, RATING_GAIN_FIRST, RATING_GAIN_SECOND, RATING_LOSS_FOURTH,
-        RATING_WINDOW, RankedConfig, RankedLeaderboardEntry, RankedLeaderboardResponse,
+        CONTEST_STATUS_RUNNING, CONTEST_STATUS_SETTLING, CancelMatchResponse, ContestAppealInput,
+        ContestAppealItem, ContestAppealListResponse, ContestAppealQuery,
+        ContestAppealResolveInput, ContestAppealResolveResponse, ContestDetailResponse,
+        ContestEventCard, ContestEventDetailResponse, ContestEventInput, ContestEventListQuery,
+        ContestEventListResponse, ContestEventsRequest, ContestEventsResponse,
+        ContestHeartbeatResponse, ContestParticipantRow, ContestParticipantView,
+        ContestProblemDetail, ContestProblemDetailRow, ContestProblemSummary, ContestRankingItem,
+        ContestResultContest, ContestResultMine, ContestResultResponse, ContestRow,
+        ContestScoreDetail, ContestSummary, CurrentContestResponse, DEFAULT_CONTEST_RATING,
+        EVENT_ACTION_CLOSED, EVENT_ACTION_DETAILS, EVENT_ACTION_ENTER, EVENT_ACTION_FULL,
+        EVENT_ACTION_JOIN, EVENT_ACTION_REGISTER, EVENT_STATUS_FINISHED, EVENT_STATUS_FULL,
+        EVENT_STATUS_REGISTRATION, EVENT_STATUS_RUNNING, EVENT_STATUS_UPCOMING, EnterEventResponse,
+        EventForumSyncResponse, EventLeaderboardEntry, EventLeaderboardResponse, EventRuleGroup,
+        FeaturedContestsResponse, FinishContestResponse, FollowEventResponse, MatchRequest,
+        MatchResponse, PARTICIPANT_STATUS_ACTIVE, PARTICIPANT_STATUS_DISCONNECTED,
+        PARTICIPANT_STATUS_FINISHED, PARTICIPANT_STATUS_TIMED_OUT, ProctorContestInfo,
+        ProctorEventItem, ProctorEventListResponse, ProctorReviewInput, ProctorReviewResponse,
+        RATING_GAIN_FIRST, RATING_GAIN_SECOND, RATING_LOSS_FOURTH, RATING_WINDOW, RankedConfig,
+        RankedLeaderboardEntry, RankedLeaderboardQuery, RankedLeaderboardResponse,
         SCREEN_PERMISSIONS,
     },
     models::forum::{AdminPinRequest, CreatePostRequest, MAX_TITLE_CHARS},
-    services::{forum_service, notification_service},
+    models::season::SeasonSummary,
+    services::{forum_service, notification_service, season_service},
 };
 
 const CONTEST_LOCK_NAMESPACE: i32 = 5;
@@ -144,6 +147,8 @@ pub async fn match_user(
     }
 
     ensure_reputation_for_ranked(pool, user_id).await?;
+    // 赛季激活必须发生在入队前，否则本场会按旧段位匹配。
+    season_service::ensure_active_season(pool).await?;
 
     if camera.as_deref() != Some("granted") {
         return Err(AppError::BadRequest(
@@ -1164,6 +1169,13 @@ async fn rerank_contest(
     contest_id: i32,
     is_event_contest: bool,
 ) -> Result<bool, AppError> {
+    let season_id: Option<i32> = sqlx::query_scalar("SELECT season_id FROM contests WHERE id = $1")
+        .bind(contest_id)
+        .fetch_one(&mut **transaction)
+        .await
+        .map_err(AppError::Database)?;
+    let current_season_id = season_service::current_season_id_tx(transaction).await?;
+    let sync_live_rating = season_id.is_none() || season_id == current_season_id;
     #[derive(FromRow)]
     struct RerankRow {
         user_id: i32,
@@ -1242,7 +1254,7 @@ async fn rerank_contest(
         .await
         .map_err(AppError::Database)?;
 
-        if !is_event_contest && diff != 0 {
+        if !is_event_contest && sync_live_rating && diff != 0 {
             sqlx::query(
                 "UPDATE users SET contest_rating = GREATEST(0, contest_rating + $2), \
                  updated_at = CURRENT_TIMESTAMP WHERE id = $1",
@@ -1252,6 +1264,25 @@ async fn rerank_contest(
             .execute(&mut **transaction)
             .await
             .map_err(AppError::Database)?;
+        }
+        if !is_event_contest && let Some(season_id) = season_id {
+            let current_rating: Option<i32> = sqlx::query_scalar(
+                "SELECT rating FROM season_ratings WHERE season_id = $1 AND user_id = $2",
+            )
+            .bind(season_id)
+            .bind(participant.user_id)
+            .fetch_optional(&mut **transaction)
+            .await
+            .map_err(AppError::Database)?;
+            season_service::record_rerank(
+                transaction,
+                season_id,
+                participant.user_id,
+                diff,
+                current_rating.unwrap_or(participant.rating_before + diff),
+                Some(rank),
+            )
+            .await?;
         }
 
         if rank_changed || diff != 0 {
@@ -1305,7 +1336,7 @@ async fn rerank_contest(
         .execute(&mut **transaction)
         .await
         .map_err(AppError::Database)?;
-        if !is_event_contest && diff != 0 {
+        if !is_event_contest && sync_live_rating && diff != 0 {
             sqlx::query(
                 "UPDATE users SET contest_rating = GREATEST(0, contest_rating + $2), \
                  updated_at = CURRENT_TIMESTAMP WHERE id = $1",
@@ -1316,6 +1347,45 @@ async fn rerank_contest(
             .await
             .map_err(AppError::Database)?;
         }
+        if !is_event_contest && let Some(season_id) = season_id {
+            let current_rating: Option<i32> = sqlx::query_scalar(
+                "SELECT rating FROM season_ratings WHERE season_id = $1 AND user_id = $2",
+            )
+            .bind(season_id)
+            .bind(participant.user_id)
+            .fetch_optional(&mut **transaction)
+            .await
+            .map_err(AppError::Database)?;
+            season_service::record_rerank(
+                transaction,
+                season_id,
+                participant.user_id,
+                diff,
+                current_rating.unwrap_or(participant.rating_before),
+                None,
+            )
+            .await?;
+        }
+    }
+
+    // 取消资格会移除已有的胜场，必须对所有参赛者重算，而不只是名次变化的人。
+    if let Some(season_id) = season_id {
+        sqlx::query(
+            "UPDATE season_ratings sr SET wins = ( \
+                 SELECT COUNT(*)::int FROM contest_participants cp \
+                 JOIN contests c ON c.id = cp.contest_id \
+                 WHERE cp.user_id = sr.user_id AND c.season_id = $1 AND c.status = 'finished' \
+                   AND cp.rank = 1 AND cp.disqualified_at IS NULL \
+             ), updated_at = CURRENT_TIMESTAMP \
+             WHERE sr.season_id = $1 AND sr.user_id IN ( \
+                 SELECT cp.user_id FROM contest_participants cp WHERE cp.contest_id = $2 \
+             )",
+        )
+        .bind(season_id)
+        .bind(contest_id)
+        .execute(&mut **transaction)
+        .await
+        .map_err(AppError::Database)?;
     }
 
     Ok(changed)
@@ -1572,7 +1642,7 @@ pub async fn settle_due_contests(pool: &PgPool) -> Result<usize, AppError> {
 pub async fn settle_contest(pool: &PgPool, contest_id: i32) -> Result<bool, AppError> {
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
     let contest = sqlx::query_as::<_, ContestRow>(
-        "SELECT id, official_event_id, status, duration_seconds, problem_count, starts_at, \
+        "SELECT id, official_event_id, season_id, status, duration_seconds, problem_count, starts_at, \
          ends_at, finished_at, solve_weight, speed_weight, coding_weight \
          FROM contests WHERE id = $1 FOR UPDATE",
     )
@@ -1588,6 +1658,7 @@ pub async fn settle_contest(pool: &PgPool, contest_id: i32) -> Result<bool, AppE
         transaction.commit().await.map_err(AppError::Database)?;
         return Ok(false);
     }
+    let current_season_id = season_service::current_season_id_tx(&mut transaction).await?;
 
     sqlx::query(
         "UPDATE contests SET status = 'settling', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
@@ -1779,14 +1850,31 @@ pub async fn settle_contest(pool: &PgPool, contest_id: i32) -> Result<bool, AppE
 
         // Event contests are scored but never change the ranked rating.
         if contest.official_event_id.is_none() {
-            sqlx::query(
-                "UPDATE users SET contest_rating = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
-            )
-            .bind(participant.user_id)
-            .bind(rating_after)
-            .execute(&mut *transaction)
-            .await
-            .map_err(AppError::Database)?;
+            // 旧赛季的比赛晚于新赛季结算时，只能写回旧赛季快照，
+            // 不能覆盖用户当前赛季的段位分。
+            let is_current_season =
+                contest.season_id.is_none() || contest.season_id == current_season_id;
+            if is_current_season {
+                sqlx::query(
+                    "UPDATE users SET contest_rating = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+                )
+                .bind(participant.user_id)
+                .bind(rating_after)
+                .execute(&mut *transaction)
+                .await
+                .map_err(AppError::Database)?;
+            }
+            if let Some(season_id) = contest.season_id {
+                season_service::record_settlement(
+                    &mut transaction,
+                    season_id,
+                    participant.user_id,
+                    participant.rating_before,
+                    rating_after,
+                    rank,
+                )
+                .await?;
+            }
         }
 
         let (title, body, link) = match contest.official_event_id {
@@ -1919,7 +2007,7 @@ async fn participant_status(
 
 async fn fetch_contest_row(pool: &PgPool, contest_id: i32) -> Result<ContestRow, AppError> {
     sqlx::query_as::<_, ContestRow>(
-        "SELECT id, official_event_id, status, duration_seconds, problem_count, starts_at, \
+        "SELECT id, official_event_id, season_id, status, duration_seconds, problem_count, starts_at, \
          ends_at, finished_at, solve_weight, speed_weight, coding_weight \
          FROM contests WHERE id = $1",
     )
@@ -2007,12 +2095,13 @@ async fn try_match(pool: &PgPool) -> Result<Option<i32>, AppError> {
         return Ok(None);
     }
 
+    let season_id = season_service::current_season_id_tx(&mut transaction).await?;
     let contest_id: i32 = sqlx::query_scalar(
         "INSERT INTO contests \
          (status, duration_seconds, problem_count, solve_weight, speed_weight, coding_weight, \
-          starts_at, ends_at) \
+          starts_at, ends_at, season_id) \
          VALUES ('running', $1, $2, $3, $4, $5, CURRENT_TIMESTAMP, \
-                 CURRENT_TIMESTAMP + make_interval(secs => $6::double precision)) \
+                 CURRENT_TIMESTAMP + make_interval(secs => $6::double precision), $7) \
          RETURNING id",
     )
     .bind(DURATION_SECONDS)
@@ -2021,6 +2110,7 @@ async fn try_match(pool: &PgPool) -> Result<Option<i32>, AppError> {
     .bind(SPEED_WEIGHT)
     .bind(CODING_WEIGHT)
     .bind(f64::from(DURATION_SECONDS))
+    .bind(season_id)
     .fetch_one(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
@@ -2270,6 +2360,9 @@ fn rating_delta_for_rank(rank: i32, player_count: usize) -> i32 {
 
 // ── 限时赛事（official_events） ─────────────────────────────────────
 
+const MAX_GRADE_CHARS: usize = 20;
+const MAX_GRADE_SCOPE_ITEMS: usize = 20;
+
 #[derive(Debug, FromRow, Clone)]
 struct EventRow {
     id: i32,
@@ -2283,6 +2376,7 @@ struct EventRow {
     starts_at: DateTime<Utc>,
     ends_at: DateTime<Utc>,
     scope: Option<String>,
+    grade_scope: Vec<String>,
     capacity: Option<i32>,
     registration_mode: String,
     rules: Value,
@@ -2290,6 +2384,7 @@ struct EventRow {
     is_registered: bool,
     is_followed: bool,
     in_class: bool,
+    my_grade: Option<String>,
 }
 
 #[derive(Debug, FromRow)]
@@ -2302,6 +2397,7 @@ struct LockedEventRow {
     ends_at: DateTime<Utc>,
     capacity: Option<i32>,
     class_id: Option<i32>,
+    grade_scope: Vec<String>,
 }
 
 /// Homepage list: ranked configuration plus every published event that has not
@@ -2309,6 +2405,7 @@ struct LockedEventRow {
 /// hidden until an administrator publishes them.
 pub async fn featured(pool: &PgPool, user_id: i32) -> Result<FeaturedContestsResponse, AppError> {
     let my_rating = user_rating(pool, user_id).await?;
+    let season = season_service::ensure_active_season(pool).await?;
     let rows = fetch_event_rows(pool, user_id, None, true).await?;
     let now = Utc::now();
     let events_total = rows.len() as i64;
@@ -2318,7 +2415,7 @@ pub async fn featured(pool: &PgPool, user_id: i32) -> Result<FeaturedContestsRes
         .map(|row| build_event_card(row, now))
         .collect();
     Ok(FeaturedContestsResponse {
-        ranked: ranked_config(my_rating),
+        ranked: ranked_config(my_rating, season),
         events,
         events_total,
         server_time: now,
@@ -2465,7 +2562,7 @@ async fn register_event_inner(
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
     let event = sqlx::query_as::<_, LockedEventRow>(
         "SELECT status, registration_mode, registration_opens_at, registration_closes_at, \
-                starts_at, ends_at, capacity, class_id \
+                starts_at, ends_at, capacity, class_id, grade_scope \
          FROM official_events WHERE id = $1 FOR UPDATE",
     )
     .bind(event_id)
@@ -2519,6 +2616,18 @@ async fn register_event_inner(
         .map_err(AppError::Database)?;
         if !allowed {
             return Err(AppError::ForbiddenWith("仅限指定组织的学生参加".to_owned()));
+        }
+    }
+    if !event.grade_scope.is_empty() {
+        let my_grade: Option<String> = sqlx::query_scalar("SELECT grade FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?;
+        if !grade_allowed(&event.grade_scope, my_grade.as_deref()) {
+            return Err(AppError::ForbiddenWith(grade_scope_reason(
+                &event.grade_scope,
+            )));
         }
     }
 
@@ -2608,7 +2717,7 @@ async fn fetch_event_rows(
 const EVENT_SELECT_SQL: &str = "SELECT e.id, e.title, e.organizer, e.event_type, e.description, \
         e.registration_url, e.registration_opens_at, \
         e.registration_closes_at AS registration_deadline, \
-        e.starts_at, e.ends_at, e.scope, e.capacity, e.registration_mode, \
+        e.starts_at, e.ends_at, e.scope, e.grade_scope, e.capacity, e.registration_mode, \
         COALESCE(e.rules, '[]'::jsonb) AS rules, \
         (SELECT COUNT(*) FROM official_event_registrations r \
           WHERE r.event_id = e.id AND r.status IN ('registered', 'joined')) AS registered_count, \
@@ -2621,7 +2730,8 @@ const EVENT_SELECT_SQL: &str = "SELECT e.id, e.title, e.organizer, e.event_type,
             EXISTS (SELECT 1 FROM class_members m \
               WHERE m.class_id = e.class_id AND m.user_id = $1 AND m.status = 'active') \
             OR EXISTS (SELECT 1 FROM classes c \
-              WHERE c.id = e.class_id AND c.owner_id = $1)) END AS in_class \
+              WHERE c.id = e.class_id AND c.owner_id = $1)) END AS in_class, \
+        (SELECT u.grade FROM users u WHERE u.id = $1) AS my_grade \
      FROM official_events e \
      WHERE e.status = 'published' AND ($2::int IS NULL OR e.id = $2::int)";
 
@@ -2632,7 +2742,8 @@ fn build_event_card(row: EventRow, now: DateTime<Utc>) -> ContestEventCard {
         .capacity
         .is_some_and(|capacity| row.registered_count >= i64::from(capacity));
     let registration_open = registration_open(&row, now);
-    let eligible = row.in_class;
+    let grade_ok = grade_allowed(&row.grade_scope, row.my_grade.as_deref());
+    let eligible = row.in_class && grade_ok;
 
     let status = if ended {
         EVENT_STATUS_FINISHED
@@ -2670,10 +2781,12 @@ fn build_event_card(row: EventRow, now: DateTime<Utc>) -> ContestEventCard {
         EVENT_ACTION_CLOSED
     };
 
-    let mut ineligible_reason = if eligible {
-        None
-    } else {
+    let mut ineligible_reason = if !row.in_class {
         Some("仅限指定组织的学生参加".to_owned())
+    } else if !grade_ok {
+        Some(grade_scope_reason(&row.grade_scope))
+    } else {
+        None
     };
     if ineligible_reason.is_none() && full && !row.is_registered {
         ineligible_reason = Some("名额已满".to_owned());
@@ -2699,6 +2812,7 @@ fn build_event_card(row: EventRow, now: DateTime<Utc>) -> ContestEventCard {
         registration_opens_at: row.registration_opens_at,
         registration_deadline: row.registration_deadline,
         scope: row.scope,
+        grade_scope: row.grade_scope,
         capacity: row.capacity,
         registered_count: row.registered_count,
         is_registered: row.is_registered,
@@ -2746,6 +2860,18 @@ fn closed_reason(row: &EventRow, now: DateTime<Utc>) -> String {
     } else {
         "当前不可报名".to_owned()
     }
+}
+
+/// 年级范围为空表示不限制；否则要求用户年级精确命中其中一项。
+fn grade_allowed(grade_scope: &[String], grade: Option<&str>) -> bool {
+    if grade_scope.is_empty() {
+        return true;
+    }
+    grade.is_some_and(|grade| grade_scope.iter().any(|item| item == grade))
+}
+
+fn grade_scope_reason(grade_scope: &[String]) -> String {
+    format!("仅限 {} 学生参加", grade_scope.join("、"))
 }
 
 fn parse_rules(value: &Value) -> Vec<EventRuleGroup> {
@@ -2808,7 +2934,7 @@ fn event_list_order(left: &ContestEventCard, right: &ContestEventCard) -> Orderi
         .then_with(|| left.id.cmp(&right.id))
 }
 
-fn ranked_config(my_rating: i32) -> RankedConfig {
+fn ranked_config(my_rating: i32, season: Option<SeasonSummary>) -> RankedConfig {
     RankedConfig {
         mode: "ranked".to_owned(),
         title: "4 人排位赛".to_owned(),
@@ -2817,6 +2943,7 @@ fn ranked_config(my_rating: i32) -> RankedConfig {
         problem_count: PROBLEMS_PER_CONTEST as i32,
         rating_window: RATING_WINDOW,
         my_rating,
+        season,
         rules: vec![
             EventRuleGroup {
                 title: "比赛流程".to_owned(),
@@ -3046,17 +3173,41 @@ pub async fn enter_event(
     event_id: i32,
 ) -> Result<EnterEventResponse, AppError> {
     ensure_reputation_for_events(pool, user_id).await?;
-    let event: Option<(String, DateTime<Utc>, DateTime<Utc>)> =
-        sqlx::query_as("SELECT status, starts_at, ends_at FROM official_events WHERE id = $1")
-            .bind(event_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(AppError::Database)?;
-    let Some((status, starts_at, ends_at)) = event else {
+    #[derive(FromRow)]
+    struct EnterEventRow {
+        status: String,
+        starts_at: DateTime<Utc>,
+        ends_at: DateTime<Utc>,
+        grade_scope: Vec<String>,
+    }
+    let event: Option<EnterEventRow> = sqlx::query_as(
+        "SELECT status, starts_at, ends_at, grade_scope FROM official_events WHERE id = $1",
+    )
+    .bind(event_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+    let Some(EnterEventRow {
+        status,
+        starts_at,
+        ends_at,
+        grade_scope,
+    }) = event
+    else {
         return Err(AppError::NotFound("赛事不存在".to_owned()));
     };
     if status != "published" {
         return Err(AppError::NotFound("赛事不存在".to_owned()));
+    }
+    if !grade_scope.is_empty() {
+        let my_grade: Option<String> = sqlx::query_scalar("SELECT grade FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::Database)?;
+        if !grade_allowed(&grade_scope, my_grade.as_deref()) {
+            return Err(AppError::ForbiddenWith(grade_scope_reason(&grade_scope)));
+        }
     }
     let now = Utc::now();
     if now < starts_at {
@@ -3196,9 +3347,16 @@ pub async fn event_leaderboard(
 pub async fn ranked_leaderboard(
     pool: &PgPool,
     user_id: i32,
-    limit: Option<i64>,
+    query: RankedLeaderboardQuery,
 ) -> Result<RankedLeaderboardResponse, AppError> {
-    let limit = limit.unwrap_or(20).clamp(1, 100);
+    let limit = query.limit.unwrap_or(20).clamp(1, 100);
+    let season_list = season_service::list_public(pool).await?;
+    let current = season_list.current.clone();
+    let selected = match query.season_id {
+        Some(season_id) => season_service::season_summary(pool, season_id).await?,
+        None => current.clone(),
+    };
+
     #[derive(Debug, FromRow)]
     struct RankRow {
         user_id: i32,
@@ -3208,41 +3366,115 @@ pub async fn ranked_leaderboard(
         wins: i64,
     }
 
+    // 有赛季时排行榜只统计该赛季的记录；没有配置赛季的旧部署继续按全局段位统计。
+    let Some(season) = selected else {
+        let rows = sqlx::query_as::<_, RankRow>(
+            "SELECT u.id AS user_id, u.username, u.contest_rating AS rating, \
+                    (SELECT COUNT(*) FROM contest_participants cp \
+                     JOIN contests c ON c.id = cp.contest_id \
+                     WHERE cp.user_id = u.id AND c.official_event_id IS NULL \
+                       AND c.status = 'finished') AS played, \
+                    (SELECT COUNT(*) FROM contest_participants cp \
+                     JOIN contests c ON c.id = cp.contest_id \
+                     WHERE cp.user_id = u.id AND c.official_event_id IS NULL \
+                       AND c.status = 'finished' AND cp.rank = 1) AS wins \
+             FROM users u WHERE u.role = 'student' AND u.status = 'active' \
+             ORDER BY u.contest_rating DESC, played DESC, u.username ASC, u.id ASC LIMIT $1",
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        let my_rank: Option<i64> = sqlx::query_scalar(
+            "SELECT ranked.position FROM ( \
+                 SELECT u.id, ROW_NUMBER() OVER ( \
+                     ORDER BY u.contest_rating DESC, u.username ASC, u.id ASC) AS position \
+                 FROM users u WHERE u.role = 'student' AND u.status = 'active' \
+             ) ranked WHERE ranked.id = $1",
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)?;
+        let total: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM users WHERE role = 'student' AND status = 'active'",
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        return Ok(RankedLeaderboardResponse {
+            entries: rows
+                .into_iter()
+                .enumerate()
+                .map(|(index, row)| RankedLeaderboardEntry {
+                    rank: index as i64 + 1,
+                    user_id: row.user_id,
+                    username: row.username,
+                    rating: row.rating,
+                    played: row.played,
+                    wins: row.wins,
+                    is_me: row.user_id == user_id,
+                })
+                .collect(),
+            my_rank,
+            my_rating: user_rating(pool, user_id).await?,
+            total,
+            season: None,
+            seasons: season_list.items,
+            server_time: Utc::now(),
+        });
+    };
+
+    let season_id = season.id;
     let rows = sqlx::query_as::<_, RankRow>(
-        "SELECT u.id AS user_id, u.username, u.contest_rating AS rating, \
-                (SELECT COUNT(*) FROM contest_participants cp \
-                 JOIN contests c ON c.id = cp.contest_id \
-                 WHERE cp.user_id = u.id AND c.official_event_id IS NULL \
-                   AND c.status = 'finished') AS played, \
-                (SELECT COUNT(*) FROM contest_participants cp \
-                 JOIN contests c ON c.id = cp.contest_id \
-                 WHERE cp.user_id = u.id AND c.official_event_id IS NULL \
-                   AND c.status = 'finished' AND cp.rank = 1) AS wins \
-         FROM users u WHERE u.role = 'student' AND u.status = 'active' \
-         ORDER BY u.contest_rating DESC, played DESC, u.username ASC, u.id ASC LIMIT $1",
+        "SELECT u.id AS user_id, u.username, sr.rating, sr.played, sr.wins \
+         FROM season_ratings sr JOIN users u ON u.id = sr.user_id \
+         WHERE sr.season_id = $2 AND u.role = 'student' AND u.status = 'active' \
+         ORDER BY sr.rating DESC, sr.played DESC, u.username ASC, u.id ASC LIMIT $1",
     )
     .bind(limit)
+    .bind(season_id)
     .fetch_all(pool)
     .await
     .map_err(AppError::Database)?;
 
     let my_rank: Option<i64> = sqlx::query_scalar(
         "SELECT ranked.position FROM ( \
-             SELECT u.id, ROW_NUMBER() OVER ( \
-                 ORDER BY u.contest_rating DESC, u.username ASC, u.id ASC) AS position \
-             FROM users u WHERE u.role = 'student' AND u.status = 'active' \
-         ) ranked WHERE ranked.id = $1",
+             SELECT sr.user_id, ROW_NUMBER() OVER ( \
+                 ORDER BY sr.rating DESC, u.username ASC, sr.user_id ASC) AS position \
+             FROM season_ratings sr JOIN users u ON u.id = sr.user_id \
+             WHERE sr.season_id = $2 AND u.role = 'student' AND u.status = 'active' \
+         ) ranked WHERE ranked.user_id = $1",
     )
     .bind(user_id)
+    .bind(season_id)
     .fetch_optional(pool)
     .await
     .map_err(AppError::Database)?;
     let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM users WHERE role = 'student' AND status = 'active'",
+        "SELECT COUNT(*) FROM season_ratings sr JOIN users u ON u.id = sr.user_id \
+         WHERE sr.season_id = $1 AND u.role = 'student' AND u.status = 'active'",
     )
+    .bind(season_id)
     .fetch_one(pool)
     .await
     .map_err(AppError::Database)?;
+    let season_rating: Option<i32> = sqlx::query_scalar(
+        "SELECT rating FROM season_ratings WHERE season_id = $1 AND user_id = $2",
+    )
+    .bind(season_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+    let is_current = current.as_ref().is_some_and(|item| item.id == season_id);
+    let my_rating = match season_rating {
+        Some(rating) => rating,
+        None if is_current => user_rating(pool, user_id).await?,
+        None => DEFAULT_CONTEST_RATING,
+    };
 
     Ok(RankedLeaderboardResponse {
         entries: rows
@@ -3259,8 +3491,10 @@ pub async fn ranked_leaderboard(
             })
             .collect(),
         my_rank,
-        my_rating: user_rating(pool, user_id).await?,
+        my_rating,
         total,
+        season: Some(season),
+        seasons: season_list.items,
         server_time: Utc::now(),
     })
 }
@@ -3273,6 +3507,7 @@ struct NormalizedEventInput {
     description: Option<String>,
     event_type: String,
     scope: Option<String>,
+    grade_scope: Vec<String>,
     capacity: Option<i32>,
     registration_mode: String,
     class_id: Option<i32>,
@@ -3374,6 +3609,26 @@ fn normalize_admin_event(mut input: AdminEventInput) -> Result<NormalizedEventIn
             "参赛范围说明不能超过 200 个字符".to_owned(),
         ));
     }
+    let mut grade_scope: Vec<String> = Vec::new();
+    for grade in input.grade_scope {
+        let grade = grade.trim().to_owned();
+        if grade.is_empty() {
+            continue;
+        }
+        if grade.chars().count() > MAX_GRADE_CHARS {
+            return Err(AppError::BadRequest(format!(
+                "年级范围单项不能超过 {MAX_GRADE_CHARS} 个字符"
+            )));
+        }
+        if !grade_scope.contains(&grade) {
+            grade_scope.push(grade);
+        }
+    }
+    if grade_scope.len() > MAX_GRADE_SCOPE_ITEMS {
+        return Err(AppError::BadRequest(format!(
+            "年级范围最多 {MAX_GRADE_SCOPE_ITEMS} 项"
+        )));
+    }
     let registration_url = trim_option(input.registration_url);
     if let Some(url) = registration_url.as_deref()
         && (!url.starts_with("http://") && !url.starts_with("https://")
@@ -3432,6 +3687,7 @@ fn normalize_admin_event(mut input: AdminEventInput) -> Result<NormalizedEventIn
         description,
         event_type,
         scope,
+        grade_scope,
         capacity: input.capacity,
         registration_mode,
         class_id: input.class_id,
@@ -3497,6 +3753,7 @@ struct AdminEventRow {
     event_type: String,
     description: Option<String>,
     scope: Option<String>,
+    grade_scope: Vec<String>,
     capacity: Option<i32>,
     registration_mode: String,
     class_id: Option<i32>,
@@ -3518,7 +3775,8 @@ async fn admin_event_views(
     event_id: Option<i32>,
 ) -> Result<Vec<AdminEventView>, AppError> {
     let rows = sqlx::query_as::<_, AdminEventRow>(
-        "SELECT e.id, e.title, e.organizer, e.event_type, e.description, e.scope, e.capacity, \
+        "SELECT e.id, e.title, e.organizer, e.event_type, e.description, e.scope, e.grade_scope, \
+                e.capacity, \
                 e.registration_mode, e.class_id, e.registration_url, e.registration_opens_at, \
                 e.registration_closes_at AS registration_deadline, e.starts_at, e.ends_at, \
                 e.status, e.rules, e.created_at, \
@@ -3556,6 +3814,7 @@ async fn admin_event_views(
             event_type: row.event_type,
             description: row.description,
             scope: row.scope,
+            grade_scope: row.grade_scope,
             capacity: row.capacity,
             registration_mode: row.registration_mode,
             class_id: row.class_id,
@@ -3612,9 +3871,9 @@ pub async fn admin_create_event(
     let event_id: i32 = sqlx::query_scalar(
         "INSERT INTO official_events \
          (title, organizer, description, registration_url, registration_opens_at, \
-          registration_closes_at, starts_at, ends_at, status, event_type, scope, capacity, \
+          registration_closes_at, starts_at, ends_at, status, event_type, scope, grade_scope, capacity, \
           registration_mode, class_id, rules, created_by) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) \
          RETURNING id",
     )
     .bind(&input.title)
@@ -3628,6 +3887,7 @@ pub async fn admin_create_event(
     .bind(&input.status)
     .bind(&input.event_type)
     .bind(input.scope.as_deref())
+    .bind(&input.grade_scope)
     .bind(input.capacity)
     .bind(&input.registration_mode)
     .bind(input.class_id)
@@ -3712,8 +3972,8 @@ pub async fn admin_update_event(
         "UPDATE official_events SET title = $2, organizer = $3, description = $4, \
                 registration_url = $5, registration_opens_at = $6, registration_closes_at = $7, \
                 starts_at = $8, ends_at = $9, status = $10, event_type = $11, scope = $12, \
-                capacity = $13, registration_mode = $14, class_id = $15, rules = $16, \
-                updated_at = CURRENT_TIMESTAMP \
+                grade_scope = $13, capacity = $14, registration_mode = $15, class_id = $16, \
+                rules = $17, updated_at = CURRENT_TIMESTAMP \
          WHERE id = $1",
     )
     .bind(event_id)
@@ -3728,6 +3988,7 @@ pub async fn admin_update_event(
     .bind(&input.status)
     .bind(&input.event_type)
     .bind(input.scope.as_deref())
+    .bind(&input.grade_scope)
     .bind(input.capacity)
     .bind(&input.registration_mode)
     .bind(input.class_id)
@@ -3897,4 +4158,517 @@ pub async fn expire_event_forum_pins(pool: &PgPool) -> Result<usize, AppError> {
         .map_err(AppError::Database)?;
     }
     Ok(count)
+}
+
+// ── 赛事申诉 ───────────────────────────────────────────────────────
+
+const MAX_APPEAL_REASON_CHARS: usize = 1000;
+const MAX_APPEAL_NOTE_CHARS: usize = 500;
+const MAX_REPUTATION_SCORE: f64 = 100.0;
+
+#[derive(Debug, FromRow)]
+struct AppealRow {
+    id: i64,
+    contest_id: i32,
+    event_id: Option<i32>,
+    event_title: Option<String>,
+    user_id: i32,
+    username: String,
+    reason: String,
+    status: String,
+    handle_note: Option<String>,
+    handled_by: Option<String>,
+    disqualified: bool,
+    created_at: DateTime<Utc>,
+    handled_at: Option<DateTime<Utc>>,
+}
+
+impl AppealRow {
+    fn into_item(self) -> ContestAppealItem {
+        ContestAppealItem {
+            id: self.id,
+            contest_id: self.contest_id,
+            event_id: self.event_id,
+            event_title: self.event_title,
+            user_id: self.user_id,
+            username: self.username,
+            reason: self.reason,
+            status: self.status,
+            handle_note: self.handle_note,
+            handled_by: self.handled_by,
+            disqualified: self.disqualified,
+            created_at: self.created_at,
+            handled_at: self.handled_at,
+        }
+    }
+}
+
+const APPEAL_SELECT: &str = "SELECT a.id, a.contest_id, c.official_event_id AS event_id, \
+        oe.title AS event_title, a.user_id, u.username, a.reason, a.status, \
+        a.handle_note, handler.username AS handled_by, \
+        COALESCE(p.disqualified_at IS NOT NULL, FALSE) AS disqualified, \
+        a.created_at, a.handled_at \
+     FROM contest_appeals a \
+     JOIN contests c ON c.id = a.contest_id \
+     LEFT JOIN official_events oe ON oe.id = c.official_event_id \
+     JOIN users u ON u.id = a.user_id \
+     LEFT JOIN users handler ON handler.id = a.handled_by \
+     LEFT JOIN contest_participants p ON p.contest_id = a.contest_id AND p.user_id = a.user_id";
+
+async fn fetch_appeal(pool: &PgPool, appeal_id: i64) -> Result<ContestAppealItem, AppError> {
+    let row: AppealRow = sqlx::query_as(&format!("{APPEAL_SELECT} WHERE a.id = $1"))
+        .bind(appeal_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound("申诉不存在".to_owned()))?;
+    Ok(row.into_item())
+}
+
+fn normalize_appeal_status(value: Option<&str>) -> Result<Option<String>, AppError> {
+    let Some(status) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if !["pending", "accepted", "rejected"].contains(&status) {
+        return Err(AppError::BadRequest("申诉状态无效".to_owned()));
+    }
+    Ok(Some(status.to_owned()))
+}
+
+pub async fn submit_appeal(
+    pool: &PgPool,
+    user_id: i32,
+    contest_id: i32,
+    input: &ContestAppealInput,
+) -> Result<ContestAppealItem, AppError> {
+    let reason = input.reason.trim();
+    if reason.is_empty() || reason.chars().count() > MAX_APPEAL_REASON_CHARS {
+        return Err(AppError::BadRequest(format!(
+            "申诉理由不能为空且不超过 {MAX_APPEAL_REASON_CHARS} 个字符"
+        )));
+    }
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let contest: Option<(String, DateTime<Utc>)> =
+        sqlx::query_as("SELECT status, ends_at FROM contests WHERE id = $1")
+            .bind(contest_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?;
+    let Some((status, ends_at)) = contest else {
+        return Err(AppError::NotFound("比赛不存在".to_owned()));
+    };
+    let is_participant: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM contest_participants WHERE contest_id = $1 AND user_id = $2)",
+    )
+    .bind(contest_id)
+    .bind(user_id)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    if !is_participant {
+        return Err(AppError::ForbiddenWith(
+            "只能申诉自己参加过的比赛".to_owned(),
+        ));
+    }
+    if status != CONTEST_STATUS_FINISHED && Utc::now() < ends_at {
+        return Err(AppError::ConflictWith("比赛结束后才能提交申诉".to_owned()));
+    }
+    let existing: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM contest_appeals WHERE contest_id = $1 AND user_id = $2)",
+    )
+    .bind(contest_id)
+    .bind(user_id)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    if existing {
+        return Err(AppError::ConflictWith("你已提交过该比赛的申诉".to_owned()));
+    }
+    let proctor_event_id: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM contest_events WHERE contest_id = $1 AND user_id = $2 \
+         AND event_type = 'paste_suspicious' ORDER BY id DESC LIMIT 1",
+    )
+    .bind(contest_id)
+    .bind(user_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    let appeal_id: i64 = sqlx::query_scalar(
+        "INSERT INTO contest_appeals (contest_id, user_id, proctor_event_id, reason) \
+         VALUES ($1, $2, $3, $4) RETURNING id",
+    )
+    .bind(contest_id)
+    .bind(user_id)
+    .bind(proctor_event_id)
+    .bind(reason)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    notification_service::create(
+        &mut transaction,
+        user_id,
+        "contest_notice",
+        None,
+        "申诉已提交",
+        Some("管理员会在复核后给出处理结果，请留意站内通知"),
+        Some(&format!("/contests/{contest_id}/result")),
+        Some("contest"),
+        Some(i64::from(contest_id)),
+    )
+    .await?;
+    transaction.commit().await.map_err(AppError::Database)?;
+    fetch_appeal(pool, appeal_id).await
+}
+
+pub async fn list_my_appeals(
+    pool: &PgPool,
+    user_id: i32,
+    query: &ContestAppealQuery,
+) -> Result<ContestAppealListResponse, AppError> {
+    let status = normalize_appeal_status(query.status.as_deref())?;
+    let sql = format!(
+        "{APPEAL_SELECT} WHERE a.user_id = $1 AND ($2::text IS NULL OR a.status = $2) \
+         ORDER BY a.created_at DESC, a.id DESC"
+    );
+    let rows: Vec<AppealRow> = sqlx::query_as(&sql)
+        .bind(user_id)
+        .bind(status.as_deref())
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
+    let total = rows.len() as i64;
+    Ok(ContestAppealListResponse {
+        items: rows.into_iter().map(AppealRow::into_item).collect(),
+        total,
+        server_time: Utc::now(),
+    })
+}
+
+pub async fn admin_list_appeals(
+    pool: &PgPool,
+    query: &ContestAppealQuery,
+) -> Result<ContestAppealListResponse, AppError> {
+    let status = normalize_appeal_status(query.status.as_deref())?;
+    let sql = format!(
+        "{APPEAL_SELECT} WHERE ($1::text IS NULL OR a.status = $1) \
+         ORDER BY CASE WHEN a.status = 'pending' THEN 0 ELSE 1 END, \
+                  a.created_at DESC, a.id DESC LIMIT 200"
+    );
+    let rows: Vec<AppealRow> = sqlx::query_as(&sql)
+        .bind(status.as_deref())
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
+    let total = rows.len() as i64;
+    Ok(ContestAppealListResponse {
+        items: rows.into_iter().map(AppealRow::into_item).collect(),
+        total,
+        server_time: Utc::now(),
+    })
+}
+
+/// Reverses the cheating penalty recorded for this contest so an accepted
+/// appeal actually restores reputation, disqualification and rating.
+async fn restore_appeal_penalty(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    contest_id: i32,
+    user_id: i32,
+    admin_id: i32,
+    note: Option<&str>,
+) -> Result<bool, AppError> {
+    let disqualified: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM contest_participants \
+                        WHERE contest_id = $1 AND user_id = $2 AND disqualified_at IS NOT NULL)",
+    )
+    .bind(contest_id)
+    .bind(user_id)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    let restore: f64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(-delta), 0)::float8 FROM reputation_events \
+         WHERE user_id = $1 AND contest_id = $2 AND reason = 'paste_cheating' AND delta < 0",
+    )
+    .bind(user_id)
+    .bind(contest_id)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    if restore > 0.0 {
+        let (score_before, status): (f64, String) = sqlx::query_as(
+            "SELECT reputation_score::float8, status FROM users WHERE id = $1 FOR UPDATE",
+        )
+        .bind(user_id)
+        .fetch_optional(&mut **transaction)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound("用户不存在".to_owned()))?;
+        let score_after = round1((score_before + restore).min(MAX_REPUTATION_SCORE));
+        sqlx::query(
+            "UPDATE users SET reputation_score = $2::float8::numeric(6, 1), \
+             status = CASE WHEN status = 'banned' AND $3 THEN 'active' ELSE status END, \
+             token_version = token_version + CASE WHEN status = 'banned' AND $3 THEN 1 ELSE 0 END, \
+             updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        )
+        .bind(user_id)
+        .bind(score_after)
+        .bind(score_after >= 0.0)
+        .execute(&mut **transaction)
+        .await
+        .map_err(AppError::Database)?;
+        sqlx::query(
+            "INSERT INTO reputation_events \
+             (user_id, delta, score_before, score_after, reason, contest_id, actor_id, note) \
+             VALUES ($1, $2::float8::numeric(6, 1), $3::float8::numeric(6, 1), \
+                     $4::float8::numeric(6, 1), 'appeal_restored', $5, $6, $7)",
+        )
+        .bind(user_id)
+        .bind(restore)
+        .bind(score_before)
+        .bind(score_after)
+        .bind(contest_id)
+        .bind(admin_id)
+        .bind(note)
+        .execute(&mut **transaction)
+        .await
+        .map_err(AppError::Database)?;
+        if status == "banned" && score_after >= 0.0 {
+            sqlx::query(
+                "DELETE FROM email_blacklist WHERE user_id = $1 AND reason = '信誉分低于 0，自动封禁'",
+            )
+            .bind(user_id)
+            .execute(&mut **transaction)
+            .await
+            .map_err(AppError::Database)?;
+        }
+    }
+
+    if disqualified {
+        sqlx::query(
+            "UPDATE contest_participants SET disqualified_at = NULL, disqualified_by = NULL, \
+             disqualify_reason = NULL WHERE contest_id = $1 AND user_id = $2",
+        )
+        .bind(contest_id)
+        .bind(user_id)
+        .execute(&mut **transaction)
+        .await
+        .map_err(AppError::Database)?;
+        sqlx::query(
+            "UPDATE contest_event_reviews r SET review_status = 'cleared', reviewed_by = $3, \
+             review_note = $4, reviewed_at = CURRENT_TIMESTAMP \
+             FROM contest_events e \
+             WHERE e.id = r.event_id AND e.contest_id = $1 AND e.user_id = $2 \
+               AND r.review_status = 'confirmed'",
+        )
+        .bind(contest_id)
+        .bind(user_id)
+        .bind(admin_id)
+        .bind(note)
+        .execute(&mut **transaction)
+        .await
+        .map_err(AppError::Database)?;
+    }
+
+    Ok(disqualified)
+}
+
+pub async fn admin_resolve_appeal(
+    pool: &PgPool,
+    appeal_id: i64,
+    admin_id: i32,
+    input: &ContestAppealResolveInput,
+) -> Result<ContestAppealResolveResponse, AppError> {
+    let status = input.status.trim();
+    if !matches!(status, "accepted" | "rejected") {
+        return Err(AppError::BadRequest(
+            "处理结果只能是 accepted 或 rejected".to_owned(),
+        ));
+    }
+    let note = input
+        .note
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(note) = note
+        && note.chars().count() > MAX_APPEAL_NOTE_CHARS
+    {
+        return Err(AppError::BadRequest(format!(
+            "处理说明不能超过 {MAX_APPEAL_NOTE_CHARS} 个字符"
+        )));
+    }
+
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let appeal: Option<(i32, i32, String)> = sqlx::query_as(
+        "SELECT contest_id, user_id, status FROM contest_appeals WHERE id = $1 FOR UPDATE",
+    )
+    .bind(appeal_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    let Some((contest_id, user_id, current_status)) = appeal else {
+        return Err(AppError::NotFound("申诉不存在".to_owned()));
+    };
+    if current_status != "pending" {
+        return Err(AppError::ConflictWith("该申诉已处理".to_owned()));
+    }
+
+    sqlx::query(
+        "UPDATE contest_appeals SET status = $2, handled_by = $3, handle_note = $4, \
+         handled_at = CURRENT_TIMESTAMP WHERE id = $1",
+    )
+    .bind(appeal_id)
+    .bind(status)
+    .bind(admin_id)
+    .bind(note)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
+    let mut disqualified = false;
+    let mut rating_reranked = false;
+    if status == "accepted" {
+        disqualified =
+            restore_appeal_penalty(&mut transaction, contest_id, user_id, admin_id, note).await?;
+        let contest_finished: bool =
+            sqlx::query_scalar("SELECT status = 'finished' FROM contests WHERE id = $1")
+                .bind(contest_id)
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(AppError::Database)?;
+        if disqualified && contest_finished {
+            let is_event_contest: bool = sqlx::query_scalar(
+                "SELECT official_event_id IS NOT NULL FROM contests WHERE id = $1",
+            )
+            .bind(contest_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?;
+            rating_reranked =
+                rerank_contest(&mut transaction, contest_id, is_event_contest).await?;
+        }
+    }
+
+    let (title, body) = if status == "accepted" {
+        (
+            "申诉已通过",
+            match note {
+                Some(note) => format!("你的比赛申诉已通过，成绩与信誉已恢复。处理说明：{note}"),
+                None => "你的比赛申诉已通过，成绩与信誉已恢复".to_owned(),
+            },
+        )
+    } else {
+        (
+            "申诉未通过",
+            match note {
+                Some(note) => format!("你的比赛申诉未通过。处理说明：{note}"),
+                None => "你的比赛申诉未通过".to_owned(),
+            },
+        )
+    };
+    notification_service::create(
+        &mut transaction,
+        user_id,
+        "contest_notice",
+        None,
+        title,
+        Some(&body),
+        Some(&format!("/contests/{contest_id}/result")),
+        Some("contest"),
+        Some(i64::from(contest_id)),
+    )
+    .await?;
+
+    transaction.commit().await.map_err(AppError::Database)?;
+    Ok(ContestAppealResolveResponse {
+        message: if status == "accepted" {
+            "申诉已通过".to_owned()
+        } else {
+            "申诉已驳回".to_owned()
+        },
+        status: status.to_owned(),
+        disqualified,
+        rating_reranked,
+    })
+}
+
+// ── 成绩导出 ───────────────────────────────────────────────────────
+
+fn escape_csv(value: &str) -> String {
+    if value.contains(['"', ',', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_owned()
+    }
+}
+
+/// CSV for one official event's results. Returns the event title alongside the
+/// content so the handler can build a descriptive filename.
+pub async fn export_event_results(
+    pool: &PgPool,
+    event_id: i32,
+) -> Result<(String, String), AppError> {
+    let title: String = sqlx::query_scalar("SELECT title FROM official_events WHERE id = $1")
+        .bind(event_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound("赛事不存在".to_owned()))?;
+    let contest_id: i32 =
+        sqlx::query_scalar("SELECT id FROM contests WHERE official_event_id = $1")
+            .bind(event_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::Database)?
+            .ok_or_else(|| AppError::NotFound("赛事尚未生成比赛".to_owned()))?;
+
+    #[derive(FromRow)]
+    struct ExportRow {
+        rank: Option<i32>,
+        username: String,
+        total_score: Option<f64>,
+        solved_count: i32,
+        finished_at: Option<DateTime<Utc>>,
+        disqualified: bool,
+    }
+    let rows: Vec<ExportRow> = sqlx::query_as(
+        "SELECT p.rank, u.username, p.total_score, p.solved_count, p.finished_at, \
+                (p.disqualified_at IS NOT NULL) AS disqualified \
+         FROM contest_participants p JOIN users u ON u.id = p.user_id \
+         WHERE p.contest_id = $1 AND p.status IN ('active', 'disconnected', 'timed_out', 'finished') \
+         ORDER BY p.rank NULLS LAST, p.total_score DESC NULLS LAST, u.username ASC",
+    )
+    .bind(contest_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    let mut out = String::from("\u{feff}");
+    out.push_str("排名,用户名,总分,通过题数,完成时间,是否取消资格\r\n");
+    for row in rows {
+        let columns = [
+            row.rank.map(|rank| rank.to_string()).unwrap_or_default(),
+            row.username,
+            row.total_score
+                .map(|score| format!("{score:.2}"))
+                .unwrap_or_default(),
+            row.solved_count.to_string(),
+            row.finished_at
+                .map(|value| value.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+                .unwrap_or_default(),
+            if row.disqualified { "是" } else { "否" }.to_owned(),
+        ];
+        out.push_str(
+            &columns
+                .iter()
+                .map(|value| escape_csv(value))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        out.push_str("\r\n");
+    }
+    Ok((title, out))
 }

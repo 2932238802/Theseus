@@ -399,6 +399,13 @@
   background: var(--color-bg);
 }
 
+.user-menu .user-menu-error {
+  padding: 0 var(--space-sm);
+  color: var(--color-danger);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .page-shell {
   width: min(1200px, 100%);
   margin: 0 auto;

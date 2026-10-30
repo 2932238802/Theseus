@@ -10,6 +10,7 @@ import {
   fetchBadges,
   requestEmailChange,
   setBadgeVisibility,
+  updateGrade,
   updateUsername,
 } from '../api/profile'
 import {
@@ -26,6 +27,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const usernameInput = ref(authStore.user?.username ?? '')
+const gradeInput = ref(authStore.user?.grade ?? '')
 const emailInput = ref('')
 const currentPassword = ref('')
 const newPassword = ref('')
@@ -39,10 +41,18 @@ const badgesLoading = ref(true)
 const notificationPrefs = ref<NotificationPreferences | null>(null)
 const notificationPrefsLoading = ref(true)
 const activeSection = ref<
-  'username' | 'email' | 'password' | 'notifications' | 'sessions' | 'badges' | 'danger'
+  | 'username'
+  | 'grade'
+  | 'email'
+  | 'password'
+  | 'notifications'
+  | 'sessions'
+  | 'badges'
+  | 'danger'
 >('username')
 const sections = [
   { key: 'username', label: '用户名' },
+  { key: 'grade', label: '年级' },
   { key: 'email', label: '邮箱' },
   { key: 'password', label: '密码' },
   { key: 'notifications', label: '通知偏好' },
@@ -81,6 +91,16 @@ const saveUsername = (): void => {
     const user = await updateUsername(usernameInput.value.trim())
     authStore.updateUser(user)
     toast.success('用户名已更新')
+  })
+}
+
+const saveGrade = (): void => {
+  void run('grade', async () => {
+    const value = gradeInput.value.trim()
+    const user = await updateGrade(value || null)
+    authStore.updateUser(user)
+    gradeInput.value = user.grade ?? ''
+    toast.success('年级已更新')
   })
 }
 
@@ -236,6 +256,22 @@ const removeAccount = (): void => {
           <div class="teaching-form-actions">
             <button class="primary-button" type="submit" :disabled="busy === 'username'">
               {{ busy === 'username' ? '保存中' : '保存用户名' }}
+            </button>
+          </div>
+        </form>
+
+        <form v-show="activeSection === 'grade'" class="teaching-grade-form" @submit.prevent="saveGrade">
+          <h3>年级</h3>
+          <p class="teaching-subtle">
+            部分赛事仅限指定年级参加，请填写学校使用的年级名称，留空表示不填写
+          </p>
+          <label>
+            <span>年级</span>
+            <input v-model="gradeInput" maxlength="20" placeholder="例如：高一 / 2024 级" />
+          </label>
+          <div class="teaching-form-actions">
+            <button class="primary-button" type="submit" :disabled="busy === 'grade'">
+              {{ busy === 'grade' ? '保存中' : '保存年级' }}
             </button>
           </div>
         </form>

@@ -72,6 +72,11 @@ export const updateUsername = async (username: string): Promise<User> => {
   return mapUser(data)
 }
 
+export const updateGrade = async (grade: string | null): Promise<User> => {
+  const data = await unwrap(http.put<ApiEnvelope<BackendUser>>('/profile/grade', { grade }))
+  return mapUser(data)
+}
+
 export const requestEmailChange = async (
   email: string,
 ): Promise<{ message: string; pendingEmail: string }> => {

@@ -8,7 +8,7 @@ use crate::{
         profile::{
             AccountMessageResponse, AnalyticsDifficulty, AnalyticsQuery, AnalyticsResponse,
             AnalyticsSummary, AnalyticsTag, AnalyticsTrendPoint, AvatarResponse,
-            DeleteAccountRequest, UpdateUsernameRequest,
+            DeleteAccountRequest, UpdateGradeRequest, UpdateUsernameRequest,
         },
         user::PublicUser,
     },
@@ -19,6 +19,7 @@ use crate::{
 const ROLE_LOCK_NAMESPACE: i32 = 4;
 const MIN_USERNAME_CHARS: usize = 3;
 const MAX_USERNAME_CHARS: usize = 50;
+const MAX_GRADE_CHARS: usize = 20;
 const MAX_AVATAR_BYTES: usize = 2 * 1024 * 1024;
 const AVATAR_SIZE: u32 = 256;
 const DEFAULT_ANALYTICS_DAYS: i64 = 30;
@@ -47,6 +48,36 @@ pub async fn update_username(
             AppError::Database(error)
         }
     })?;
+    auth_service::current_user(pool, user_id).await
+}
+
+pub async fn update_grade(
+    pool: &PgPool,
+    user_id: i32,
+    request: &UpdateGradeRequest,
+) -> Result<PublicUser, AppError> {
+    // 年级是自由文本：大学与中学的命名差异太大，不在这里强行枚举。
+    let grade = request
+        .grade
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(value) = grade
+        && value.chars().count() > MAX_GRADE_CHARS
+    {
+        return Err(AppError::BadRequest(format!(
+            "年级不能超过 {MAX_GRADE_CHARS} 个字符"
+        )));
+    }
+    sqlx::query(
+        "UPDATE users SET grade = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2 AND status = 'active'",
+    )
+    .bind(grade)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(AppError::Database)?;
     auth_service::current_user(pool, user_id).await
 }
 

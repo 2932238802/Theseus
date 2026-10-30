@@ -1,8 +1,8 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::HeaderMap,
-    response::IntoResponse,
+    http::{HeaderMap, HeaderValue, header},
+    response::{IntoResponse, Response},
 };
 use serde_json::json;
 
@@ -10,13 +10,17 @@ use crate::{
     AppState,
     common::{error::AppError, response::ok},
     middleware::auth::{authenticate, require_admin, require_verified_email},
-    models::contest::{
-        AdminEventInput, ContestEventListQuery, ContestEventsRequest, MatchRequest,
-        ProctorReviewInput, RankedLeaderboardQuery,
+    models::{
+        contest::{
+            AdminEventInput, ContestAppealInput, ContestAppealQuery, ContestAppealResolveInput,
+            ContestEventListQuery, ContestEventsRequest, MatchRequest, ProctorReviewInput,
+            RankedLeaderboardQuery,
+        },
+        season::AdminSeasonInput,
     },
     services::{
         audit_service::{self, AuditContext, AuditRecord},
-        contest_service,
+        contest_service, season_service,
     },
 };
 
@@ -247,7 +251,7 @@ pub async fn ranked_leaderboard(
 ) -> Result<impl IntoResponse, AppError> {
     let user = authenticate(&state.pool, &headers, &state.config).await?;
     require_verified_email(&user)?;
-    let response = contest_service::ranked_leaderboard(&state.pool, user.id, query.limit).await?;
+    let response = contest_service::ranked_leaderboard(&state.pool, user.id, query).await?;
     Ok(ok(response))
 }
 
@@ -395,4 +399,189 @@ pub async fn sync_event_forum(
     )
     .await;
     Ok(ok(response))
+}
+
+// ── 赛季 ───────────────────────────────────────────────────────────
+
+pub async fn seasons(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
+    let response = season_service::list_public(&state.pool).await?;
+    Ok(ok(response))
+}
+
+pub async fn admin_list_seasons(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    require_admin(&state.pool, &headers, &state.config).await?;
+    let response = season_service::admin_list(&state.pool).await?;
+    Ok(ok(response))
+}
+
+pub async fn admin_create_season(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<AdminSeasonInput>,
+) -> Result<impl IntoResponse, AppError> {
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    let response = season_service::admin_create(&state.pool, admin.id, input).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "contest.season_create",
+            "contest_season",
+            Some(i64::from(response.id)),
+            format!("创建赛季《{}》", response.name),
+        )
+        .after(json!({
+            "name": response.name,
+            "starts_at": response.starts_at,
+            "ends_at": response.ends_at,
+            "status": response.status,
+            "soft_reset_ratio": response.soft_reset_ratio,
+        })),
+    )
+    .await;
+    Ok(ok(response))
+}
+
+pub async fn admin_update_season(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(season_id): Path<i32>,
+    Json(input): Json<AdminSeasonInput>,
+) -> Result<impl IntoResponse, AppError> {
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    let response = season_service::admin_update(&state.pool, season_id, input).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "contest.season_update",
+            "contest_season",
+            Some(i64::from(season_id)),
+            format!("更新赛季《{}》", response.name),
+        )
+        .after(json!({
+            "name": response.name,
+            "starts_at": response.starts_at,
+            "ends_at": response.ends_at,
+            "status": response.status,
+            "soft_reset_ratio": response.soft_reset_ratio,
+        })),
+    )
+    .await;
+    Ok(ok(response))
+}
+
+// ── 赛事申诉 ───────────────────────────────────────────────────────
+
+pub async fn submit_appeal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(contest_id): Path<i32>,
+    Json(input): Json<ContestAppealInput>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
+    let response = contest_service::submit_appeal(&state.pool, user.id, contest_id, &input).await?;
+    Ok(ok(response))
+}
+
+pub async fn my_appeals(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ContestAppealQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    require_verified_email(&user)?;
+    let response = contest_service::list_my_appeals(&state.pool, user.id, &query).await?;
+    Ok(ok(response))
+}
+
+pub async fn admin_list_appeals(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ContestAppealQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    require_admin(&state.pool, &headers, &state.config).await?;
+    let response = contest_service::admin_list_appeals(&state.pool, &query).await?;
+    Ok(ok(response))
+}
+
+pub async fn admin_resolve_appeal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(appeal_id): Path<i64>,
+    Json(input): Json<ContestAppealResolveInput>,
+) -> Result<impl IntoResponse, AppError> {
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    let response =
+        contest_service::admin_resolve_appeal(&state.pool, appeal_id, admin.id, &input).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "contest.appeal_resolve",
+            "contest_appeal",
+            Some(appeal_id),
+            format!("处理竞赛申诉 #{appeal_id}：{}", input.status.trim()),
+        )
+        .after(json!({
+            "status": response.status,
+            "disqualified": response.disqualified,
+            "rating_reranked": response.rating_reranked,
+            "note": input.note,
+        })),
+    )
+    .await;
+    Ok(ok(response))
+}
+
+// ── 成绩导出 ───────────────────────────────────────────────────────
+
+pub async fn export_event_results(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(event_id): Path<i32>,
+) -> Result<Response, AppError> {
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    let (title, csv) = contest_service::export_event_results(&state.pool, event_id).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "contest.results_export",
+            "contest_event",
+            Some(i64::from(event_id)),
+            format!("导出赛事《{title}》成绩"),
+        ),
+    )
+    .await;
+
+    let filename = format!("event-{event_id}-results.csv");
+    let disposition = HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+        .map_err(|_| AppError::Internal("导出文件名无效".to_owned()))?;
+    let mut response = csv.into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/csv; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CONTENT_DISPOSITION, disposition);
+    Ok(response)
 }

@@ -3,6 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import NotificationBell from './NotificationBell.vue'
 import NavSearch from './NavSearch.vue'
+import { fetchCurrentUser } from '../api/auth'
+import { toErrorMessage } from '../api/client'
+import { uploadAvatar } from '../api/profile'
 import { useAuthStore } from '../store/auth'
 import { useClassStore } from '../store/classes'
 import { isDarkTheme, toggleTheme as applyThemeToggle } from '../utils/theme'
@@ -13,6 +16,9 @@ const router = useRouter()
 const route = useRoute()
 const isMenuOpen = ref(false)
 const isDark = ref(isDarkTheme())
+const avatarInput = ref<HTMLInputElement | null>(null)
+const avatarBusy = ref(false)
+const avatarError = ref('')
 
 const canBrowseAssignments = computed(() => authStore.isStudent || authStore.isTeacher)
 const classListReady = computed(
@@ -121,6 +127,38 @@ watch(
 const logout = (): void => {
   authStore.logout()
   void router.push('/login')
+}
+
+const chooseAvatar = (): void => {
+  avatarError.value = ''
+  avatarInput.value?.click()
+}
+
+const onAvatarChange = async (event: Event): Promise<void> => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  target.value = ''
+  if (!file || avatarBusy.value) return
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    avatarError.value = '只支持 JPG、PNG、WebP'
+    return
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    avatarError.value = '头像不能超过 2 MB'
+    return
+  }
+  avatarBusy.value = true
+  avatarError.value = ''
+  try {
+    await uploadAvatar(file)
+    const user = await fetchCurrentUser()
+    authStore.updateUser(user)
+    isMenuOpen.value = false
+  } catch (exception: unknown) {
+    avatarError.value = toErrorMessage(exception)
+  } finally {
+    avatarBusy.value = false
+  }
 }
 
 onMounted(() => {
@@ -323,7 +361,19 @@ onBeforeUnmount(() => {
           <span>{{ authStore.user?.email }}</span>
           <hr />
           <RouterLink v-if="canBrowseAssignments" to="/personal/problems" @click="isMenuOpen = false">个人出题</RouterLink>
-          <RouterLink to="/profile" @click="isMenuOpen = false">个人</RouterLink>
+          <RouterLink to="/profile" @click="isMenuOpen = false">个人界面</RouterLink>
+          <button type="button" :disabled="avatarBusy" @click="chooseAvatar">
+            {{ avatarBusy ? '上传中…' : '更改头像' }}
+          </button>
+          <input
+            ref="avatarInput"
+            class="visually-hidden"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            hidden
+            @change="onAvatarChange"
+          />
+          <p v-if="avatarError" class="user-menu-error" role="alert">{{ avatarError }}</p>
           <button type="button" @click="logout">退出登录</button>
         </div>
       </template>

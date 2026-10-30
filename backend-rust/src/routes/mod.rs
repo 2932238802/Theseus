@@ -10,15 +10,17 @@ use crate::{
     handlers::{
         admin_forum_handler, admin_user_handler, anticheat_handler, assignment_handler,
         audit_handler, auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
-        favorite_handler, forum_handler, home_handler, invitation_handler, notification_handler,
-        problem_handler, profile_handler, ranking_handler, run_handler, submission_handler,
-        ws_handler,
+        favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
+        notification_handler, problem_handler, profile_handler, ranking_handler, run_handler,
+        submission_handler, ws_handler,
     },
 };
 
 pub fn router(state: AppState) -> Router {
     let upload_dir = state.config.upload_dir.clone();
     Router::new()
+        .route("/healthz", get(health_handler::liveness))
+        .route("/readyz", get(health_handler::readiness))
         .route("/api/ws/ticket", post(ws_handler::issue_ticket))
         .route("/api/ws", get(ws_handler::connect))
         .route("/api/auth/register", post(auth_handler::register))
@@ -29,6 +31,7 @@ pub fn router(state: AppState) -> Router {
             "/api/profile/username",
             put(profile_handler::update_username),
         )
+        .route("/api/profile/grade", put(profile_handler::update_grade))
         .route(
             "/api/profile/email",
             post(profile_handler::request_email_change),
@@ -238,6 +241,27 @@ pub fn router(state: AppState) -> Router {
             "/api/contests/rankings",
             get(contest_handler::ranked_leaderboard),
         )
+        .route("/api/contests/seasons", get(contest_handler::seasons))
+        .route(
+            "/api/contests/appeals/mine",
+            get(contest_handler::my_appeals),
+        )
+        .route(
+            "/api/admin/contest-appeals",
+            get(contest_handler::admin_list_appeals),
+        )
+        .route(
+            "/api/admin/contest-appeals/{id}/resolve",
+            post(contest_handler::admin_resolve_appeal),
+        )
+        .route(
+            "/api/admin/seasons",
+            get(contest_handler::admin_list_seasons).post(contest_handler::admin_create_season),
+        )
+        .route(
+            "/api/admin/seasons/{id}",
+            put(contest_handler::admin_update_season),
+        )
         .route("/api/contests/events", get(contest_handler::event_list))
         .route(
             "/api/admin/events",
@@ -250,6 +274,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/admin/events/{id}/forum",
             post(contest_handler::sync_event_forum),
+        )
+        .route(
+            "/api/admin/events/{id}/results/export",
+            get(contest_handler::export_event_results),
         )
         .route(
             "/api/admin/contests/{id}/proctor-events",
@@ -295,6 +323,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/contests/{id}/finish", post(contest_handler::finish))
         .route("/api/contests/{id}/result", get(contest_handler::result))
+        .route(
+            "/api/contests/{id}/appeal",
+            post(contest_handler::submit_appeal),
+        )
         .route("/api/runs/{id}/status", get(run_handler::status))
         .route(
             "/api/runs/{id}",

@@ -144,6 +144,19 @@ const myRating = computed(() => currentMyRating.value ?? featured.value?.ranked.
 const participantLabel = computed(() => `${ranked.value?.participants ?? 4} 人`)
 const durationLabel = computed(() => `${ranked.value?.duration_minutes ?? 60} 分钟`)
 const problemLabel = computed(() => `${ranked.value?.problem_count ?? 4} 题`)
+const seasonLabel = computed(() => {
+  const season = ranked.value?.season
+  if (!season) return ''
+  const state =
+    season.state === 'active'
+      ? '进行中'
+      : season.state === 'upcoming'
+        ? '未开始'
+        : season.state === 'finished'
+          ? '已结束'
+          : '已取消'
+  return `${season.name} · ${state}`
+})
 
 const elapsedLabel = computed(() => {
   if (!queuedAt.value) return '0 分 00 秒'
@@ -598,6 +611,7 @@ onBeforeUnmount(() => {
       <p class="contest-summary">
         与段位分相近的 {{ Math.max(1, (ranked?.participants ?? 4) - 1) }} 名选手匹配
       </p>
+      <p v-if="seasonLabel" class="teaching-subtle">{{ seasonLabel }}</p>
 
       <div class="contest-cta-row">
         <div class="contest-rating-strip">

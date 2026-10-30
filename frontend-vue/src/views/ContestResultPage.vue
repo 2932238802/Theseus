@@ -4,8 +4,9 @@ import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
-import { fetchContestResult } from '../api/contests'
-import type { ContestResult } from '../types/contest'
+import { fetchContestResult, fetchMyContestAppeals, submitContestAppeal } from '../api/contests'
+import { toast } from '../store/toast'
+import type { ContestAppeal, ContestResult } from '../types/contest'
 import { formatDateTime } from '../utils/teaching'
 
 const route = useRoute()
@@ -17,6 +18,46 @@ const notFinished = ref(false)
 const error = ref('')
 
 const isEventContest = computed(() => result.value?.contest.event_id != null)
+
+const myAppeal = ref<ContestAppeal | null>(null)
+const appealReason = ref('')
+const appealError = ref('')
+const appealSubmitting = ref(false)
+
+const APPEAL_STATUS_LABELS: Record<ContestAppeal['status'], string> = {
+  pending: '等待处理',
+  accepted: '已通过',
+  rejected: '未通过',
+}
+
+const loadAppeal = async (): Promise<void> => {
+  try {
+    const list = await fetchMyContestAppeals()
+    myAppeal.value = list.items.find((item) => item.contest_id === contestId) ?? null
+  } catch {
+    // 申诉列表不可用时不影响成绩页展示
+  }
+}
+
+const submitAppeal = async (): Promise<void> => {
+  if (appealSubmitting.value) return
+  const reason = appealReason.value.trim()
+  if (!reason) {
+    appealError.value = '请填写申诉理由'
+    return
+  }
+  appealSubmitting.value = true
+  appealError.value = ''
+  try {
+    myAppeal.value = await submitContestAppeal(contestId, reason)
+    appealReason.value = ''
+    toast.success('申诉已提交')
+  } catch (exception: unknown) {
+    appealError.value = toErrorMessage(exception)
+  } finally {
+    appealSubmitting.value = false
+  }
+}
 
 const isNotFinishedError = (exception: unknown): boolean =>
   axios.isAxiosError(exception) && exception.response?.status === 409
@@ -42,6 +83,7 @@ const load = async (): Promise<void> => {
   notFinished.value = false
   try {
     result.value = await fetchContestResult(contestId)
+    if (result.value.mine) await loadAppeal()
   } catch (exception: unknown) {
     if (isNotFinishedError(exception)) {
       notFinished.value = true
@@ -121,6 +163,45 @@ void load()
             {{ formatDelta(result.mine.rating_delta) }}
           </small>
         </div>
+      </section>
+
+      <section v-if="result.mine" class="teaching-section">
+        <div class="section-heading">
+          <h2>成绩申诉</h2>
+          <span v-if="myAppeal" class="teaching-badge">
+            {{ APPEAL_STATUS_LABELS[myAppeal.status] }}
+          </span>
+        </div>
+        <div v-if="myAppeal" class="teaching-panel">
+          <p class="teaching-subtle">
+            提交于 {{ formatDateTime(myAppeal.created_at) }}
+            <template v-if="myAppeal.handled_at">
+              · 处理于 {{ formatDateTime(myAppeal.handled_at) }}
+            </template>
+          </p>
+          <p>{{ myAppeal.reason }}</p>
+          <p v-if="myAppeal.handle_note" class="teaching-subtle">
+            处理说明：{{ myAppeal.handle_note }}
+          </p>
+        </div>
+        <form v-else class="teaching-panel" @submit.prevent="submitAppeal">
+          <p class="teaching-subtle">每场比赛只能申诉一次，提交后由管理员复核</p>
+          <label class="contest-admin-field">
+            <span>申诉理由</span>
+            <textarea
+              v-model="appealReason"
+              rows="4"
+              maxlength="1000"
+              placeholder="请说明申诉理由"
+            ></textarea>
+          </label>
+          <p v-if="appealError" class="form-error" role="alert">{{ appealError }}</p>
+          <div class="teaching-toolbar">
+            <button class="primary-button" type="submit" :disabled="appealSubmitting">
+              {{ appealSubmitting ? '提交中' : '提交申诉' }}
+            </button>
+          </div>
+        </form>
       </section>
 
       <section class="teaching-section">

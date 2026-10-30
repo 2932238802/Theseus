@@ -10,8 +10,8 @@ use crate::{
     common::{error::AppError, response::ok},
     middleware::auth::authenticate,
     models::profile::{
-        AnalyticsQuery, DeleteAccountRequest, UpdateEmailRequest, UpdatePasswordRequest,
-        UpdateUsernameRequest,
+        AnalyticsQuery, DeleteAccountRequest, UpdateEmailRequest, UpdateGradeRequest,
+        UpdatePasswordRequest, UpdateUsernameRequest,
     },
     services::{auth_service, profile_service},
 };
@@ -23,6 +23,16 @@ pub async fn update_username(
 ) -> Result<impl IntoResponse, AppError> {
     let user = authenticate(&state.pool, &headers, &state.config).await?;
     let data = profile_service::update_username(&state.pool, user.id, &request).await?;
+    Ok(ok(data))
+}
+
+pub async fn update_grade(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<UpdateGradeRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data = profile_service::update_grade(&state.pool, user.id, &request).await?;
     Ok(ok(data))
 }
 

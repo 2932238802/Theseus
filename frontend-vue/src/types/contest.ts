@@ -34,6 +34,34 @@ export interface EventRuleGroup {
   items: string[]
 }
 
+export type SeasonStatus = 'draft' | 'published' | 'cancelled'
+export type SeasonState = 'upcoming' | 'active' | 'finished' | 'cancelled'
+
+export interface SeasonSummary {
+  id: number
+  name: string
+  starts_at: string
+  ends_at: string
+  status: SeasonStatus
+  soft_reset_ratio: number
+  activated: boolean
+  state: SeasonState
+}
+
+export interface SeasonList {
+  current: SeasonSummary | null
+  items: SeasonSummary[]
+  server_time: string
+}
+
+export interface AdminSeasonInput {
+  name: string
+  starts_at: string
+  ends_at: string
+  soft_reset_ratio: number
+  status: SeasonStatus
+}
+
 export interface ContestEventCard {
   id: number
   title: string
@@ -45,6 +73,7 @@ export interface ContestEventCard {
   registration_opens_at?: string | null
   registration_deadline?: string | null
   scope?: string | null
+  grade_scope: string[]
   capacity?: number | null
   registered_count: number
   is_registered: boolean
@@ -70,6 +99,7 @@ export interface RankedContestConfig {
   rating_window: number
   my_rating: number
   rules: EventRuleGroup[]
+  season: SeasonSummary | null
 }
 
 export interface ContestFeatured {
@@ -274,6 +304,8 @@ export interface RankedLeaderboard {
   my_rank: number | null
   my_rating: number
   total: number
+  season: SeasonSummary | null
+  seasons: SeasonSummary[]
   server_time: string
 }
 
@@ -284,6 +316,7 @@ export interface AdminEventView {
   type: ContestEventType
   description: string | null
   scope: string | null
+  grade_scope: string[]
   capacity: number | null
   registration_mode: 'open' | 'invite' | 'external'
   class_id: number | null
@@ -307,6 +340,7 @@ export interface AdminEventInput {
   description: string | null
   type: ContestEventType
   scope: string | null
+  grade_scope: string[]
   capacity: number | null
   registration_mode: 'open' | 'invite' | 'external'
   class_id: number | null
@@ -357,6 +391,37 @@ export interface ProctorReviewResponse {
   message: string
   review_status: ProctorReviewStatus
   reputation_score: number | null
+  disqualified: boolean
+  rating_reranked: boolean
+}
+
+export type ContestAppealStatus = 'pending' | 'accepted' | 'rejected'
+
+export interface ContestAppeal {
+  id: number
+  contest_id: number
+  event_id: number | null
+  event_title: string | null
+  user_id: number
+  username: string
+  reason: string
+  status: ContestAppealStatus
+  handle_note: string | null
+  handled_by: string | null
+  disqualified: boolean
+  created_at: string
+  handled_at: string | null
+}
+
+export interface ContestAppealList {
+  items: ContestAppeal[]
+  total: number
+  server_time: string
+}
+
+export interface ContestAppealResolveResult {
+  message: string
+  status: ContestAppealStatus
   disqualified: boolean
   rating_reranked: boolean
 }

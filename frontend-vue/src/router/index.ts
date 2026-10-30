@@ -1,10 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../store/auth'
 import AdminAuditPage from '../views/AdminAuditPage.vue'
+import AdminContestAppealsPage from '../views/AdminContestAppealsPage.vue'
 import AdminEventsPage from '../views/AdminEventsPage.vue'
 import AdminForumPage from '../views/AdminForumPage.vue'
 import AdminNotifyPage from '../views/AdminNotifyPage.vue'
 import AdminProblemsPage from '../views/AdminProblemsPage.vue'
+import AdminSeasonsPage from '../views/AdminSeasonsPage.vue'
 import AdminUsersPage from '../views/AdminUsersPage.vue'
 import AssignmentComposePage from '../views/AssignmentComposePage.vue'
 import AssignmentDetailPage from '../views/AssignmentDetailPage.vue'
@@ -147,6 +149,18 @@ const router = createRouter({
       path: '/admin/events',
       name: 'admin-events',
       component: AdminEventsPage,
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: '/admin/seasons',
+      name: 'admin-seasons',
+      component: AdminSeasonsPage,
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: '/admin/contest-appeals',
+      name: 'admin-contest-appeals',
+      component: AdminContestAppealsPage,
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     {

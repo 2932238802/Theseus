@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
 import { fetchRankedContestLeaderboard } from '../api/contests'
@@ -8,18 +8,32 @@ import type { RankedLeaderboard } from '../types/contest'
 const data = ref<RankedLeaderboard | null>(null)
 const loading = ref(true)
 const error = ref('')
+const selectedSeasonId = ref<number | null>(null)
+const initialized = ref(false)
 
 const load = async (): Promise<void> => {
   loading.value = true
   error.value = ''
   try {
-    data.value = await fetchRankedContestLeaderboard(50)
+    data.value = await fetchRankedContestLeaderboard(
+      50,
+      selectedSeasonId.value ?? undefined,
+    )
+    if (!initialized.value) {
+      selectedSeasonId.value = data.value.season?.id ?? null
+      initialized.value = true
+    }
   } catch (exception: unknown) {
     error.value = toErrorMessage(exception)
   } finally {
     loading.value = false
   }
 }
+
+watch(selectedSeasonId, (value, previous) => {
+  if (!initialized.value || value === previous) return
+  void load()
+})
 
 onMounted(() => {
   void load()
@@ -37,6 +51,23 @@ onMounted(() => {
     </div>
 
     <template v-else-if="data">
+      <header class="teaching-page-header">
+        <div>
+          <h1>排位排行榜</h1>
+          <p v-if="data.season" class="teaching-subtle">
+            {{ data.season.name }} · 截至 {{ data.season.ends_at.slice(0, 10) }}
+          </p>
+        </div>
+        <label v-if="data.seasons.length" class="contest-admin-field">
+          <span>赛季</span>
+          <select v-model.number="selectedSeasonId">
+            <option v-for="season in data.seasons" :key="season.id" :value="season.id">
+              {{ season.name }}
+            </option>
+          </select>
+        </label>
+      </header>
+
       <section class="ranking-me contest-ranked-me" aria-label="我的排位">
         <div class="ranking-me-rank">
           <span>我的排名</span>

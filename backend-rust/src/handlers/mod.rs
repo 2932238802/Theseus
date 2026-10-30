@@ -10,6 +10,7 @@ pub mod contest_handler;
 pub mod draft_handler;
 pub mod favorite_handler;
 pub mod forum_handler;
+pub mod health_handler;
 pub mod home_handler;
 pub mod invitation_handler;
 pub mod notification_handler;

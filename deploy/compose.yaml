@@ -1,0 +1,134 @@
+name: theseus
+
+# 单机部署：PostgreSQL + Redis + API + 判题 Worker + 防作弊 Worker + 前端 Nginx。
+# 使用前：cp .env.example .env 并至少修改 POSTGRES_PASSWORD 与 JWT_SECRET。
+# 详细步骤见 doc/2610305_服务器部署方案.md。
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgres://${POSTGRES_USER:-theseus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-theseus}
+  REDIS_URL: redis://redis:6379
+  BIND_ADDRESS: 0.0.0.0:3000
+  UPLOAD_DIR: /data/uploads
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-theseus}
+      POSTGRES_USER: ${POSTGRES_USER:-theseus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 deploy/.env 中设置 POSTGRES_PASSWORD}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+
+  backend:
+    build:
+      context: ../backend-rust
+      dockerfile: Dockerfile
+      args:
+        CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-1}
+    image: theseus/backend:latest
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      <<: *backend-env
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    logging: *default-logging
+
+  judge-worker:
+    image: theseus/backend:latest
+    restart: unless-stopped
+    init: true
+    command: ["/app/judge_worker"]
+    env_file: .env
+    environment:
+      <<: *backend-env
+      RUN_WORKER_NAME: ${RUN_WORKER_NAME:-worker-1}
+    volumes:
+      # Worker 通过宿主机 Docker 启动 runsc 沙箱。
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    stop_grace_period: 90s
+    logging: *default-logging
+
+  anticheat-worker:
+    image: theseus/backend:latest
+    restart: unless-stopped
+    init: true
+    command: ["/app/anticheat_worker"]
+    env_file: .env
+    environment:
+      <<: *backend-env
+      ANTICHEAT_WORKER_NAME: ${ANTICHEAT_WORKER_NAME:-anticheat-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    stop_grace_period: 60s
+    logging: *default-logging
+
+  frontend:
+    build:
+      context: ../frontend-vue
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+    image: theseus/frontend:latest
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging: *default-logging
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:

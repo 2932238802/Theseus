@@ -87,3 +87,6 @@ uploads/
 backend-rust/uploads/
 .claude
 .claude/
+# Deployment
+deploy/.env
+deploy/backups/

@@ -48,7 +48,7 @@ pub async fn register(
     let user = sqlx::query_as::<_, User>(
         "INSERT INTO users (username, email, password_hash)
          VALUES ($1, $2, $3)
-         RETURNING id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at",
+         RETURNING id, username, email, password_hash, role, email_verified_at, grade, avatar_path, pending_email, status, token_version, created_at, updated_at",
     )
     .bind(request.username.trim())
     .bind(&email)
@@ -76,7 +76,7 @@ pub async fn login(
 ) -> Result<(User, String), AppError> {
     validate_login(request)?;
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at
+        "SELECT id, username, email, password_hash, role, email_verified_at, grade, avatar_path, pending_email, status, token_version, created_at, updated_at
          FROM users WHERE username = $1 OR LOWER(email) = LOWER($1)",
     )
     .bind(request.username.trim())
@@ -102,7 +102,7 @@ pub async fn login(
 
 pub async fn current_user(pool: &PgPool, id: i32) -> Result<PublicUser, AppError> {
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at
+        "SELECT id, username, email, password_hash, role, email_verified_at, grade, avatar_path, pending_email, status, token_version, created_at, updated_at
          FROM users WHERE id = $1",
     )
     .bind(id)
@@ -195,7 +195,7 @@ pub async fn resend_verification(
     user_id: i32,
 ) -> Result<ResendVerificationResponse, AppError> {
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at
+        "SELECT id, username, email, password_hash, role, email_verified_at, grade, avatar_path, pending_email, status, token_version, created_at, updated_at
          FROM users WHERE id = $1",
     )
     .bind(user_id)
@@ -250,7 +250,7 @@ pub async fn forgot_password(
         return Err(AppError::BadRequest("邮箱格式无效".to_owned()));
     }
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at
+        "SELECT id, username, email, password_hash, role, email_verified_at, grade, avatar_path, pending_email, status, token_version, created_at, updated_at
          FROM users WHERE LOWER(email) = $1",
     )
     .bind(&email)
@@ -497,7 +497,7 @@ pub async fn logout_all(pool: &PgPool, user_id: i32) -> Result<AuthMessageRespon
 
 async fn load_user(pool: &PgPool, user_id: i32) -> Result<User, AppError> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, role, email_verified_at, avatar_path, pending_email, status, token_version, created_at, updated_at
+        "SELECT id, username, email, password_hash, role, email_verified_at, grade, avatar_path, pending_email, status, token_version, created_at, updated_at
          FROM users WHERE id = $1",
     )
     .bind(user_id)

@@ -28,6 +28,8 @@ pub struct AppState {
     pub submission_service: SubmissionService,
     pub run_service: RunService,
     pub realtime: RealtimeHub,
+    /// `None` when judge features are disabled; `/readyz` treats it as "disabled".
+    pub redis: Option<ConnectionManager>,
 }
 
 impl AppState {
@@ -36,9 +38,10 @@ impl AppState {
         Self {
             pool,
             submission_service: SubmissionService::new(config.clone(), redis.clone()),
-            run_service: RunService::new(config.clone(), redis),
+            run_service: RunService::new(config.clone(), redis.clone()),
             config,
             realtime: RealtimeHub::new(),
+            redis,
         }
     }
 }

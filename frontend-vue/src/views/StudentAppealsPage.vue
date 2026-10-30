@@ -2,8 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import { fetchMyCheatReport, fetchMyCheatReports, submitCheatAppeal } from '../api/anticheat'
+import { fetchMyContestAppeals } from '../api/contests'
 import { toErrorMessage } from '../api/client'
 import { toast } from '../store/toast'
+import type { ContestAppeal } from '../types/contest'
 import type {
   CheatReportStatus,
   MyReportDetailResponse,
@@ -31,6 +33,14 @@ const submitting = ref(false)
 
 const items = computed<MyReportSummary[]>(() => reports.value?.items ?? [])
 
+const CONTEST_APPEAL_LABELS: Record<ContestAppeal['status'], string> = {
+  pending: '待处理',
+  accepted: '已通过',
+  rejected: '未通过',
+}
+
+const contestAppeals = ref<ContestAppeal[]>([])
+
 const percent = (value: number): string => `${Math.round(value * 100)}%`
 
 const load = async (): Promise<void> => {
@@ -38,6 +48,7 @@ const load = async (): Promise<void> => {
   error.value = ''
   try {
     reports.value = await fetchMyCheatReports()
+    contestAppeals.value = (await fetchMyContestAppeals()).items
   } catch (exception: unknown) {
     error.value = toErrorMessage(exception)
   } finally {
@@ -132,6 +143,37 @@ onMounted(() => {
     <div v-else class="anticheat-empty">
       暂无可申诉记录。教师确认相似度报告后，可在这里提交一次申诉。
     </div>
+
+    <section class="teaching-section">
+      <div class="section-heading">
+        <h2>赛事申诉</h2>
+      </div>
+      <div v-if="contestAppeals.length" class="anticheat-list">
+        <RouterLink
+          v-for="item in contestAppeals"
+          :key="item.id"
+          class="anticheat-card"
+          :to="`/contests/${item.contest_id}/result`"
+        >
+          <header>
+            <div class="anticheat-card-title">
+              <strong>{{ item.event_title ?? `比赛 #${item.contest_id}` }}</strong>
+              <span :class="['anticheat-status', `is-${item.status}`]">
+                {{ CONTEST_APPEAL_LABELS[item.status] }}
+              </span>
+            </div>
+            <time>{{ formatDateTime(item.created_at) }}</time>
+          </header>
+          <p class="anticheat-card-meta">{{ item.reason }}</p>
+          <p v-if="item.handle_note" class="anticheat-card-subtle">
+            处理说明：{{ item.handle_note }}
+          </p>
+        </RouterLink>
+      </div>
+      <div v-else class="anticheat-empty">
+        比赛结束后可以在结果页对成绩或作弊判定提交申诉。
+      </div>
+    </section>
 
     <div v-if="detail || detailLoading" class="anticheat-dialog" @click.self="closeDetail">
       <section class="anticheat-dialog-panel" role="dialog" aria-modal="true" aria-label="报告详情">

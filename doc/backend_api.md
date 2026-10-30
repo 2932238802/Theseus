@@ -20,10 +20,23 @@ cargo run
 
 数据库迁移在服务启动时自动执行。题目提交会先返回 `pending`，随后由 `JudgeService` 进入 `judging` 并在评测器未配置时记录 `runtime_error`；该服务边界不会执行不受信任的用户代码。学生和教师均可通过 `POST /api/problems/custom` 提交个人题目，管理员通过待审核接口审批后才会公开。
 
+## 健康检查
+
+- `GET /healthz`：存活探针，不访问数据库或 Redis，返回 `{"status":"ok"}`。
+- `GET /readyz`：就绪探针，检查 PostgreSQL；启用判题（`RUN_CODE_ENABLED` 或 `SUBMIT_JUDGE_ENABLED`）时同时检查 Redis。正常返回 200：
+
+```json
+{"status":"ok","database":"ok","redis":"ok","version":"0.1.0"}
+```
+
+任一依赖不可用时返回 503，`status` 为 `degraded`，并由 `database` / `redis` 字段指出原因；未启用判题时 `redis` 为 `disabled`。两个接口均无鉴权，部署时只在内网/容器网络暴露。
+
 ## 接口清单
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
+| GET | `/healthz` | 无 | 存活探针，仅返回 `{"status":"ok"}`，不访问依赖 |
+| GET | `/readyz` | 无 | 就绪探针，检查 PostgreSQL 与（启用判题时的）Redis，异常返回 503 |
 | POST | `/api/auth/register` | 否 | 注册，返回 `{message}` |
 | POST | `/api/auth/login` | 否 | 登录，`username` 字段可传用户名或邮箱，返回 `{token,user}` |
 | GET | `/api/home/overview` | 用户 | 首页学习工作台：继续学习、统计、最近活动、今日签到与信誉分 |
@@ -54,6 +67,7 @@ cargo run
 | POST | `/api/profile/email` | 用户 | 请求修改邮箱，发送新邮箱验证 |
 | DELETE | `/api/profile/email/pending` | 用户 | 取消待验证邮箱 |
 | PUT | `/api/profile/password` | 用户 | 修改密码，返回新 token |
+| PUT | `/api/profile/grade` | 用户 | 更新年级，`null`/空字符串表示清除 |
 | POST | `/api/auth/logout-all` | 用户 | 退出所有设备 |
 | DELETE | `/api/profile` | 用户 | 注销账号并匿名化 |
 | POST | `/api/profile/avatar` | 用户 | 上传头像（multipart） |
@@ -77,7 +91,10 @@ cargo run
 | POST | `/api/contests/events/{id}/join` | 用户 | 邀请赛事直接加入，返回更新后的赛事卡片 |
 | POST | `/api/contests/events/{id}/enter` | 用户 | 进入赛事比赛，返回 `{event_id,contest_id}` |
 | GET | `/api/contests/events/{id}/leaderboard` | 用户 | 赛事排行榜 |
-| GET | `/api/contests/rankings` | 用户 | 排位榜，`limit` 默认 20 |
+| GET | `/api/contests/rankings` | 用户 | 排位榜，`limit` 默认 20，可选 `season_id` |
+| GET | `/api/contests/seasons` | 用户 | 当前赛季与公开赛季列表 |
+| GET | `/api/contests/appeals/mine` | 用户 | 我的赛事申诉 |
+| POST | `/api/contests/{id}/appeal` | 用户 | 提交赛事申诉 `{reason}`，每场一次 |
 | POST | `/api/ws/ticket` | 用户 | 换取一次性 WebSocket 连接票据 |
 | GET | `/api/ws?ticket=...` | 票据 | WebSocket 升级，见「实时推送」一节 |
 | GET | `/api/admin/events` | 管理员 | 赛事管理列表 |
@@ -85,6 +102,12 @@ cargo run
 | GET | `/api/admin/events/{id}` | 管理员 | 赛事管理详情 |
 | PUT | `/api/admin/events/{id}` | 管理员 | 更新赛事 |
 | POST | `/api/admin/events/{id}/forum` | 管理员 | 同步赛事到校园墙并置顶 |
+| GET | `/api/admin/events/{id}/results/export` | 管理员 | 导出赛事成绩 CSV（UTF-8 BOM） |
+| GET | `/api/admin/seasons` | 管理员 | 赛季列表（含草稿） |
+| POST | `/api/admin/seasons` | 管理员 | 创建赛季 |
+| PUT | `/api/admin/seasons/{id}` | 管理员 | 更新赛季 |
+| GET | `/api/admin/contest-appeals` | 管理员 | 赛事申诉队列，支持 `status` |
+| POST | `/api/admin/contest-appeals/{id}/resolve` | 管理员 | 通过/驳回申诉 `{status,note}` |
 | GET | `/api/admin/contests/{id}/proctor-events` | 管理员 | 疑似粘贴事件与复核状态 |
 | POST | `/api/admin/contests/{id}/proctor-events/{event_id}/review` | 管理员 | 提交复核结论 `{status,note}`；确认后扣分并重新结算 |
 | GET | `/api/admin/audit-logs` | 管理员 | 审计日志分页，支持 `page`、`size`、`action`、`target_type`、`actor_id`、`q`、`from`、`to` |
@@ -277,6 +300,7 @@ Authorization: Bearer <teacher>
 - `PUT /api/profile/username` 请求 `{"username":"..."}`，唯一性冲突返回 409。
 - `POST /api/profile/email` 请求 `{"email":"..."}`；验证新邮箱前旧邮箱继续可用。
 - `PUT /api/profile/password` 请求 `{"current_password":"...","new_password":"..."}`，返回新 token。
+- `PUT /api/profile/grade` 请求 `{"grade":"高二"}`，`grade` 为 `null` 或空字符串时清除；最长 20 字符，返回与 `GET /api/auth/me` 相同的用户资料。
 - `DELETE /api/profile` 请求 `{"password":"...","username":"..."}`；教师有未归档组织或最后一个管理员时返回 409。
 - `POST /api/profile/avatar` 使用 `multipart/form-data`，字段 `file`，JPG/PNG/WebP ≤2MB。
 - `GET /api/profile/analytics?days=30` 返回概览、趋势、难度和标签统计。
@@ -306,6 +330,7 @@ Authorization: Bearer <teacher>
     "problem_count": 4,
     "rating_window": 100,
     "my_rating": 1000,
+    "season": { "id": 3, "name": "2026 秋季赛", "state": "active" },
     "rules": [{ "title": "比赛流程", "items": ["..."] }]
   },
   "events": [
@@ -320,6 +345,7 @@ Authorization: Bearer <teacher>
       "registration_opens_at": null,
       "registration_deadline": "2026-10-30T15:59:00Z",
       "scope": "面向本校学生",
+      "grade_scope": ["高一", "高二"],
       "capacity": 100,
       "registered_count": 12,
       "is_registered": false,
@@ -335,7 +361,7 @@ Authorization: Bearer <teacher>
 
 - `status`：`registration` 报名中、`upcoming` 即将开始、`running` 进行中、`full` 已满员；已结束和草稿赛事不返回。
 - `action`：`register` 报名、`join` 加入、`enter` 进入赛事、`details` 查看详情、`full` 已满员、`closed` 已截止。
-- `eligible = false` 时前端置灰操作，原因在 `ineligible_reason`；目前仅支持组织范围，因此原因可能是「仅限指定组织的学生参加」。
+- `eligible = false` 时前端置灰操作，原因在 `ineligible_reason`：组织范围不符为「仅限指定组织的学生参加」，年级不符为「仅限 XX 学生参加」；未填写年级的用户不能报名限定了年级的赛事。
 - 排名排序：进行中赛事优先且按结束时间，其余按开始时间升序。
 
 报名与加入错误：
@@ -345,6 +371,7 @@ Authorization: Bearer <teacher>
 | 赛事不存在或未发布 | 404 |
 | 外部链接赛事走站内报名、报名/加入接口与 `registration_mode` 不匹配 | 400 |
 | 非指定组织成员 | 403 |
+| 年级不在赛事范围内 | 403 |
 | 赛事已开始或已结束 | 409 |
 | 报名尚未开始或已截止 | 409 |
 | 名额已满 | 409 |
@@ -457,7 +484,70 @@ Authorization: Bearer <teacher>
 
 ### 排位榜
 
-`GET /api/contests/rankings?limit=20` 返回 `{entries,my_rank,my_rating,total,server_time}`，`entries` 元素为 `{rank,user_id,username,rating,played,wins,is_me}`。统计只包含非赛事比赛的已结束场次，`limit` 取值 1-100。
+`GET /api/contests/rankings?limit=20&season_id=3` 返回 `{entries,my_rank,my_rating,total,season,seasons,server_time}`，`entries` 元素为 `{rank,user_id,username,rating,played,wins,is_me}`。统计只包含非赛事比赛的已结束场次，`limit` 取值 1-100。
+
+- 不传 `season_id` 时使用当前赛季；没有任何赛季配置时回退到旧的全局 `users.contest_rating` 统计，`season` 为 `null`。
+- 指定 `season_id` 时读取 `season_ratings`，`my_rank` 与 `total` 也在该赛季范围内计算。
+- `seasons` 为可切换的公开赛季列表，元素结构见「赛季」。
+
+### 赛季
+
+`GET /api/contests/seasons` 返回 `{current,items,server_time}`，`current` 与 `items` 的元素结构：
+
+```json
+{
+  "id": 3,
+  "name": "2026 秋季赛",
+  "starts_at": "2026-09-01T00:00:00Z",
+  "ends_at": "2026-12-31T23:59:59Z",
+  "status": "published",
+  "soft_reset_ratio": 0.5,
+  "activated": true,
+  "state": "active"
+}
+```
+
+- `state` 由当前时间计算：`upcoming|active|finished|cancelled`，不落库。
+- 赛季首次被访问时惰性激活：`activated=false` → 在事务内按 `max(0, round(1000 + (old - 1000) × soft_reset_ratio))` 写入 `season_ratings` 并切换 `users.contest_rating`，重复调用幂等。
+
+`GET|POST|PUT /api/admin/seasons[/{id}]`：
+
+- `GET` 返回 `{items}`，包含草稿与已取消赛季。
+- 创建/更新请求 `{name,starts_at,ends_at,soft_reset_ratio?,status?}`；`status` 取 `draft|published|cancelled`，默认 `draft`；`soft_reset_ratio` 默认 `0.5`。
+- 同一时间只允许一个 `published` 赛季覆盖当前时间，区间重叠返回 409。
+- 已激活赛季禁止修改起止时间与软重置系数，只能改名、保持发布或取消。
+
+### 赛事申诉
+
+`GET /api/contests/appeals/mine` 返回 `{items,total,server_time}`，元素：
+
+```json
+{
+  "id": 7,
+  "contest_id": 12,
+  "event_id": 3,
+  "event_title": "校园算法挑战赛",
+  "user_id": 3,
+  "username": "student",
+  "reason": "本人未粘贴代码，申请复核",
+  "status": "pending",
+  "handle_note": null,
+  "handled_by": null,
+  "disqualified": true,
+  "created_at": "2026-10-30T08:00:00Z",
+  "handled_at": null
+}
+```
+
+- `POST /api/contests/{id}/appeal` 请求 `{"reason":"..."}`，理由 1–1000 字；要求比赛已结束（或已过 `ends_at`）且本人为参赛者，`(contest_id,user_id)` 唯一，重复提交返回 409。
+- `GET /api/admin/contest-appeals?status=pending` 返回相同结构，待处理记录优先，最多 200 条。
+- `POST /api/admin/contest-appeals/{id}/resolve` 请求 `{"status":"accepted|rejected","note":"..."}`，说明 ≤500 字；只允许处理 `pending`。
+- **通过**时恢复该场 `paste_cheating` 扣除的信誉分（上限 100）、写 `appeal_restored` 流水，必要时解封并递增 `token_version`；清除取消资格标记、把已确认的监考复核改为 `cleared`，比赛已结束时重新排名并修正段位/赛季分。
+- 返回 `{message,status,disqualified,rating_reranked}`；两种结果都发站内信并写 `contest.appeal_resolve` 审计日志。
+
+### 赛事成绩导出
+
+`GET /api/admin/events/{id}/results/export` 返回 `text/csv; charset=utf-8` 附件，带 UTF-8 BOM，列为排名、用户名、总分、通过题数、完成时间、是否取消资格；字段按 RFC 4180 转义。每次导出写 `contest.results_export` 审计日志。
 
 ### 赛事管理
 
@@ -471,6 +561,7 @@ Authorization: Bearer <teacher>
   "type": "school",
   "description": "赛事说明",
   "scope": "面向本校学生",
+  "grade_scope": ["高一", "高二"],
   "capacity": 100,
   "registration_mode": "open",
   "class_id": null,
@@ -492,6 +583,7 @@ Authorization: Bearer <teacher>
 `POST|PUT /api/admin/events[/{id}]` 接收同名字段与 `problem_ids`（按顺序生成题位）。校验规则：
 
 - 标题 ≤200 字、主办方 ≤100 字、说明 ≤5000 字、范围 ≤200 字、外部链接 ≤500 字且为 http(s)。
+- `grade_scope` 为年级数组，空数组表示不限；服务端去空白、去重，单项 ≤20 字符、最多 20 项。
 - `type` 取 `official|teacher|school`，`registration_mode` 取 `open|invite|external`，`status` 取 `draft|published|cancelled`。
 - 结束时间必须晚于开始时间；报名截止不晚于开始且晚于报名开始。
 - 规则最多 20 组、每组最多 50 条，末尾中文句号会被自动去除。

@@ -18,5 +18,6 @@ pub mod notification_service;
 pub mod profile_service;
 pub mod ranking_service;
 pub mod run_service;
+pub mod season_service;
 pub mod similarity;
 pub mod submission_service;
