@@ -335,6 +335,9 @@ onBeforeUnmount(() => {
           <RouterLink role="menuitem" to="/profile/favorites" @click="closeProfileMenu">
             个人收藏
           </RouterLink>
+          <RouterLink role="menuitem" to="/profile/notes" @click="closeProfileMenu">
+            我的笔记
+          </RouterLink>
           <RouterLink
             v-if="authStore.isStudent"
             role="menuitem"

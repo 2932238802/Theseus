@@ -786,3 +786,110 @@
   color: var(--color-text-secondary);
   font-size: 14px;
 }
+
+.problem-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.problem-note-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.problem-note-head h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.problem-note-head p {
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.problem-note-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.problem-note-status {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.problem-note-status.error {
+  color: var(--color-danger);
+}
+
+.problem-note-retry,
+.problem-note-mode {
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--duration), color var(--duration), background-color var(--duration);
+}
+
+.problem-note-retry:hover,
+.problem-note-mode:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.problem-note-mode.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.problem-note-editor {
+  width: 100%;
+  min-height: 320px;
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.problem-note-editor:focus {
+  outline: 2px solid var(--color-accent-soft);
+  outline-offset: 1px;
+}
+
+.problem-note-preview {
+  min-height: 320px;
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.problem-note-placeholder {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.problem-note-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-xl) var(--space-md);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}

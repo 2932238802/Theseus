@@ -81,6 +81,8 @@ cargo run
 - `POST /api/admin/plus-applications/:id/resolve` 管理员通过或驳回申请 `{status,note,days}`，通过时写入或顺延会员有效期，写站内信与审计日志
 - `GET /api/forum/posts?board=interview` 面经列表，仅 Plus 用户、管理员与作者可见，支持 `company`、`role` 精确筛选
 - `GET /api/forum/posts?problem_id=<id>` 按题聚合已发布帖子，用于题目页题解与讨论；`problem_id` 必须为正整数，默认只查综合板块
+- `GET/PUT /api/problems/{id}/note` 读写当前用户私有题目笔记，正文最长 32KB，空内容保存会自动删除
+- `GET /api/profile/notes` 分页返回当前用户的题目笔记摘要
 - `GET /api/forum/interview/facets` 面经可选公司与岗位，仅 Plus 用户与管理员可见
 - `POST/DELETE /api/forum/posts/{id}/accepted-comment` 帖子作者与管理员设置或取消最佳答案，只能采纳本帖子下未隐藏的顶层评论
 - `POST /api/forum/posts` 创建帖子，`board:"interview"` 时要求 Plus 或管理员；面经支持 `interview_date`、`company`、`role` 与自由标签

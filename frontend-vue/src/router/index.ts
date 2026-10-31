@@ -36,6 +36,7 @@ import PersonalProblemComposePage from '../views/PersonalProblemComposePage.vue'
 import PersonalProblemsPage from '../views/PersonalProblemsPage.vue'
 import ProfilePage from '../views/ProfilePage.vue'
 import ProfileFavoritesPage from '../views/ProfileFavoritesPage.vue'
+import ProfileNotesPage from '../views/ProfileNotesPage.vue'
 import ResetPasswordPage from '../views/ResetPasswordPage.vue'
 import ShopPage from '../views/ShopPage.vue'
 import StudentAppealsPage from '../views/StudentAppealsPage.vue'
@@ -55,6 +56,7 @@ const router = createRouter({
     { path: '/problem/:id', name: 'problem', component: OjPage, props: true },
     { path: '/profile', name: 'profile', component: ProfilePage, meta: { requiresAuth: true } },
     { path: '/profile/favorites', name: 'profile-favorites', component: ProfileFavoritesPage, meta: { requiresAuth: true } },
+    { path: '/profile/notes', name: 'profile-notes', component: ProfileNotesPage, meta: { requiresAuth: true } },
     { path: '/profile/appeals', name: 'profile-appeals', component: StudentAppealsPage, meta: { requiresAuth: true } },
     {
       path: '/profile/assignments',

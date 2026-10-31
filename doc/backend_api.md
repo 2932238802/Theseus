@@ -49,6 +49,8 @@ cargo run
 | DELETE | `/api/problems/{id}/favorite` | 用户 | 取消收藏题目 |
 | GET | `/api/problems/{id}/draft` | 用户 | 读取云端草稿，查询参数 `language`，返回 `{draft:{language,code,updated_at}\|null}` |
 | PUT | `/api/problems/{id}/draft` | 用户 | 保存云端草稿 `{language,code}`；`code` 为空或全空白时删除草稿 |
+| GET | `/api/problems/{id}/note` | 用户 | 读取本人题目笔记，返回 `{note:{body_md,updated_at}\|null}` |
+| PUT | `/api/problems/{id}/note` | 用户 | 保存本人题目笔记 `{body_md}`；内容为空或全空白时删除笔记 |
 | GET | `/api/stats` | 否 | `{total_problems,total_submissions,accepted_submissions}` |
 | POST | `/api/problems/custom` | 学生 / 教师 | 个人出题，题目以 `pending` 状态落库，管理员审核通过后公开；管理员请使用管理端接口 |
 | GET | `/api/problems/mine` | 学生 / 教师 | 当前用户提交的题目，支持 `status`、`page`、`size` |
@@ -309,6 +311,8 @@ Authorization: Bearer <teacher>
 - `POST /api/profile/avatar` 使用 `multipart/form-data`，字段 `file`，JPG/PNG/WebP ≤2MB。
 - `GET /api/profile/analytics?days=30` 返回概览、趋势、难度和标签统计。
 - `GET /api/forum/favorites?page=&size=` 返回当前用户收藏的帖子；面经收藏只对 Plus 用户、管理员与面经作者返回。
+- `GET /api/profile/notes?page=&size=` 返回当前用户的题目笔记摘要 `{total,page,size,notes:[{problem_id,title,difficulty,excerpt,updated_at}]}`，只包含已审核题目，摘要截取前 160 字
+- 题目笔记仅本人可见，题目必须已审核，正文最长 32KB；空内容保存会删除笔记（`0037`）
 - `GET /api/profile/favorites/problems?page=&size=` 返回收藏的已审核题目 `{total,page,size,favorites:[{problem_id,title,difficulty,acceptance_rate,favorited_at}]}`
 - `GET /api/profile/favorites/comments?page=&size=` 返回收藏的评论 `{total,page,size,favorites:[{comment_id,post_id,post_title,parent_id,body_md,author,created_at,favorited_at}]}` 作者字段沿用公开作者结构，匿名评论不会泄露真实用户名
 - 收藏与取消收藏接口均返回 `{favorited}`，重复调用幂等；题目详情和列表的 `favorited` 字段、论坛评论和回复的 `favorited` 字段只对当前登录用户生效

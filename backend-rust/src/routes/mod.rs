@@ -11,8 +11,8 @@ use crate::{
         admin_forum_handler, admin_user_handler, anticheat_handler, assignment_handler,
         audit_handler, auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
         favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
-        notification_handler, plus_handler, problem_handler, profile_handler, ranking_handler,
-        run_handler, submission_handler, ws_handler,
+        note_handler, notification_handler, plus_handler, problem_handler, profile_handler,
+        ranking_handler, run_handler, submission_handler, ws_handler,
     },
 };
 
@@ -356,6 +356,11 @@ pub fn router(state: AppState) -> Router {
             "/api/problems/{id}/draft",
             get(draft_handler::get).put(draft_handler::save),
         )
+        .route(
+            "/api/problems/{id}/note",
+            get(note_handler::get).put(note_handler::save),
+        )
+        .route("/api/profile/notes", get(note_handler::list))
         .route(
             "/api/profile/favorites/problems",
             get(favorite_handler::list_problem_favorites),

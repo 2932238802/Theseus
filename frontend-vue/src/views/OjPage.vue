@@ -5,6 +5,7 @@ import NavBar from '../components/NavBar.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 import ShortcutDialog from '../components/ShortcutDialog.vue'
 import ProblemDiscussionPanel from '../components/ProblemDiscussionPanel.vue'
+import ProblemNotePanel from '../components/ProblemNotePanel.vue'
 import { useAuthStore } from '../store/auth'
 import { useProblemStore } from '../store/problems'
 import { useRunStore } from '../store/runs'
@@ -60,7 +61,7 @@ const isAccepted = computed(() => submissionStore.latest?.status === 'Accepted')
 const latestFailedCase = computed(() => submissionStore.latest?.failedCase ?? null)
 type OutputTab = 'run' | 'submit' | 'history'
 const activeOutputTab = ref<OutputTab>('submit')
-type ProblemTab = 'description' | 'discussion'
+type ProblemTab = 'description' | 'discussion' | 'note'
 const problemTab = ref<ProblemTab>('description')
 const HISTORY_PAGE_SIZE = 10
 const historyItems = ref<Submission[]>([])
@@ -959,10 +960,12 @@ onBeforeUnmount(() => {
           <div v-if="!contestId" class="problem-view-tabs" role="tablist" aria-label="题目内容">
             <button type="button" role="tab" :aria-selected="problemTab === 'description'" :class="{ active: problemTab === 'description' }" @click="problemTab = 'description'">题目描述</button>
             <button type="button" role="tab" :aria-selected="problemTab === 'discussion'" :class="{ active: problemTab === 'discussion' }" @click="problemTab = 'discussion'">题解与讨论</button>
+            <button type="button" role="tab" :aria-selected="problemTab === 'note'" :class="{ active: problemTab === 'note' }" @click="problemTab = 'note'">笔记</button>
           </div>
           <article v-if="contestId || problemTab === 'description'" class="problem-content"><p v-for="paragraph in problemStore.currentProblem.description.split('\n\n')" :key="paragraph">{{ paragraph.replaceAll('**', '').replaceAll('*', '') }}</p><h2>示例</h2><div v-for="(example, index) in problemStore.currentProblem.examples" :key="`${example.input}-${index}`" class="example-block"><span>示例 {{ index + 1 }}</span><pre><b>输入：</b>{{ example.input }}
 <b>输出：</b>{{ example.output }}</pre><p v-if="example.explanation"><b>解释：</b>{{ example.explanation }}</p></div><p v-if="!problemStore.currentProblem.examples.length" class="output-placeholder">暂无示例</p><h2>限制</h2><ul><li>时间限制：{{ problemStore.currentProblem.timeLimit }} ms</li><li>内存限制：{{ problemStore.currentProblem.memoryLimit }} MB</li></ul></article>
-          <ProblemDiscussionPanel v-else :problem-id="problemStore.currentProblem.id" />
+          <ProblemDiscussionPanel v-else-if="problemTab === 'discussion'" :problem-id="problemStore.currentProblem.id" />
+          <ProblemNotePanel v-else :problem-id="problemStore.currentProblem.id" />
         </div>
       </section>
       <div
