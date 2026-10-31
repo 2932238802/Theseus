@@ -122,16 +122,18 @@ void load()
     </section>
 
     <template v-else-if="result">
-      <header class="teaching-page-header">
+      <header class="teaching-page-header contest-page-header contest-result-header">
         <div>
+          <span class="eyebrow">{{ isEventContest ? '赛事比赛结果' : '排位赛结果' }}</span>
           <h1>{{ isEventContest ? '赛事比赛' : '排位赛' }} #{{ result.contest.id }} 结果</h1>
-          <p class="teaching-subtle">
+          <p class="teaching-subtle contest-header-meta">
             <span class="teaching-badge contest-status-badge is-finished">已结束</span>
             <span>{{ result.contest.problem_count }} 道题</span>
             <span>开始于 {{ formatDateTime(result.contest.starts_at) }}</span>
             <span>结束于 {{ formatDateTime(result.contest.ends_at) }}</span>
           </p>
         </div>
+        <RouterLink class="forum-secondary-button" :to="`/contests/${result.contest.id}`">返回比赛</RouterLink>
       </header>
 
       <section v-if="result.mine" class="ranking-me" aria-label="我的成绩">
@@ -139,28 +141,33 @@ void load()
           <span>我的排名</span>
           <strong v-if="result.mine.disqualified" class="ranking-disqualified">成绩取消</strong>
           <strong v-else>#{{ result.mine.rank }}</strong>
+          <small>共 {{ result.ranking.length }} 名选手</small>
         </div>
         <div class="ranking-me-stat">
           <span>总分</span>
           <strong>{{ formatScore(result.mine.total_score) }}</strong>
+          <small>综合得分</small>
         </div>
         <div class="ranking-me-stat">
           <span>通过题数</span>
           <strong>{{ result.mine.solved_count }}</strong>
+          <small>道题</small>
         </div>
         <div class="ranking-me-stat">
           <span>速度分</span>
           <strong>{{ formatScore(result.mine.speed_score) }}</strong>
+          <small>占比 25%</small>
         </div>
         <div class="ranking-me-stat">
           <span>代码分</span>
           <strong>{{ formatScore(result.mine.coding_score) }}</strong>
+          <small>占比 15%</small>
         </div>
         <div class="ranking-me-stat">
           <span>段位分</span>
           <strong>{{ formatScore(result.mine.rating_after) }}</strong>
           <small class="contest-rating-delta" :class="{ 'is-up': (result.mine.rating_delta ?? 0) > 0, 'is-down': (result.mine.rating_delta ?? 0) < 0 }">
-            {{ formatDelta(result.mine.rating_delta) }}
+            段位 {{ formatDelta(result.mine.rating_delta) }}
           </small>
         </div>
       </section>
@@ -207,7 +214,7 @@ void load()
       <section class="teaching-section">
         <div class="section-heading">
           <h2>最终排名</h2>
-          <span class="teaching-subtle">共 {{ result.ranking.length }} 名选手</span>
+          <span class="teaching-subtle">按总分从高到低排列 · 共 {{ result.ranking.length }} 名选手</span>
         </div>
         <div v-if="result.ranking.length" class="ranking-table-wrap">
           <table class="ranking-table">

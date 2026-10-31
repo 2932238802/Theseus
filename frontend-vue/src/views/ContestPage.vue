@@ -181,8 +181,22 @@ const countdown = computed(() => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 })
 
+const countdownClass = computed(() => {
+  if (remainingSeconds.value <= 300 && detail.value?.status === 'running') return 'is-critical'
+  if (remainingSeconds.value <= 900 && detail.value?.status === 'running') return 'is-warning'
+  return ''
+})
+
 const problems = computed(() =>
   [...(detail.value?.problems ?? [])].sort((a, b) => a.position - b.position),
+)
+
+const solvedCount = computed(() => problems.value.filter((problem) => problem.accepted).length)
+const attemptedCount = computed(
+  () => problems.value.filter((problem) => !problem.accepted && problem.attempts > 0).length,
+)
+const activeParticipantCount = computed(
+  () => detail.value?.participants.filter((participant) => participant.status === 'active').length ?? 0,
 )
 
 const participantStatusLabel = (participant: ContestParticipant): string => {
@@ -191,6 +205,14 @@ const participantStatusLabel = (participant: ContestParticipant): string => {
   if (participant.status === 'disconnected') return '断线重连中'
   if (participant.status === 'timed_out') return '断线超时'
   return detail.value?.status === 'finished' ? '已结算' : '已离场'
+}
+
+const participantStatusClass = (participant: ContestParticipant): string => {
+  if (participant.status === 'active') return 'is-active'
+  if (participant.status === 'finished') return 'is-finished'
+  if (participant.status === 'disconnected') return 'is-disconnected'
+  if (participant.status === 'timed_out') return 'is-timed-out'
+  return 'is-queued'
 }
 
 const isMe = (participant: ContestParticipant): boolean =>
@@ -285,7 +307,7 @@ onBeforeUnmount(() => {
     <p v-else-if="error && !detail" class="form-error" role="alert">{{ error }}</p>
 
     <template v-else-if="detail">
-      <header class="teaching-page-header">
+      <header class="teaching-page-header contest-page-header">
         <div>
           <h1>{{ detail.event_id ? '赛事比赛' : '排位赛' }} #{{ detail.id }}</h1>
           <p class="teaching-subtle contest-header-meta">
@@ -298,7 +320,7 @@ onBeforeUnmount(() => {
             <span>结束于 {{ formatDateTime(detail.ends_at) }}</span>
           </p>
         </div>
-        <div class="contest-countdown" aria-label="比赛倒计时">
+        <div class="contest-countdown" :class="countdownClass" aria-label="比赛倒计时">
           <span>
             {{ detail.status === 'running' ? '剩余时间' : detail.status === 'settling' ? '正在结算' : '比赛时间' }}
           </span>
@@ -356,9 +378,37 @@ onBeforeUnmount(() => {
         </button>
       </section>
 
+      <section class="contest-progress-strip" aria-label="比赛进度">
+        <div>
+          <span>我的进度</span>
+          <strong>{{ solvedCount }}<small>/{{ problems.length }}</small></strong>
+          <em>已通过题目</em>
+        </div>
+        <div>
+          <span>已尝试</span>
+          <strong>{{ attemptedCount }}</strong>
+          <em>道未通过题目</em>
+        </div>
+        <div>
+          <span>场上选手</span>
+          <strong>{{ activeParticipantCount }}<small>/{{ detail.participants.length }}</small></strong>
+          <em>正在作答</em>
+        </div>
+        <div class="contest-progress-meter">
+          <span>完成度</span>
+          <div class="contest-progress-track" role="progressbar" :aria-valuenow="solvedCount" :aria-valuemin="0" :aria-valuemax="problems.length">
+            <i :style="{ width: `${problems.length ? (solvedCount / problems.length) * 100 : 0}%` }"></i>
+          </div>
+          <em>{{ problems.length ? Math.round((solvedCount / problems.length) * 100) : 0 }}%</em>
+        </div>
+      </section>
+
       <section class="teaching-section">
         <div class="section-heading">
-          <h2>题目</h2>
+          <div>
+            <h2>题目</h2>
+            <p class="section-heading-note">先完成有把握的题目，再回头处理高难度题目。</p>
+          </div>
           <span class="teaching-subtle">共 {{ problems.length }} 题</span>
         </div>
         <div class="problem-table-wrap">
@@ -375,9 +425,14 @@ onBeforeUnmount(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="problem in problems" :key="problem.problem_id">
+              <tr
+                v-for="problem in problems"
+                :key="problem.problem_id"
+                :class="{ 'is-solved-row': problem.accepted, 'is-attempted-row': !problem.accepted && problem.attempts > 0 }"
+              >
                 <td class="status-col">
-                  <span v-if="problem.accepted" class="solved-icon" title="已通过">✓</span>
+                  <span v-if="problem.accepted" class="contest-problem-status is-solved" title="已通过">✓</span>
+                  <span v-else-if="problem.attempts > 0" class="contest-problem-status is-attempted" title="已尝试">·</span>
                 </td>
                 <td>{{ problem.position }}</td>
                 <td>
@@ -396,9 +451,9 @@ onBeforeUnmount(() => {
                 <td><span v-for="tag in problem.tags" :key="tag" class="tag">{{ tag }}</span></td>
                 <td>{{ problem.points }}</td>
                 <td>
-                  <span v-if="problem.accepted" class="solved-icon">已通过</span>
-                  <span v-else-if="problem.attempts > 0">{{ problem.attempts }} 次尝试</span>
-                  <span v-else>未开始</span>
+                  <span v-if="problem.accepted" class="contest-result-label is-solved">已通过</span>
+                  <span v-else-if="problem.attempts > 0" class="contest-result-label is-attempted">{{ problem.attempts }} 次尝试</span>
+                  <span v-else class="contest-result-label">未开始</span>
                 </td>
               </tr>
               <tr v-if="!problems.length">
@@ -411,7 +466,10 @@ onBeforeUnmount(() => {
 
       <section class="teaching-section">
         <div class="section-heading">
-          <h2>选手</h2>
+          <div>
+            <h2>选手</h2>
+            <p class="section-heading-note">实时显示本场参赛者的作答状态。</p>
+          </div>
           <span class="teaching-subtle">{{ detail.participants.length }} 人</span>
         </div>
         <div class="problem-table-wrap">
@@ -426,7 +484,11 @@ onBeforeUnmount(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="participant in detail.participants" :key="participant.user_id">
+              <tr
+                v-for="participant in detail.participants"
+                :key="participant.user_id"
+                :class="{ 'is-me': isMe(participant) }"
+              >
                 <td>
                   <span class="contest-participant-name">
                     {{ participant.username }}
@@ -434,7 +496,7 @@ onBeforeUnmount(() => {
                   </span>
                 </td>
                 <td>
-                  <span class="teaching-badge">{{ participantStatusLabel(participant) }}</span>
+                  <span class="teaching-badge contest-participant-status" :class="participantStatusClass(participant)">{{ participantStatusLabel(participant) }}</span>
                 </td>
                 <td>{{ participant.solved_count }}</td>
                 <td v-if="detail.status === 'finished'">{{ participant.total_score ?? '—' }}</td>

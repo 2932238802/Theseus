@@ -591,6 +591,7 @@ onBeforeUnmount(() => {
     </div>
 
     <section v-else-if="phase === 'idle'" class="teaching-panel contest-intro">
+<<<<<<< Updated upstream
       <div class="section-heading contest-intro-heading">
         <h2>{{ ranked?.title ?? '4 人排位赛' }}</h2>
         <div class="contest-heading-actions">
@@ -612,20 +613,85 @@ onBeforeUnmount(() => {
         与段位分相近的 {{ Math.max(1, (ranked?.participants ?? 4) - 1) }} 名选手匹配
       </p>
       <p v-if="seasonLabel" class="teaching-subtle">{{ seasonLabel }}</p>
+=======
+      <div class="contest-intro-layout">
+        <div class="contest-intro-copy">
+          <div class="section-heading contest-intro-heading">
+            <div>
+              <span class="eyebrow">实时匹配 · 个人排位</span>
+              <h1>{{ ranked?.title ?? '4 人排位赛' }}</h1>
+            </div>
+            <div class="contest-heading-actions">
+              <span class="teaching-badge contest-format-badge">{{ participantLabel }} · {{ durationLabel }} · {{ problemLabel }}</span>
+              <RouterLink class="contest-rules-button contest-rules-link" :to="{ name: 'contest-rankings' }">
+                排行榜
+              </RouterLink>
+              <button
+                class="contest-rules-button"
+                type="button"
+                :aria-expanded="rulesOpen"
+                @click="openRules"
+              >
+                比赛规则
+              </button>
+            </div>
+          </div>
+          <p class="contest-summary">
+            与段位分相近的 {{ Math.max(1, (ranked?.participants ?? 4) - 1) }} 名选手匹配
+          </p>
+>>>>>>> Stashed changes
 
-      <div class="contest-cta-row">
-        <div class="contest-rating-strip">
-          <span>我的段位分</span>
-          <strong>{{ myRating ?? '—' }}</strong>
+          <div class="contest-rating-strip">
+            <div>
+              <span>我的段位分</span>
+              <strong>{{ myRating ?? '—' }}</strong>
+            </div>
+            <div>
+              <span>同场分差上限</span>
+              <strong>±{{ ranked?.rating_window ?? '—' }}</strong>
+            </div>
+            <p class="teaching-subtle">
+              只与分差不超过 {{ ranked?.rating_window ?? '—' }} 分的对手匹配，在线人数够但分差过大时不会强行开局。
+            </p>
+          </div>
+
+          <ul class="contest-rules">
+            <li>匹配成功后自动进入比赛，比赛中不能取消。</li>
+            <li>可以提前「完成并离场」，离场后成绩保留并等待结算。</li>
+            <li>开始前需授权摄像头和屏幕共享；系统仅记录授权状态，不会录制或上传画面。</li>
+          </ul>
+
+          <div class="teaching-toolbar contest-start-row">
+            <button
+              class="primary-button contest-start-button"
+              type="button"
+              :disabled="isStarting"
+              @click="openStartFlow"
+            >
+              {{ isStarting ? '正在匹配' : '开始排位赛' }}
+            </button>
+            <span class="teaching-subtle">开始前需要完成摄像头和屏幕共享授权</span>
+          </div>
         </div>
-        <button
-          class="primary-button contest-start-button"
-          type="button"
-          :disabled="isStarting"
-          @click="openStartFlow"
-        >
-          {{ isStarting ? '正在匹配' : '开始排位赛' }}
-        </button>
+
+        <aside class="contest-format-summary" aria-label="比赛配置">
+          <span class="contest-summary-label">本场配置</span>
+          <dl>
+            <div>
+              <dt>参赛人数</dt>
+              <dd>{{ ranked?.participants ?? 4 }} <small>人</small></dd>
+            </div>
+            <div>
+              <dt>比赛时长</dt>
+              <dd>{{ ranked?.duration_minutes ?? 60 }} <small>分钟</small></dd>
+            </div>
+            <div>
+              <dt>计分方式</dt>
+              <dd>综合排名</dd>
+            </div>
+          </dl>
+          <p>完成题目、速度和代码质量共同决定最终得分。</p>
+        </aside>
       </div>
 
     </section>
@@ -640,20 +706,33 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </div>
-      <p class="contest-queue-pulse" aria-hidden="true">
-        <span></span><span></span><span></span>
-      </p>
-      <p class="contest-queue-position">
-        当前排队位置 <strong>{{ queuePosition ?? '—' }}</strong>
-      </p>
-      <p class="teaching-subtle">已等待 {{ elapsedLabel }}</p>
-      <p class="teaching-subtle">段位分 {{ myRating ?? '—' }}</p>
-      <p class="teaching-subtle">系统每隔 3 秒刷新队列，匹配成功后会自动进入比赛</p>
+      <div class="contest-queue-grid">
+        <div class="contest-queue-visual">
+          <p class="contest-queue-pulse" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </p>
+          <p class="contest-queue-position">
+            当前排队位置 <strong>{{ queuePosition ?? '—' }}</strong>
+          </p>
+        </div>
+        <div class="contest-queue-details">
+          <p class="teaching-subtle">已等待 {{ elapsedLabel }}</p>
+          <p class="teaching-subtle">
+            段位分 {{ myRating ?? '—' }} · 仅匹配分差 ≤ {{ ranked?.rating_window ?? '—' }} 的对手
+          </p>
+          <p class="teaching-subtle">系统每隔 3 秒刷新队列，匹配成功后会自动进入比赛。</p>
 
-      <div class="teaching-toolbar contest-queue-actions">
-        <button class="forum-secondary-button" type="button" :disabled="isCancelling" @click="cancelQueue">
-          {{ isCancelling ? '正在取消' : '取消匹配' }}
-        </button>
+          <div class="teaching-toolbar contest-queue-actions">
+            <button
+              class="forum-secondary-button"
+              type="button"
+              :disabled="isCancelling"
+              @click="cancelQueue"
+            >
+              {{ isCancelling ? '正在取消' : '取消匹配' }}
+            </button>
+          </div>
+        </div>
       </div>
       <p class="run-note">匹配成功后不能取消，请保持页面打开</p>
       <p v-if="cameraNote" class="teaching-subtle contest-camera-note">{{ cameraNote }}</p>
