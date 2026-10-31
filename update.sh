@@ -114,13 +114,13 @@ ensure_dependencies() {
 
 # 返回 0 表示 backend 已 healthy；返回 1 表示退出、失败或超时。
 wait_backend() {
-    local timeout=$1 deadline=$((SECONDS + timeout)) cid status
+    local timeout=${1:-0}
+    local deadline=$((SECONDS + timeout))
+    local cid status
     cid=$("${COMPOSE[@]}" ps -q backend)
     [[ -n "$cid" ]] || return 1
     while ((SECONDS < deadline)); do
         status=$(docker inspect \
-
-        
             -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
             "$cid" 2>/dev/null || true)
         case "$status" in
