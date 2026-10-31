@@ -119,6 +119,8 @@ wait_backend() {
     [[ -n "$cid" ]] || return 1
     while ((SECONDS < deadline)); do
         status=$(docker inspect \
+
+        
             -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
             "$cid" 2>/dev/null || true)
         case "$status" in
