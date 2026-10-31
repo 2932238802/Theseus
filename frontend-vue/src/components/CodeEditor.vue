@@ -11,12 +11,14 @@ import { LANGUAGE_OPTIONS } from '../utils/constants'
 import type { Language } from '../types/oj'
 import { SHORTCUT_ACTIONS, resolveBinding, toMonacoKeybinding } from '../utils/shortcuts'
 import { registerMonacoThemes } from '../utils/monacoTheme'
+import { registerCompletionProviders } from '../utils/monacoCompletion'
 
 const props = defineProps<{
   modelValue: string
   language: Language
   fontSize: number
   theme: string
+  completion: boolean
   shortcutBindings?: Record<string, string | null>
 }>()
 const emit = defineEmits<{
@@ -34,12 +36,44 @@ let monacoEditor: editor.IStandaloneCodeEditor | undefined
 let monacoApi: Monaco | undefined
 let shortcutRuleDisposable: { dispose: () => void } | undefined
 let commandDisposables: Array<{ dispose: () => void }> = []
+let completionDisposables: Array<{ dispose: () => void }> = []
+let completionKeyRuleDisposable: { dispose: () => void } | undefined
 let commandPrefix = ''
 let disposed = false
 
 const monacoLanguage = computed(() => LANGUAGE_OPTIONS.find((item) => item.value === props.language)?.monaco ?? 'javascript')
 // Python 惯例 4 空格，其余语言保持 2 空格
 const tabSize = computed(() => (props.language === 'python' ? 4 : 2))
+
+// 关闭补全时同时关掉自动建议和参数提示，避免残留零散弹窗
+const completionOptions = (
+  enabled: boolean,
+): editor.IEditorOptions & editor.IGlobalEditorOptions => ({
+  quickSuggestions: enabled ? { other: true, comments: false, strings: false } : false,
+  suggestOnTriggerCharacters: enabled,
+  wordBasedSuggestions: enabled ? 'currentDocument' : 'off',
+  parameterHints: { enabled },
+  tabCompletion: enabled ? 'on' : 'off',
+  acceptSuggestionOnEnter: enabled ? 'on' : 'off',
+  snippetSuggestions: enabled ? 'inline' : 'none',
+})
+
+const applyCompletion = (monaco: Monaco, enabled: boolean): void => {
+  for (const disposable of completionDisposables) disposable.dispose()
+  completionDisposables = enabled ? registerCompletionProviders(monaco) : []
+  // 关闭时连 Ctrl+Space 手动触发也一并禁用
+  completionKeyRuleDisposable?.dispose()
+  completionKeyRuleDisposable = undefined
+  if (!enabled) {
+    completionKeyRuleDisposable = monaco.editor.addKeybindingRules([
+      {
+        keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space,
+        command: null,
+        when: 'editorTextFocus',
+      },
+    ])
+  }
+}
 
 const commandId = (actionId: string): string => `${commandPrefix}${actionId}`
 
@@ -132,10 +166,12 @@ const initialize = async (): Promise<void> => {
       cursorBlinking: 'smooth',
       smoothScrolling: true,
       scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+      ...completionOptions(props.completion),
     })
     monacoEditor = instance
     registerShortcutCommands(monaco)
     applyShortcutRules()
+    applyCompletion(monaco, props.completion)
     instance.onDidChangeModelContent(() => emit('update:modelValue', instance.getValue()))
     status.value = 'ready'
   } catch (error: unknown) {
@@ -174,6 +210,10 @@ watch(() => props.fontSize, (fontSize) => monacoEditor?.updateOptions({ fontSize
 watch(() => props.theme, (theme) => {
   monacoApi?.editor.setTheme(theme)
 })
+watch(() => props.completion, (enabled) => {
+  monacoEditor?.updateOptions(completionOptions(enabled))
+  if (monacoApi) applyCompletion(monacoApi, enabled)
+})
 watch(() => props.shortcutBindings, applyShortcutRules, { deep: true })
 
 const focus = (): void => monacoEditor?.focus()
@@ -188,6 +228,10 @@ onBeforeUnmount(() => {
   shortcutRuleDisposable = undefined
   for (const disposable of commandDisposables) disposable.dispose()
   commandDisposables = []
+  for (const disposable of completionDisposables) disposable.dispose()
+  completionDisposables = []
+  completionKeyRuleDisposable?.dispose()
+  completionKeyRuleDisposable = undefined
   monacoEditor?.dispose()
   monacoEditor = undefined
   monacoApi = undefined

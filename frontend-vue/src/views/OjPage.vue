@@ -51,6 +51,7 @@ const problemId = computed(() => Number(route.params.id))
 const PREFERRED_LANGUAGE_KEY = 'theseus-preferred-language'
 const EDITOR_FONT_SIZE_KEY = 'theseus-editor-font-size'
 const EDITOR_THEME_KEY = 'theseus-editor-theme'
+const EDITOR_COMPLETION_KEY = 'theseus-editor-completion'
 const MIN_FONT_SIZE = 12
 const MAX_FONT_SIZE = 20
 const isLanguage = (value: unknown): value is Language =>
@@ -114,6 +115,10 @@ const contestId = computed(() => {
   return Number.isInteger(value) && value > 0 ? value : null
 })
 const contestEventsEnabled = computed(() => contestId.value !== null)
+// 语法补全默认关闭，比赛模式下不可开启（按钮保留但置灰）
+const completionEnabled = ref(localStorage.getItem(EDITOR_COMPLETION_KEY) === 'on')
+const completionAllowed = computed(() => contestId.value === null)
+const editorCompletion = computed(() => completionAllowed.value && completionEnabled.value)
 const toggleProblemFavorite = async (): Promise<void> => {
   if (!authStore.isAuthenticated) {
     void router.push({ name: 'login', query: { redirect: route.fullPath } })
@@ -924,6 +929,9 @@ watch(fontSize, (value) => {
 watch(editorTheme, (value) => {
   localStorage.setItem(EDITOR_THEME_KEY, value)
 })
+watch(completionEnabled, (value) => {
+  localStorage.setItem(EDITOR_COMPLETION_KEY, value ? 'on' : 'off')
+})
 watch(code, () => {
   scheduleLocalDraftSave()
   if (!adoptingRemoteDraft) scheduleDraftSync()
@@ -1033,8 +1041,8 @@ onBeforeUnmount(() => {
         @keydown.right.prevent="nudgeSplit(24)"
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
-        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
-        <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :theme="editorThemeName" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" />
+        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionAllowed ? (completionEnabled ? '关闭语法补全' : '开启语法补全') : '比赛模式下不可使用语法补全'" @click="completionEnabled = !completionEnabled">补全</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
+        <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :theme="editorThemeName" :completion="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" />
         <div
           ref="outputResizerRef"
           class="pane-resizer-h"

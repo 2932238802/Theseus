@@ -34,8 +34,8 @@ export const EDITOR_THEME_OPTIONS: EditorThemeOption[] = [
   { value: 'tokyo-night', label: 'Tokyo Night' },
   { value: 'github-dark', label: 'GitHub 深色' },
   { value: 'github-light', label: 'GitHub 浅色' },
-  { value: 'atom-one-light', label: 'Atom One Light' },
-  { value: 'solarized-light', label: 'Solarized Light' },
+  { value: 'atom-one-light', label: 'Atom One' },
+  { value: 'solarized-light', label: 'Solarized' },
 ]
 
 export const isEditorThemeChoice = (value: unknown): value is EditorThemeChoice =>
