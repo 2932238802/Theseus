@@ -33,6 +33,12 @@ import { inspectPaste } from '../utils/pasteInspection'
 import { clearDraftMeta, saveDraftMeta } from '../utils/problemDrafts'
 import { buildLineDiff, type DiffRow } from '../utils/lineDiff'
 import { currentTheme } from '../utils/theme'
+import {
+  EDITOR_THEME_OPTIONS,
+  isEditorThemeChoice,
+  resolveMonacoTheme,
+  type EditorThemeChoice,
+} from '../utils/monacoTheme'
 
 const route = useRoute()
 const router = useRouter()
@@ -44,6 +50,7 @@ const runStore = useRunStore()
 const problemId = computed(() => Number(route.params.id))
 const PREFERRED_LANGUAGE_KEY = 'theseus-preferred-language'
 const EDITOR_FONT_SIZE_KEY = 'theseus-editor-font-size'
+const EDITOR_THEME_KEY = 'theseus-editor-theme'
 const MIN_FONT_SIZE = 12
 const MAX_FONT_SIZE = 20
 const isLanguage = (value: unknown): value is Language =>
@@ -65,6 +72,11 @@ const fontSize = ref(
 )
 const isOutputOpen = ref(true)
 const isDark = computed(() => currentTheme.value === 'dark')
+const storedEditorTheme = localStorage.getItem(EDITOR_THEME_KEY)
+const editorTheme = ref<EditorThemeChoice>(
+  isEditorThemeChoice(storedEditorTheme) ? storedEditorTheme : 'system',
+)
+const editorThemeName = computed(() => resolveMonacoTheme(editorTheme.value, isDark.value))
 const draftKey = computed(() => `theseus-draft-${problemId.value}-${language.value}`)
 const isAccepted = computed(() => submissionStore.latest?.status === 'Accepted')
 const latestFailedCase = computed(() => submissionStore.latest?.failedCase ?? null)
@@ -909,6 +921,9 @@ watch(language, (_next, previous) => {
 watch(fontSize, (value) => {
   localStorage.setItem(EDITOR_FONT_SIZE_KEY, String(value))
 })
+watch(editorTheme, (value) => {
+  localStorage.setItem(EDITOR_THEME_KEY, value)
+})
 watch(code, () => {
   scheduleLocalDraftSave()
   if (!adoptingRemoteDraft) scheduleDraftSync()
@@ -1018,8 +1033,8 @@ onBeforeUnmount(() => {
         @keydown.right.prevent="nudgeSplit(24)"
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
-        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
-        <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :dark="isDark" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" />
+        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
+        <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :theme="editorThemeName" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" />
         <div
           ref="outputResizerRef"
           class="pane-resizer-h"

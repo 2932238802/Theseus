@@ -10,13 +10,13 @@ import type { editor } from 'monaco-editor'
 import { LANGUAGE_OPTIONS } from '../utils/constants'
 import type { Language } from '../types/oj'
 import { SHORTCUT_ACTIONS, resolveBinding, toMonacoKeybinding } from '../utils/shortcuts'
-import { monacoThemeName, registerMonacoThemes } from '../utils/monacoTheme'
+import { registerMonacoThemes } from '../utils/monacoTheme'
 
 const props = defineProps<{
   modelValue: string
   language: Language
   fontSize: number
-  dark: boolean
+  theme: string
   shortcutBindings?: Record<string, string | null>
 }>()
 const emit = defineEmits<{
@@ -117,7 +117,7 @@ const initialize = async (): Promise<void> => {
     const instance = monaco.editor.create(container.value, {
       value: props.modelValue,
       language: monacoLanguage.value,
-      theme: monacoThemeName(props.dark),
+      theme: props.theme,
       fontSize: props.fontSize,
       fontFamily: "'JetBrains Mono', Consolas, monospace",
       ariaLabel: '代码编辑器',
@@ -171,8 +171,8 @@ watch(monacoLanguage, (language) => {
   model.updateOptions({ tabSize: tabSize.value, insertSpaces: true })
 })
 watch(() => props.fontSize, (fontSize) => monacoEditor?.updateOptions({ fontSize }))
-watch(() => props.dark, (dark) => {
-  monacoApi?.editor.setTheme(monacoThemeName(dark))
+watch(() => props.theme, (theme) => {
+  monacoApi?.editor.setTheme(theme)
 })
 watch(() => props.shortcutBindings, applyShortcutRules, { deep: true })
 

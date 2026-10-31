@@ -121,6 +121,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: /api
+        VITE_SUBMIT_JUDGE_ENABLED: ${VITE_SUBMIT_JUDGE_ENABLED:-false}
         NPM_REGISTRY: ${NPM_REGISTRY:-}
     image: theseus/frontend:latest
     restart: unless-stopped

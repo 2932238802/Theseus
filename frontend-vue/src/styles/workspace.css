@@ -213,6 +213,13 @@ body.is-resizing-rows {
   font-size: 12px;
 }
 
+.editor-theme-select {
+  max-width: 132px;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
 .editor-tools button {
   display: inline-flex;
   width: 32px;
