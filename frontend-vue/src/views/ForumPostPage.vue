@@ -8,11 +8,11 @@ import ReportDialog from '../components/ReportDialog.vue'
 import { toErrorMessage } from '../api/client'
 import { toast } from '../store/toast'
 import { setCommentFavorite } from '../api/favorites'
-import { changeAdminCommentStatus, changeAdminPostStatus, createForumComment, pinAdminForumPost } from '../api/forum'
+import { changeAdminCommentStatus, changeAdminPostStatus, createForumComment, pinAdminForumPost, acceptForumComment, clearAcceptedForumComment } from '../api/forum'
 import { useAuthStore } from '../store/auth'
 import { useForumStore } from '../store/forum'
 import { FORUM_TAG_LABELS } from '../types/forum'
-import type { ForumReply } from '../types/forum'
+import type { ForumComment, ForumReply } from '../types/forum'
 import { formatForumDateTime, formatForumTime } from '../utils/forum'
 
 const route = useRoute()
@@ -52,6 +52,7 @@ const actionBusy = ref(false)
 const likeBusy = ref(false)
 const favoriteBusy = ref(false)
 const commentFavoriteBusy = ref<number | null>(null)
+const acceptedBusy = ref(false)
 
 const post = computed(() => forumStore.currentPost)
 
@@ -230,6 +231,23 @@ const toggleFavorite = async (): Promise<void> => {
   }
 }
 
+const toggleAccepted = async (comment: ForumComment): Promise<void> => {
+  if (!post.value || acceptedBusy.value) return
+  actionError.value = ''
+  acceptedBusy.value = true
+  try {
+    const result = comment.isAccepted
+      ? await clearAcceptedForumComment(post.value.id)
+      : await acceptForumComment(post.value.id, comment.id)
+    toast.success(result.message)
+    await reloadThread()
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    acceptedBusy.value = false
+  }
+}
+
 const openReport = (type: 'post' | 'comment', id: number): void => {
   if (!requireLogin()) return
   reportTarget.value = { type, id }
@@ -384,6 +402,7 @@ onMounted(() => {
           <div class="forum-post-card-topline">
             <span v-if="post.isPinned" class="forum-pin-badge">置顶</span>
             <span v-if="post.board === 'interview'" class="forum-board-badge">面经</span>
+            <span v-if="post.acceptedCommentId" class="forum-accepted-badge">已解决</span>
             <span v-if="post.company" class="forum-tag forum-tag-structured">{{ post.company }}</span>
             <span v-if="post.role" class="forum-tag forum-tag-structured">{{ post.role }}</span>
             <span
@@ -465,11 +484,12 @@ onMounted(() => {
         <p v-if="forumStore.commentsError" class="form-error" role="alert">{{ forumStore.commentsError }}</p>
         <div v-if="forumStore.commentsLoading && !forumStore.comments.length" class="run-note">正在加载评论</div>
         <div v-else-if="forumStore.comments.length" class="forum-comment-list">
-          <article v-for="comment in forumStore.comments" :id="`comment-${comment.id}`" :key="comment.id" class="forum-comment">
+          <article v-for="comment in forumStore.comments" :id="`comment-${comment.id}`" :key="comment.id" :class="['forum-comment', { 'is-accepted': comment.isAccepted }]">
             <div class="forum-comment-main">
               <header class="forum-comment-header">
                 <span :class="{ 'forum-author-anonymous': comment.author.isAnonymous }">{{ comment.author.displayName }}</span>
                 <span v-if="comment.author.isPlus" class="forum-plus-badge">Plus</span>
+                <span v-if="comment.isAccepted" class="forum-accepted-badge">最佳答案</span>
                 <span v-if="comment.isTombstone" class="forum-tombstone-label">该评论已隐藏</span>
                 <time :datetime="comment.createdAt">{{ formatForumTime(comment.createdAt) }}</time>
                 <span v-if="comment.editedAt" class="run-note">已编辑</span>
@@ -503,6 +523,15 @@ onMounted(() => {
                 <button v-if="comment.canDelete" type="button" class="danger" @click="removeComment(comment.id)">删除</button>
                 <button v-if="!comment.isTombstone && post.status === 'published'" type="button" @click="openReport('comment', comment.id)">举报</button>
                 <button v-if="post.canModerate && !comment.isTombstone" type="button" class="admin" @click="adminHideComment(comment.id)">隐藏</button>
+                <button
+                  v-if="post.board === 'interview' && post.status === 'published' && (post.canEdit || post.canModerate) && !comment.isTombstone"
+                  type="button"
+                  class="accepted"
+                  :disabled="acceptedBusy"
+                  @click="toggleAccepted(comment)"
+                >
+                  {{ comment.isAccepted ? '取消最佳答案' : '采纳为最佳答案' }}
+                </button>
               </div>
 
               <div v-if="replyRootId === comment.id" class="forum-reply-form">

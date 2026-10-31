@@ -312,7 +312,7 @@ fn category_for_type(notification_type: &str) -> Option<&'static str> {
         | "cheat_report_dismissed"
         | "cheat_appeal_created"
         | "cheat_appeal_resolved" => Some("assignment"),
-        "forum_reply" | "forum_comment" | "forum_mention" => Some("forum"),
+        "forum_reply" | "forum_comment" | "forum_mention" | "forum_accepted" => Some("forum"),
         "forum_moderation" | "forum_mute" | "reputation_notice" | "problem_review" => {
             Some("account")
         }
@@ -874,6 +874,7 @@ mod tests {
             Some("assignment")
         );
         assert_eq!(category_for_type("forum_mention"), Some("forum"));
+        assert_eq!(category_for_type("forum_accepted"), Some("forum"));
         assert_eq!(category_for_type("reputation_notice"), Some("account"));
         assert_eq!(category_for_type("problem_review"), Some("account"));
         assert_eq!(category_for_type("plus_application"), Some("account"));

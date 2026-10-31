@@ -65,6 +65,7 @@ export interface ForumPostSummary {
   company: string | null
   role: string | null
   viewCount: number
+  acceptedCommentId: number | null
   tags: string[]
   author: ForumAuthor
   problem: ForumProblemRef | null
@@ -107,6 +108,7 @@ export interface ForumReply {
   canEdit: boolean
   canDelete: boolean
   favorited: boolean
+  isAccepted: boolean
 }
 
 export interface ForumComment extends ForumReply {
@@ -143,6 +145,7 @@ export interface ForumPostListQuery {
   tag?: string
   company?: string
   role?: string
+  problem_id?: number
   q?: string
   sort?: ForumSort
   mine?: boolean
@@ -193,6 +196,11 @@ export interface ForumReactionResult {
   favorited?: boolean
   likeCount?: number
   favoriteCount?: number
+}
+
+export interface ForumAcceptedCommentResult {
+  acceptedCommentId: number | null
+  message: string
 }
 
 export interface ForumReportResult {
@@ -318,6 +326,7 @@ export type NotificationType =
   | 'forum_mention'
   | 'forum_moderation'
   | 'forum_mute'
+  | 'forum_accepted'
   | 'assignment_published'
   | 'assignment_grades_published'
   | 'problem_review'

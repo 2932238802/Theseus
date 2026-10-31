@@ -23,6 +23,7 @@ import type {
   AdminMuteResult,
   ForumComment,
   ForumCommentsResult,
+  ForumAcceptedCommentResult,
   ForumBoard,
   ForumMutation,
   ForumPostDetail,
@@ -78,6 +79,7 @@ const mapPostSummary = (value: unknown): ForumPostSummary => {
     company: nullableText(item.company),
     role: nullableText(item.role),
     viewCount: number(item.view_count),
+    acceptedCommentId: nullableNumber(item.accepted_comment_id),
     tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === 'string') : [],
     author: mapAuthor(item.author),
     problem: mapProblem(item.problem),
@@ -130,6 +132,7 @@ const mapReply = (value: unknown): ForumReply => {
     canEdit: bool(item.can_edit),
     canDelete: bool(item.can_delete),
     favorited: bool(item.favorited),
+    isAccepted: bool(item.is_accepted),
   }
 }
 
@@ -164,6 +167,7 @@ const mapAdminPost = (value: unknown): AdminForumPostSummary => {
     company: nullableText(item.company),
     role: nullableText(item.role),
     viewCount: number(item.view_count),
+    acceptedCommentId: nullableNumber(item.accepted_comment_id),
     tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === 'string') : [],
     author: mapAdminAuthor(item.author),
     problem: mapProblem(item.problem),
@@ -237,6 +241,7 @@ const listParams = (query: ForumPostListQuery): Record<string, string | number |
   if (query.tag) params.tag = query.tag
   if (query.company) params.company = query.company
   if (query.role) params.role = query.role
+  if (query.problem_id) params.problem_id = query.problem_id
   if (query.q) params.q = query.q
   if (query.sort) params.sort = query.sort
   if (query.mine) params.mine = true
@@ -317,6 +322,35 @@ export const favoriteForumPost = async (
     ? await unwrap(http.post<ApiEnvelope<unknown>>(`/forum/posts/${id}/favorite`))
     : await unwrap(http.delete<ApiEnvelope<unknown>>(`/forum/posts/${id}/favorite`))
   return reaction(data, 'favorite')
+}
+
+export const acceptForumComment = async (
+  postId: number,
+  commentId: number,
+): Promise<ForumAcceptedCommentResult> => {
+  const data = await unwrap(
+    http.post<ApiEnvelope<unknown>>(`/forum/posts/${postId}/accepted-comment`, {
+      comment_id: commentId,
+    }),
+  )
+  const item = record(data)
+  return {
+    acceptedCommentId: nullableNumber(item.accepted_comment_id),
+    message: text(item.message, '已设为最佳答案'),
+  }
+}
+
+export const clearAcceptedForumComment = async (
+  postId: number,
+): Promise<ForumAcceptedCommentResult> => {
+  const data = await unwrap(
+    http.delete<ApiEnvelope<unknown>>(`/forum/posts/${postId}/accepted-comment`),
+  )
+  const item = record(data)
+  return {
+    acceptedCommentId: nullableNumber(item.accepted_comment_id),
+    message: text(item.message, '已取消最佳答案'),
+  }
 }
 
 export const fetchForumComments = async (

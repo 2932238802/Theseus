@@ -19,6 +19,7 @@ defineProps<{ post: ForumPostSummary }>()
       <div class="forum-post-card-topline">
         <span v-if="post.isPinned" class="forum-pin-badge">置顶</span>
         <span v-if="post.board === 'interview'" class="forum-board-badge">面经</span>
+        <span v-if="post.acceptedCommentId" class="forum-accepted-badge">已解决</span>
         <RouterLink class="forum-post-card-title" :to="`/forum/${post.id}`">{{ post.title }}</RouterLink>
         <span v-if="post.company" class="forum-tag forum-tag-structured">{{ post.company }}</span>
         <span v-if="post.role" class="forum-tag forum-tag-structured">{{ post.role }}</span>

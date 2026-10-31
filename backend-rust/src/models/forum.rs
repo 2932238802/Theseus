@@ -117,6 +117,7 @@ pub struct ForumPostListQuery {
     pub tag: Option<String>,
     pub company: Option<String>,
     pub role: Option<String>,
+    pub problem_id: Option<i32>,
     pub q: Option<String>,
     pub sort: Option<String>,
     pub mine: Option<bool>,
@@ -201,6 +202,7 @@ pub struct ForumPostSummary {
     pub company: Option<String>,
     pub role: Option<String>,
     pub view_count: i32,
+    pub accepted_comment_id: Option<i64>,
     pub tags: Vec<String>,
     pub author: PublicAuthor,
     pub problem: Option<ProblemBrief>,
@@ -256,6 +258,7 @@ pub struct ForumCommentView {
     pub can_edit: bool,
     pub can_delete: bool,
     pub favorited: bool,
+    pub is_accepted: bool,
     pub reply_total: i64,
     pub replies_truncated: bool,
     pub replies: Vec<ForumReplyView>,
@@ -275,6 +278,7 @@ pub struct ForumReplyView {
     pub can_edit: bool,
     pub can_delete: bool,
     pub favorited: bool,
+    pub is_accepted: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -343,6 +347,17 @@ pub struct PinResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct AcceptCommentRequest {
+    pub comment_id: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AcceptedCommentResponse {
+    pub accepted_comment_id: Option<i64>,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AdminForumPostListQuery {
     pub page: Option<u32>,
     pub size: Option<u32>,
@@ -400,6 +415,7 @@ pub struct AdminForumPostSummary {
     pub company: Option<String>,
     pub role: Option<String>,
     pub view_count: i32,
+    pub accepted_comment_id: Option<i64>,
     pub tags: Vec<String>,
     pub author: AdminAuthor,
     pub is_anonymous: bool,
@@ -539,6 +555,7 @@ pub struct ForumPostRow {
     pub company: Option<String>,
     pub role: Option<String>,
     pub view_count: i32,
+    pub accepted_comment_id: Option<i64>,
     pub problem_id: Option<i32>,
     pub problem_title: Option<String>,
     pub problem_difficulty: Option<String>,
@@ -577,6 +594,7 @@ impl ForumPostRow {
             company: self.company,
             role: self.role,
             view_count: self.view_count,
+            accepted_comment_id: self.accepted_comment_id,
             tags: self.tags,
             author: PublicAuthor::new(
                 self.author_id,
@@ -616,6 +634,7 @@ pub struct AdminForumPostRow {
     pub company: Option<String>,
     pub role: Option<String>,
     pub view_count: i32,
+    pub accepted_comment_id: Option<i64>,
     pub problem_id: Option<i32>,
     pub problem_title: Option<String>,
     pub problem_difficulty: Option<String>,
@@ -655,6 +674,7 @@ impl AdminForumPostRow {
             company: self.company,
             role: self.role,
             view_count: self.view_count,
+            accepted_comment_id: self.accepted_comment_id,
             tags: self.tags,
             author: AdminAuthor::new(
                 self.author_id,
@@ -700,6 +720,7 @@ pub struct ForumCommentRow {
     pub total: i64,
     pub reply_rank: i64,
     pub favorited: bool,
+    pub is_accepted: bool,
 }
 
 impl ForumCommentRow {
@@ -742,6 +763,7 @@ impl ForumCommentRow {
             can_edit: is_author && published,
             can_delete: (is_author || is_admin) && published,
             favorited: self.favorited,
+            is_accepted: self.is_accepted,
         }
     }
 
@@ -783,6 +805,7 @@ impl ForumCommentRow {
             can_edit: is_author && published,
             can_delete: (is_author || is_admin) && published,
             favorited: self.favorited && !is_tombstone,
+            is_accepted: self.is_accepted && !is_tombstone,
             reply_total,
             replies_truncated: reply_total > replies.len() as i64,
             replies,

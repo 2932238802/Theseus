@@ -328,7 +328,7 @@ Authorization: Bearer <teacher>
 
 ## 面经板块（论坛）
 
-完整设计见 `doc/2610313_面经板块设计方案.md`。面经是论坛的一个板块，复用论坛的列表、详情、评论、点赞、收藏、举报与审核接口，通过 `board` 区分：
+完整设计见 `doc/2610313_面经板块设计方案.md` 与 `doc/2610314_题目题解与讨论区设计方案.md`。面经是论坛的一个板块，复用论坛的列表、详情、评论、点赞、收藏、举报与审核接口，通过 `board` 区分：
 
 - 综合板块 `board=general`（默认），标签只接受 `general` / `help` / `solution` / `discussion` / `announcement`，最多 3 个
 - 面经板块 `board=interview`，标签为自由文本，1–8 个，每个 ≤20 字；新增 `interview_date`（`YYYY-MM`，可空）、`company`、`role`（各 ≤40 字，可空）与 `view_count`（阅读数）
@@ -358,8 +358,10 @@ Authorization: Bearer <teacher>
 ```
 
 - 板块创建后不可切换，`PUT /api/forum/posts/{id}` 只更新标题、正文、标签、面试时间、公司与岗位与关联题目
-- 列表与详情响应新增 `board`、`interview_date`、`company`、`role`、`view_count`
+- 列表与详情响应新增 `board`、`interview_date`、`company`、`role`、`view_count`、`accepted_comment_id`
 - 详情页每次成功打开后 `view_count` +1，列表与详情返回自增后的值
+- `POST /api/forum/posts/{id}/accepted-comment` 请求 `{"comment_id":123}` 设置最佳答案，`DELETE` 取消；仅帖子作者与管理员可调用，只能采纳本帖子下未隐藏的顶层评论；响应 `{accepted_comment_id,message}`，评论与回复带 `is_accepted`
+- `GET /api/forum/posts?problem_id=12&sort=hot` 返回关联该题的已发布帖子，用于题目页「题解与讨论」；`problem_id` 必须为正整数，未指定 `board` 时只返回综合板块内容
 - 旧 `/api/knowledge*`、`/api/admin/knowledge*` 接口已移除；历史面经由迁移 `0032` 复制到 `forum_posts`
 
 ## 竞赛与限时赛事接口

@@ -336,6 +336,19 @@
   white-space: nowrap;
 }
 
+.forum-accepted-badge {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .forum-plus-badge {
   display: inline-flex;
   min-height: 18px;
@@ -958,6 +971,12 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+.forum-comment.is-accepted {
+  padding-left: var(--space-md);
+  border-left: 3px solid var(--color-success);
+  background: linear-gradient(90deg, var(--color-success-soft), transparent 60%);
+}
+
 .forum-comment:last-child {
   border-bottom: 0;
   padding-bottom: 0;
@@ -1027,6 +1046,11 @@
 
 .forum-comment-actions button.is-favorite {
   color: var(--color-warning);
+}
+
+.forum-comment-actions button.accepted {
+  color: var(--color-success);
+  font-weight: 600;
 }
 
 .forum-reply-form {

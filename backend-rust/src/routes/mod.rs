@@ -424,6 +424,10 @@ pub fn router(state: AppState) -> Router {
             post(forum_handler::favorite_post).delete(forum_handler::unfavorite_post),
         )
         .route(
+            "/api/forum/posts/{id}/accepted-comment",
+            post(forum_handler::accept_comment).delete(forum_handler::clear_accepted_comment),
+        )
+        .route(
             "/api/forum/posts/{id}/comments",
             get(forum_handler::list_comments).post(forum_handler::create_comment),
         )

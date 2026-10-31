@@ -5,7 +5,7 @@ import MarkdownBody from '../components/MarkdownBody.vue'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
 import { createForumPost, fetchForumPost, updateForumPost } from '../api/forum'
-import { fetchProblems } from '../api/problems'
+import { fetchProblem, fetchProblems } from '../api/problems'
 import { fetchMyPlusState } from '../api/shop'
 import { useAuthStore } from '../store/auth'
 import { FORUM_BOARDS, FORUM_TAGS } from '../types/forum'
@@ -228,6 +228,31 @@ const restoreDraft = (): void => {
   }
 }
 
+const ensureSolutionTag = (): void => {
+  if (tags.value.includes('solution')) return
+  if (tags.value.length >= maxTags.value) return
+  if (!availableTags.value.some((tag) => tag.code === 'solution')) return
+  tags.value = [...tags.value, 'solution']
+}
+
+const applyProblemPrefill = async (): Promise<void> => {
+  if (isEdit.value) return
+  const raw = Array.isArray(route.query.problem) ? route.query.problem[0] : route.query.problem
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value <= 0) return
+  if (selectedProblem.value?.id === value) {
+    ensureSolutionTag()
+    return
+  }
+  try {
+    const problem = await fetchProblem(value)
+    selectedProblem.value = problem
+    ensureSolutionTag()
+  } catch (exception: unknown) {
+    problemError.value = toErrorMessage(exception)
+  }
+}
+
 const loadEditTarget = async (): Promise<void> => {
   if (!editId.value) return
   loading.value = true
@@ -342,6 +367,7 @@ onMounted(async () => {
     }
   }
   restoreDraft()
+  await applyProblemPrefill()
   draftEnabled = true
 })
 

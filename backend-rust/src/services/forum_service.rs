@@ -9,17 +9,17 @@ use crate::{
     config::Config,
     middleware::auth::AuthUser,
     models::forum::{
-        AdminActionActor, AdminActionListQuery, AdminActionListResponse, AdminActionRow,
-        AdminAuthor, AdminForumCommentRow, AdminForumPostDetail, AdminForumPostListQuery,
-        AdminForumPostListResponse, AdminForumPostRow, AdminMuteRequest, AdminPinRequest,
-        AdminReportDecisionRequest, AdminReportListQuery, AdminReportListResponse, AdminReportRow,
-        AdminReportTargetPreview, AdminStatusRequest, BOARD_GENERAL, BOARD_INTERVIEW,
-        CreateCommentRequest, CreatePostRequest, CreateReportRequest, FavoriteResponse,
-        ForumCommentCreated, ForumCommentListQuery, ForumCommentRow, ForumCommentsResponse,
-        ForumInterviewFacets, ForumMutationResponse, ForumPostCreated, ForumPostDetail,
-        ForumPostListQuery, ForumPostListResponse, ForumPostRow, ForumRepliesResponse,
-        ForumReplyListQuery, ForumReplyView, ForumReportResponse, LikeResponse,
-        MAX_COMMENT_BODY_CHARS, MAX_EMBEDDED_REPLIES, MAX_INTERVIEW_DATE_CHARS,
+        AcceptedCommentResponse, AdminActionActor, AdminActionListQuery, AdminActionListResponse,
+        AdminActionRow, AdminAuthor, AdminForumCommentRow, AdminForumPostDetail,
+        AdminForumPostListQuery, AdminForumPostListResponse, AdminForumPostRow, AdminMuteRequest,
+        AdminPinRequest, AdminReportDecisionRequest, AdminReportListQuery, AdminReportListResponse,
+        AdminReportRow, AdminReportTargetPreview, AdminStatusRequest, BOARD_GENERAL,
+        BOARD_INTERVIEW, CreateCommentRequest, CreatePostRequest, CreateReportRequest,
+        FavoriteResponse, ForumCommentCreated, ForumCommentListQuery, ForumCommentRow,
+        ForumCommentsResponse, ForumInterviewFacets, ForumMutationResponse, ForumPostCreated,
+        ForumPostDetail, ForumPostListQuery, ForumPostListResponse, ForumPostRow,
+        ForumRepliesResponse, ForumReplyListQuery, ForumReplyView, ForumReportResponse,
+        LikeResponse, MAX_COMMENT_BODY_CHARS, MAX_EMBEDDED_REPLIES, MAX_INTERVIEW_DATE_CHARS,
         MAX_INTERVIEW_META_CHARS, MAX_INTERVIEW_TAG_CHARS, MAX_INTERVIEW_TAGS, MAX_POST_BODY_CHARS,
         MAX_REASON_CHARS, MAX_REPORT_DETAIL_CHARS, MAX_SEARCH_CHARS, MAX_TITLE_CHARS, MuteResponse,
         PinResponse, PublicAuthor, ReplyTo, ReportDecisionResponse, UpdateCommentRequest,
@@ -463,7 +463,7 @@ fn push_public_post_select(builder: &mut QueryBuilder<'_, Postgres>, viewer_id: 
          EXISTS (SELECT 1 FROM plus_memberships pm WHERE pm.user_id = fp.author_id \
          AND pm.expires_at > CURRENT_TIMESTAMP) AS author_is_plus, fp.board, fp.title, \
          fp.body_md, fp.tags, fp.interview_date, fp.company, fp.role, fp.view_count, \
-         fp.problem_id, p.title AS problem_title, \
+         fp.accepted_comment_id, fp.problem_id, p.title AS problem_title, \
          p.difficulty AS problem_difficulty, \
          fp.is_anonymous, fp.status, fp.hidden_reason, fp.is_pinned, fp.like_count, \
          fp.favorite_count, fp.comment_count, fp.created_at, fp.updated_at, fp.edited_at, \
@@ -533,6 +533,9 @@ pub async fn list_posts(
     }
     let company = normalize_interview_meta(query.company.as_deref(), "公司")?;
     let role = normalize_interview_meta(query.role.as_deref(), "岗位")?;
+    if query.problem_id.is_some_and(|id| id <= 0) {
+        return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
+    }
     let search = query
         .q
         .as_deref()
@@ -568,6 +571,9 @@ pub async fn list_posts(
     }
     if let Some(role) = &role {
         builder.push(" AND fp.role = ").push_bind(role.clone());
+    }
+    if let Some(problem_id) = query.problem_id {
+        builder.push(" AND fp.problem_id = ").push_bind(problem_id);
     }
     if let Some(search) = search {
         let pattern = like_pattern(search);
@@ -622,6 +628,11 @@ pub async fn list_posts(
         count_builder
             .push(" AND fp.role = ")
             .push_bind(role.clone());
+    }
+    if let Some(problem_id) = query.problem_id {
+        count_builder
+            .push(" AND fp.problem_id = ")
+            .push_bind(problem_id);
     }
     if let Some(search) = search {
         let pattern = like_pattern(search);
@@ -1136,6 +1147,8 @@ fn push_public_comment_select(builder: &mut QueryBuilder<'_, Postgres>, viewer_i
          c.body_md, c.is_anonymous, c.status, \
          c.created_at, c.edited_at, COUNT(*) OVER() AS reply_total, \
          COUNT(*) OVER() AS total, 0::bigint AS reply_rank, \
+         EXISTS (SELECT 1 FROM forum_posts fp \
+         WHERE fp.id = c.post_id AND fp.accepted_comment_id = c.id) AS is_accepted, \
          EXISTS (SELECT 1 FROM forum_comment_favorites cf \
          WHERE cf.comment_id = c.id AND cf.user_id = ",
     );
@@ -1171,7 +1184,9 @@ pub async fn list_comments(
          rc.is_anonymous AS reply_to_is_anonymous, rc.status AS reply_to_status, \
          c.body_md, c.is_anonymous, c.status, \
          c.created_at, c.edited_at, 0::bigint AS reply_total, COUNT(*) OVER() AS total, \
-         0::bigint AS reply_rank, EXISTS (SELECT 1 FROM forum_comment_favorites cf \
+         0::bigint AS reply_rank, EXISTS (SELECT 1 FROM forum_posts fp \
+         WHERE fp.id = c.post_id AND fp.accepted_comment_id = c.id) AS is_accepted, \
+         EXISTS (SELECT 1 FROM forum_comment_favorites cf \
          WHERE cf.comment_id = c.id AND cf.user_id = ",
     );
     builder.push_bind(viewer_id);
@@ -1187,7 +1202,7 @@ pub async fn list_comments(
     builder.push(
         " AND c.parent_id IS NULL AND (c.status = 'published' OR EXISTS \
          (SELECT 1 FROM forum_comments r WHERE r.parent_id = c.id AND r.status = 'published')) \
-         ORDER BY c.created_at ASC, c.id ASC LIMIT ",
+         ORDER BY is_accepted DESC, c.created_at ASC, c.id ASC LIMIT ",
     );
     builder
         .push_bind(i64::from(size))
@@ -1215,7 +1230,7 @@ pub async fn list_comments(
             "SELECT id, post_id, author_id, author_username, author_is_plus, parent_id, \
              reply_to_comment_id, reply_to_username, reply_to_is_anonymous, reply_to_status, \
              body_md, is_anonymous, status, created_at, edited_at, reply_total, total, \
-             reply_rank, favorited \
+             reply_rank, is_accepted, favorited \
              FROM ( \
              SELECT c.id, c.post_id, c.author_id, u.username AS author_username, \
          EXISTS (SELECT 1 FROM plus_memberships pm WHERE pm.user_id = c.author_id \
@@ -1226,7 +1241,7 @@ pub async fn list_comments(
              COUNT(*) OVER (PARTITION BY c.parent_id) AS reply_total, \
              0::bigint AS total, \
              ROW_NUMBER() OVER (PARTITION BY c.parent_id ORDER BY c.created_at ASC, c.id ASC) \
-             AS reply_rank, EXISTS (SELECT 1 FROM forum_comment_favorites cf \
+             AS reply_rank, FALSE AS is_accepted, EXISTS (SELECT 1 FROM forum_comment_favorites cf \
              WHERE cf.comment_id = c.id AND cf.user_id = ",
         );
         reply_builder
@@ -1550,6 +1565,114 @@ pub async fn update_comment(
     })
 }
 
+pub async fn set_accepted_comment(
+    pool: &PgPool,
+    config: &Config,
+    user: &AuthUser,
+    post_id: i64,
+    comment_id: Option<i64>,
+) -> Result<AcceptedCommentResponse, AppError> {
+    ensure_enabled(config)?;
+    if post_id <= 0 {
+        return Err(AppError::BadRequest("帖子 ID 无效".to_owned()));
+    }
+    if comment_id.is_some_and(|id| id <= 0) {
+        return Err(AppError::BadRequest("评论 ID 无效".to_owned()));
+    }
+    let mut tx = pool.begin().await.map_err(AppError::Database)?;
+    let post: Option<(i32, String, String, Option<i64>, String)> = sqlx::query_as(
+        "SELECT author_id, board, status, accepted_comment_id, title \
+         FROM forum_posts WHERE id = $1 FOR UPDATE",
+    )
+    .bind(post_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(AppError::Database)?;
+    let Some((author_id, board, status, current_accepted, title)) = post else {
+        return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
+    };
+    if status != "published" {
+        return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
+    }
+    ensure_board_access(pool, Some(user), &board, Some(author_id)).await?;
+    if board != BOARD_INTERVIEW {
+        return Err(AppError::BadRequest(
+            "只有面经帖子可以设置最佳答案".to_owned(),
+        ));
+    }
+    if author_id != user.id && !user.is_admin() {
+        return Err(AppError::ForbiddenWith(
+            "只有帖子作者或管理员可以设置最佳答案".to_owned(),
+        ));
+    }
+    if current_accepted == comment_id {
+        tx.commit().await.map_err(AppError::Database)?;
+        return Ok(AcceptedCommentResponse {
+            accepted_comment_id: current_accepted,
+            message: if comment_id.is_some() {
+                "该评论已是最佳答案".to_owned()
+            } else {
+                "当前没有最佳答案".to_owned()
+            },
+        });
+    }
+
+    if let Some(comment_id) = comment_id {
+        let row: Option<(i64, Option<i64>, String, i32)> = sqlx::query_as(
+            "SELECT post_id, parent_id, status, author_id FROM forum_comments \
+             WHERE id = $1 FOR UPDATE",
+        )
+        .bind(comment_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(AppError::Database)?;
+        let Some((comment_post_id, parent_id, comment_status, comment_author)) = row else {
+            return Err(AppError::NotFound("评论不存在或已被删除".to_owned()));
+        };
+        if comment_post_id != post_id || parent_id.is_some() || comment_status != "published" {
+            return Err(AppError::BadRequest(
+                "只能采纳本帖子下未隐藏的顶层评论".to_owned(),
+            ));
+        }
+        sqlx::query("UPDATE forum_posts SET accepted_comment_id = $2 WHERE id = $1")
+            .bind(post_id)
+            .bind(comment_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+        if comment_author != user.id {
+            notification_service::create(
+                &mut tx,
+                comment_author,
+                "forum_accepted",
+                Some(user.id),
+                "你的回答被采纳为最佳答案",
+                Some(&format!("《{title}》")),
+                Some(&format!("/forum/{post_id}#comment-{comment_id}")),
+                Some("forum_comment"),
+                Some(comment_id),
+            )
+            .await?;
+        }
+        tx.commit().await.map_err(AppError::Database)?;
+        Ok(AcceptedCommentResponse {
+            accepted_comment_id: Some(comment_id),
+            message: "已设为最佳答案".to_owned(),
+        })
+    } else {
+        sqlx::query("UPDATE forum_posts SET accepted_comment_id = NULL WHERE id = $1")
+            .bind(post_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+        tx.commit().await.map_err(AppError::Database)?;
+        Ok(AcceptedCommentResponse {
+            accepted_comment_id: None,
+            message: "已取消最佳答案".to_owned(),
+        })
+    }
+}
+
 pub async fn delete_comment(
     pool: &PgPool,
     config: &Config,
@@ -1598,6 +1721,15 @@ pub async fn delete_comment(
     )
     .bind(comment_id)
     .bind(user.id)
+    .execute(&mut *tx)
+    .await
+    .map_err(AppError::Database)?;
+    sqlx::query(
+        "UPDATE forum_posts SET accepted_comment_id = NULL \
+         WHERE id = $1 AND accepted_comment_id = $2",
+    )
+    .bind(post_id)
+    .bind(comment_id)
     .execute(&mut *tx)
     .await
     .map_err(AppError::Database)?;
@@ -1828,6 +1960,15 @@ pub async fn create_report(
                         .fetch_one(&mut *tx)
                         .await
                         .map_err(AppError::Database)?;
+                sqlx::query(
+                    "UPDATE forum_posts SET accepted_comment_id = NULL \
+                     WHERE id = $1 AND accepted_comment_id = $2",
+                )
+                .bind(post_id)
+                .bind(request.target_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
                 recompute_comment_count(&mut tx, post_id).await?;
             }
         }
@@ -1885,7 +2026,7 @@ fn push_admin_post_select(builder: &mut QueryBuilder<'_, Postgres>) {
     builder.push(
         "SELECT fp.id, fp.author_id, u.username AS author_username, u.email AS author_email, \
          u.role AS author_role, fp.board, fp.title, fp.body_md, fp.tags, fp.interview_date, \
-         fp.company, fp.role, fp.view_count, fp.problem_id, \
+         fp.company, fp.role, fp.view_count, fp.accepted_comment_id, fp.problem_id, \
          p.title AS problem_title, p.difficulty AS problem_difficulty, fp.is_anonymous, \
          fp.status, fp.hidden_reason, fp.hidden_by, fp.hidden_at, fp.is_pinned, fp.like_count, \
          fp.favorite_count, fp.comment_count, fp.pending_report_count, fp.created_at, \
@@ -2272,6 +2413,17 @@ pub async fn admin_change_comment_status(
             .await
             .map_err(AppError::Database)?;
         }
+    }
+    if next != "published" {
+        sqlx::query(
+            "UPDATE forum_posts SET accepted_comment_id = NULL \
+             WHERE id = $1 AND accepted_comment_id = $2",
+        )
+        .bind(post_id)
+        .bind(comment_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::Database)?;
     }
     let report_resolution = if next == "published" {
         "rejected"
@@ -2900,6 +3052,15 @@ async fn apply_hidden(
                     .fetch_one(&mut **tx)
                     .await
                     .map_err(AppError::Database)?;
+            sqlx::query(
+                "UPDATE forum_posts SET accepted_comment_id = NULL \
+                 WHERE id = $1 AND accepted_comment_id = $2",
+            )
+            .bind(post_id)
+            .bind(target_id)
+            .execute(&mut **tx)
+            .await
+            .map_err(AppError::Database)?;
             recompute_comment_count(tx, post_id).await?;
         }
     }

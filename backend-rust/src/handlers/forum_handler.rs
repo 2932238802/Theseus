@@ -13,8 +13,9 @@ use crate::{
     },
     middleware::auth::{authenticate, optional_authenticate, require_verified_email},
     models::forum::{
-        CreateCommentRequest, CreatePostRequest, CreateReportRequest, ForumCommentListQuery,
-        ForumPostListQuery, ForumReplyListQuery, UpdateCommentRequest, UpdatePostRequest,
+        AcceptCommentRequest, CreateCommentRequest, CreatePostRequest, CreateReportRequest,
+        ForumCommentListQuery, ForumPostListQuery, ForumReplyListQuery, UpdateCommentRequest,
+        UpdatePostRequest,
     },
     services::forum_service,
 };
@@ -68,6 +69,35 @@ pub async fn update_post(
 ) -> Result<impl IntoResponse, AppError> {
     let user = authenticate(&state.pool, &headers, &state.config).await?;
     let data = forum_service::update_post(&state.pool, &state.config, &user, id, &request).await?;
+    Ok(ok(data))
+}
+
+pub async fn accept_comment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(request): Json<AcceptCommentRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data = forum_service::set_accepted_comment(
+        &state.pool,
+        &state.config,
+        &user,
+        id,
+        Some(request.comment_id),
+    )
+    .await?;
+    Ok(ok(data))
+}
+
+pub async fn clear_accepted_comment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data =
+        forum_service::set_accepted_comment(&state.pool, &state.config, &user, id, None).await?;
     Ok(ok(data))
 }
 
