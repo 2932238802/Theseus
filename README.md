@@ -1,14 +1,15 @@
 # Theseus
 
-面向校内的在线算法训练与教学平台：刷题判题、组织作业、4 人排位赛、论坛与站内通知。
+面向校内的在线算法训练与教学平台：刷题判题、组织作业、4 人排位赛与限时赛事、论坛与站内通知、商店与 Plus Theseus。
 
 ## 功能
 
-- **刷题与判题**：多语言代码运行与提交，公开用例 + 隐藏用例，Docker/gVisor 沙箱隔离。
+- **刷题与判题**：多语言代码运行与提交，公开用例 + 隐藏用例，Docker/gVisor 沙箱隔离；题目页提供提交记录、代码回看与逐行对比。
 - **教学闭环**：教师创建组织、组题布置作业；学生提交，教师批改并发布成绩。
 - **竞赛**：4 人实时匹配、段位分与赛季软重置、限时赛事与年级范围、赛事排行榜、赛事申诉与成绩导出、断线重连。
 - **社区**：校园墙发帖、评论、举报，管理员审核与禁言。
 - **通知**：站内信 + WebSocket 实时推送，按类别配置邮件偏好。
+- **商店与 Plus Theseus**：学生和教师可提交 Plus 开通申请，管理员在管理端审核通过或驳回；Plus 权益暂未定义。
 - **三角色互斥权限**：`student` / `teacher` / `admin`，各司其职，不继承、不兼任。
 
 ## 技术栈
@@ -24,9 +25,9 @@
 
 ```text
 Theseus/
-├── backend-rust/     # Axum API 与 judge_worker
+├── backend-rust/     # Axum API、judge_worker、anticheat_worker 与数据库迁移
 ├── frontend-vue/     # Vue 3 单页应用
-├── deploy/           # Docker Compose 单机部署、备份/恢复脚本
+├── deploy/           # Docker Compose、.env 模板与备份/恢复/管理员脚本
 ├── doc/              # 总体设计、接口与实施文档
 ├── dev.sh            # 本地一键启动 API + Worker + 前端
 └── update.sh         # 服务器拉取代码后的增量更新（备份 / 构建 / 迁移 / 核对）
@@ -89,7 +90,17 @@ docker compose build
 docker compose up -d
 ```
 
-健康检查：`GET /healthz`（存活）与 `GET /readyz`（PostgreSQL / Redis）。备份使用 `deploy/scripts/backup.sh`，恢复使用 `deploy/scripts/restore.sh`。服务器拉取新代码后执行 `./update.sh` 即可完成「备份 → 构建 → 数据库增量迁移 → 启动服务 → 健康核对」。完整步骤、gVisor 安装、HTTPS 反代与运维清单见 [`doc/2610305_服务器部署方案.md`](doc/2610305_服务器部署方案.md)。
+日常更新：
+
+```bash
+cd /opt/theseus
+git pull
+./update.sh
+```
+
+`update.sh` 会备份数据库与 uploads、构建镜像、先用新 backend 应用增量迁移，确认迁移成功后再启动 Worker 与前端，并在最后核对健康状态；失败时打印回滚命令。可用 `--skip-build` 复用现有镜像，或 `--no-backup` 跳过备份（不推荐）。
+
+健康检查：`GET /healthz`（存活）与 `GET /readyz`（PostgreSQL / Redis）。备份使用 `deploy/scripts/backup.sh`，恢复使用 `deploy/scripts/restore.sh`。完整步骤、gVisor 安装、HTTPS 反代与运维清单见 [`doc/2610305_服务器部署方案.md`](doc/2610305_服务器部署方案.md)。
 
 ## 检查与测试
 

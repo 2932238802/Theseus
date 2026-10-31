@@ -57,7 +57,7 @@
 - 教学数据导入导出：组织详情支持 CSV 文件或粘贴批量导入学生，逐行返回新增/已存在/重复/不存在/非学生原因；批改台支持导出带 UTF-8 BOM 的成绩 CSV，复用现有计分结果；成绩发布邮件沿用通知偏好链路。
 - 审计中心：新增 `audit_logs` 追加式留痕与 `GET /api/admin/audit-logs`、`/meta`、`/export`；管理端「审计日志」页面 `/admin/audit` 支持关键词、动作、对象、时间筛选与 CSV 导出；已接入登录、用户管理、题目审核、成绩修改/发布、通知广播、论坛审核/禁言、作弊复核与申诉、赛事与监考复核等动作；成绩审计不保存分数与评语。
 - 竞赛收尾：新增赛季与软重置（`seasons`、`season_ratings`、`contests.season_id`），赛季首次被访问时惰性激活，按系数把段位压回 1000 附近；排行榜支持赛季切换；用户新增年级字段，赛事支持年级范围并在报名/进入时校验；比赛结束后可提交一次赛事申诉，管理员通过后恢复信誉分、撤销作弊判定并重新排名；管理端可导出赛事成绩 CSV；新增 `/admin/seasons` 与 `/admin/contest-appeals` 页面。
-- 容器化部署：后端多阶段镜像内置 API 与两个 Worker，前端 Node 构建 + Nginx 反代 `/api` 与 `/uploads`；`deploy/compose.yaml` 编排 PostgreSQL、Redis、API、判题/防作弊 Worker 与前端；新增 `/healthz`、`/readyz` 健康检查；提供备份、恢复与管理员提升脚本，以及 TLS 反代与运维手册（`2610305`）。
+- 容器化部署：后端多阶段镜像内置 API 与两个 Worker，前端 Node 构建 + Nginx 反代 `/api` 与 `/uploads`；`deploy/compose.yaml` 编排 PostgreSQL、Redis、API、判题/防作弊 Worker 与前端；新增 `/healthz`、`/readyz` 健康检查；提供备份、恢复、管理员提升与 `update.sh` 增量更新脚本，以及 TLS 反代与运维手册（`2610305`）。
 - 冒烟脚本：`smoke_teaching.sh`、`smoke_submission.sh`、`smoke_forum.sh`、`smoke_problem_review.sh`、`smoke_auth_email.sh`、`smoke_contest_events.sh`、`smoke_notifications.sh`、`smoke_realtime.sh`、`smoke_anticheat.sh`、`smoke_import_export.sh`、`smoke_audit.sh`。
 - 题目页提交记录：新增「提交记录」Tab，按题分页查看本人提交，详情展示代码、编译输出与失败用例，可载入编辑器或与当前代码逐行对比；复用 `GET /api/submissions` 与 `GET /api/submissions/{id}`，新增前端行级 diff（`2610311`）。
 - 商店与 Plus 申请：学生与教师顶部新增「商店」下拉菜单（管理员不显示），`/shop` 展示「升级为 Plus Theseus」；新增 `plus_applications` 与 `GET /api/shop/plus`、`POST /api/shop/plus/apply`、`GET /api/admin/plus-applications`、`POST /api/admin/plus-applications/{id}/resolve`；管理员审核后写站内信与审计日志，新增 `/admin/plus-applications` 页面。Plus 权益与有效期尚未定义（`2610312`）。
@@ -69,7 +69,7 @@
 - 通知：站内信、管理员发送、通知邮件偏好与按类别投递已完成；退订链接、邮件模板、站内信渠道开关尚未实现。
 - 竞赛：赛事闭环、排位榜、赛季与软重置、年级范围、赛事申诉与成绩导出已实现；赛季奖励与定时切换尚未实现。
 - 商店：入口、Plus 申请与管理员审核已实现；Plus 权益、有效期与续费尚未定义。
-- 部署：Docker Compose 单机部署、健康检查、Nginx 反代、备份/恢复脚本已完成；Prometheus 指标与告警、CI/CD、多实例与 TLS 自动化尚未实现。
+- 部署：Docker Compose 单机部署、健康检查、Nginx 反代、备份/恢复脚本与 `update.sh` 增量更新已完成；Prometheus 指标与告警、CI/CD、多实例与 TLS 自动化尚未实现。
 - 防作弊：摄像头/屏幕授权、切屏与粘贴事件、粘贴内容初筛、管理员负载均衡复核、信誉分处罚与恢复，以及作业代码相似度扫描、教师复核、可选判零、学生申诉与成绩恢复已实现；行为信号并入作业报告、跨作业/跨语言比对、报告导出与阈值校准尚未实现。
 
 **未开始**

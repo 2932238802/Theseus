@@ -19,7 +19,7 @@
 - 角色变更需要清理数据：学生升教师前退出所有组织；教师降级前没有未归档的自有组织，或确认归档后降级；最后一个管理员不能降级。
 - 角色变更立即生效；认证中间件每次请求从数据库读取 `users.role`，JWT 里的角色不作为权限依据。
 
-**当前代码状态：** 已实现 `student` / `teacher` / `admin` 迁移、教师角色、组织/作业/批改接口、管理员用户管理接口和对应前端页面。`user` 由迁移回填为 `student`。
+**当前代码状态：** 已实现 `student` / `teacher` / `admin` 迁移、教师角色、组织/作业/批改接口、管理员用户管理接口、竞赛/赛事、审计与商店 Plus 申请接口和对应前端页面。`user` 由迁移回填为 `student`。
 
 ## 运行
 
@@ -68,17 +68,21 @@ cargo run
 - `PUT /api/admin/problems/:id/review` 管理员审核题目
 - `PUT /api/admin/problems/:id` 管理员更新题目
 - `DELETE /api/admin/problems/:id` 管理员删除题目
-- `POST /api/problems/custom` 教师提交自定义题目，初始状态为 `pending`
-- `GET /api/problems/mine` 教师查看自己创建的题目，可按 `status` 筛选
-- `GET /api/problems/mine/:id` 教师查看自己的题目详情
-- `PUT /api/problems/mine/:id` 教师修改被退回的题目并重新提交审核
+- `POST /api/problems/custom` 学生/教师提交自定义题目，初始状态为 `pending`
+- `GET /api/problems/mine` 学生/教师查看自己创建的题目，可按 `status` 筛选
+- `GET /api/problems/mine/:id` 学生/教师查看自己的题目详情
+- `PUT /api/problems/mine/:id` 学生/教师修改被退回的题目并重新提交审核
 - `GET /api/admin/problems` 管理员分页查看题目，可按 `status`、`q` 筛选
 - `GET /api/admin/problems/:id` 管理员查看题目完整配置
+- `GET /api/shop/plus` 当前用户的 Plus Theseus 开通状态与最近一条申请
+- `POST /api/shop/plus/apply` 学生/教师提交开通申请 `{reason}`，需已验证邮箱
+- `GET /api/admin/plus-applications` 管理员分页查看 Plus 申请，可按 `status` 筛选
+- `POST /api/admin/plus-applications/:id/resolve` 管理员通过或驳回申请 `{status,note}`，写站内信与审计日志
 
 ### 角色相关行为
 
 - JWT 只确认用户身份；`AuthUser.role` 每次从 `users.role` 读取，角色变更立即生效，不要求重新登录。
-- 题目创建：教师通过 `POST /api/problems/custom` 提交审核，管理员审核；`student` / `admin` 返回 403。
+- 题目创建：学生和教师通过 `POST /api/problems/custom` 提交审核，管理员审核；`admin` 返回 403。
 - 管理员访问 `/api/classes/*`、`/api/assignments/*`、教学提交/成绩接口统一返回 403；管理员不能查看其他人的提交，包括练习提交。
 - 教师不能加入组织、不能提交组织作业；学生不能创建组织、不能批改。
 - 4 人匹配只允许 `student`；教师和管理员只能使用题库练习。
