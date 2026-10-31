@@ -643,3 +643,198 @@ body.is-resizing-rows {
   min-height: 44px;
 }
 
+
+/* 提交记录 ------------------------------------------------------------- */
+.history-count {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.history-toolbar .run-note {
+  margin-bottom: 0;
+}
+
+.history-refresh,
+.history-pagination > button,
+.history-diff-toggle {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.history-refresh:hover:not(:disabled),
+.history-pagination > button:hover:not(:disabled),
+.history-diff-toggle:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.history-refresh:disabled,
+.history-pagination > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-sm);
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: 92px 56px 88px 64px 76px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 6px var(--space-sm);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-align: left;
+  transition: background-color var(--duration);
+}
+
+.history-item:hover {
+  background: var(--color-bg);
+}
+
+.history-item .result-status {
+  justify-self: start;
+}
+
+.history-id {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.history-item time {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+/* 提交详情与代码对比 ---------------------------------------------------- */
+.run-dialog.history-detail-dialog {
+  width: min(880px, 100%);
+}
+
+.history-code-block {
+  margin-top: var(--space-md);
+}
+
+.history-code-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.history-code {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre;
+}
+
+.history-diff {
+  margin-top: var(--space-md);
+}
+
+.history-diff-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-sm);
+  margin-bottom: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.history-diff-body {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.history-diff-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px minmax(0, 1fr);
+  align-items: stretch;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.history-diff-row pre {
+  min-height: 1.6em;
+  margin: 0;
+  padding: 0 var(--space-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.history-diff-no {
+  padding: 0 6px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-align: right;
+  user-select: none;
+}
+
+.history-diff-row.removed {
+  background: var(--color-danger-soft);
+}
+
+.history-diff-row.added {
+  background: var(--color-success-soft);
+}
+
+.history-diff-row.removed .history-diff-no {
+  color: var(--color-danger);
+}
+
+.history-diff-row.added .history-diff-no {
+  color: var(--color-success);
+}
+
+@media (max-width: 720px) {
+  .history-list {
+    overflow-x: auto;
+  }
+
+  .history-item {
+    min-width: 460px;
+  }
+}

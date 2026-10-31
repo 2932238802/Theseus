@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import CodeEditor from '../components/CodeEditor.vue'
@@ -13,6 +13,7 @@ import { fetchAssignment } from '../api/assignments'
 import { fetchContestProblem } from '../api/contests'
 import { fetchProblemDraft, saveProblemDraft } from '../api/drafts'
 import { setProblemFavorite } from '../api/favorites'
+import { fetchSubmission, fetchSubmissions } from '../api/submissions'
 import { toErrorMessage } from '../api/client'
 import type { AssignmentDetail } from '../types/teaching'
 import {
@@ -22,12 +23,13 @@ import {
   RUN_STATUS_LABELS,
 } from '../utils/constants'
 import { SHORTCUT_ACTIONS, matchesShortcut } from '../utils/shortcuts'
-import type { Language } from '../types/oj'
+import type { Language, Submission } from '../types/oj'
 import type { RunMode } from '../types/run'
 import { formatArgs, formatInline } from '../utils/format'
 import { useContestEvents } from '../utils/contestEvents'
 import { inspectPaste } from '../utils/pasteInspection'
 import { clearDraftMeta, saveDraftMeta } from '../utils/problemDrafts'
+import { buildLineDiff, type DiffRow } from '../utils/lineDiff'
 
 const route = useRoute()
 const router = useRouter()
@@ -48,13 +50,27 @@ const initialLanguage = (): Language => {
 }
 const language = ref<Language>(initialLanguage())
 const code = ref('')
+const editorRef = ref<{ focus: () => void } | null>(null)
 const fontSize = ref(14)
 const isOutputOpen = ref(true)
 const isDark = ref(document.documentElement.dataset.theme === 'dark')
 const draftKey = computed(() => `theseus-draft-${problemId.value}-${language.value}`)
 const isAccepted = computed(() => submissionStore.latest?.status === 'Accepted')
 const latestFailedCase = computed(() => submissionStore.latest?.failedCase ?? null)
-const activeOutputTab = ref<'run' | 'submit'>('submit')
+type OutputTab = 'run' | 'submit' | 'history'
+const activeOutputTab = ref<OutputTab>('submit')
+const HISTORY_PAGE_SIZE = 10
+const historyItems = ref<Submission[]>([])
+const historyTotal = ref(0)
+const historyPage = ref(1)
+const historyLoading = ref(false)
+const historyError = ref('')
+const historyLoaded = ref(false)
+const historyDetail = ref<Submission | null>(null)
+const historyDetailLoading = ref(false)
+const historyDetailError = ref('')
+const showHistoryDiff = ref(false)
+let historyRequestSequence = 0
 const isRunDialogOpen = ref(false)
 const isShortcutDialogOpen = ref(false)
 const runMode = ref<RunMode>('examples')
@@ -142,14 +158,24 @@ const runCase = computed(() => runStore.detail?.cases[0])
 const runStatusLabel = computed(() =>
   runStore.status ? RUN_STATUS_LABELS[runStore.status.status] : '',
 )
-const outputStatusLabel = computed(() =>
-  activeOutputTab.value === 'run' ? runStatusLabel.value : submissionStore.latest?.status ?? '',
-)
+const outputStatusLabel = computed(() => {
+  if (activeOutputTab.value === 'run') return runStatusLabel.value
+  if (activeOutputTab.value === 'submit') return submissionStore.latest?.status ?? ''
+  return ''
+})
 const outputSucceeded = computed(() =>
   activeOutputTab.value === 'run'
     ? runStore.detail?.status === 'completed'
     : isAccepted.value,
 )
+const historyTotalPages = computed(() =>
+  Math.max(1, Math.ceil(historyTotal.value / HISTORY_PAGE_SIZE)),
+)
+const historyDiffRows = computed<DiffRow[] | null>(() => {
+  const detail = historyDetail.value
+  if (!detail) return null
+  return buildLineDiff(detail.code, code.value)
+})
 const parameterHint = computed(() => {
   const config = runConfig.value
   if (!config) return ''
@@ -315,6 +341,14 @@ const loadPage = async (): Promise<void> => {
   submissionStore.stopPolling()
   submissionStore.latest = null
   runStore.reset()
+  historyRequestSequence += 1
+  historyItems.value = []
+  historyTotal.value = 0
+  historyPage.value = 1
+  historyLoaded.value = false
+  historyLoading.value = false
+  historyError.value = ''
+  closeHistoryDetail()
   activeOutputTab.value = 'submit'
   isRunDialogOpen.value = false
   if (contestId.value) {
@@ -384,16 +418,88 @@ const submitCode = async (): Promise<void> => {
   isOutputOpen.value = true
   activeOutputTab.value = 'submit'
   try {
-    await submissionStore.submit(
+    const final = await submissionStore.submit(
       problemStore.currentProblem.id,
       language.value,
       code.value,
       contestId.value ? undefined : (assignmentId.value ?? undefined),
       contestId.value ?? undefined,
     )
+    if (final && historyLoaded.value) void loadHistory(1)
   } catch {
     isOutputOpen.value = true
   }
+}
+const languageLabel = (value: Language): string =>
+  LANGUAGE_OPTIONS.find((option) => option.value === value)?.label ?? value
+const formatTime = (value: string): string => new Date(value).toLocaleString('zh-CN')
+const loadHistory = async (page = 1): Promise<void> => {
+  if (!authStore.isAuthenticated) return
+  const requestId = ++historyRequestSequence
+  historyLoading.value = true
+  historyError.value = ''
+  try {
+    const result = await fetchSubmissions({
+      page,
+      size: HISTORY_PAGE_SIZE,
+      problemId: problemId.value,
+    })
+    if (requestId !== historyRequestSequence) return
+    historyItems.value = result.submissions
+    historyTotal.value = result.total
+    historyPage.value = result.page
+    historyLoaded.value = true
+  } catch (exception: unknown) {
+    if (requestId !== historyRequestSequence) return
+    historyError.value = toErrorMessage(exception)
+  } finally {
+    if (requestId === historyRequestSequence) historyLoading.value = false
+  }
+}
+const openHistoryTab = (): void => {
+  activeOutputTab.value = 'history'
+  isOutputOpen.value = true
+  if (authStore.isAuthenticated && !historyLoaded.value && !historyLoading.value) {
+    void loadHistory(1)
+  }
+}
+const openHistoryDetail = async (item: Submission): Promise<void> => {
+  historyDetailLoading.value = true
+  historyDetailError.value = ''
+  showHistoryDiff.value = false
+  try {
+    historyDetail.value = await fetchSubmission(item.id)
+  } catch (exception: unknown) {
+    historyDetailError.value = toErrorMessage(exception)
+  } finally {
+    historyDetailLoading.value = false
+  }
+}
+const closeHistoryDetail = (): void => {
+  historyDetail.value = null
+  historyDetailError.value = ''
+  showHistoryDiff.value = false
+}
+const applyHistoryCode = async (): Promise<void> => {
+  const detail = historyDetail.value
+  if (!detail) return
+  if (
+    code.value.trim() &&
+    code.value !== detail.code &&
+    !window.confirm('当前编辑器内容将被这条提交的代码替换，确定继续吗？')
+  ) {
+    return
+  }
+  const targetLanguage = detail.language
+  closeHistoryDetail()
+  language.value = targetLanguage
+  await nextTick()
+  code.value = detail.code
+  saveDraft()
+  activeOutputTab.value = 'submit'
+  isOutputOpen.value = true
+  await nextTick()
+  editorRef.value?.focus()
 }
 const openRunDialog = async (): Promise<void> => {
   if (!canRun.value) return
@@ -867,7 +973,7 @@ onBeforeUnmount(() => {
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
         <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(12, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(20, fontSize + 1)">A+</button><button type="button" aria-label="切换编辑器主题" title="切换编辑器主题" @click="isDark = !isDark">◐</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
-        <CodeEditor v-model="code" :language="language" :font-size="fontSize" :dark="isDark" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" />
+        <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :dark="isDark" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" />
         <div
           ref="outputResizerRef"
           class="pane-resizer-h"
@@ -888,9 +994,11 @@ onBeforeUnmount(() => {
             <div class="output-tabs">
               <button type="button" :class="{ active: activeOutputTab === 'run' }" @click="activeOutputTab = 'run'; isOutputOpen = true">运行结果</button>
               <button type="button" :class="{ active: activeOutputTab === 'submit' }" @click="activeOutputTab = 'submit'; isOutputOpen = true">提交结果</button>
+              <button type="button" :class="{ active: activeOutputTab === 'history' }" @click="openHistoryTab">提交记录<template v-if="historyLoaded && historyTotal > 0"> · {{ historyTotal }}</template></button>
               <button type="button" class="output-toggle" :aria-expanded="isOutputOpen" :aria-label="isOutputOpen ? '收起结果面板' : '展开结果面板'" @click="isOutputOpen = !isOutputOpen"><span>{{ isOutputOpen ? '⌄' : '›' }}</span></button>
             </div>
             <span v-if="(activeOutputTab === 'run' && runStore.isRunning)" class="running-state"><i class="spinner"></i> {{ runButtonLabel }}</span>
+            <span v-else-if="activeOutputTab === 'history' && historyLoaded" class="history-count">共 {{ historyTotal }} 条提交</span>
             <span v-else-if="outputStatusLabel" :class="['result-status', outputSucceeded ? 'accepted' : 'failed']">{{ outputStatusLabel }}<template v-if="activeOutputTab === 'run' && runStore.status && runStore.status.caseTotal > 0"> · {{ runStore.status.casePassed }}/{{ runStore.status.caseTotal }}</template></span>
           </header>
           <div v-if="isOutputOpen" class="output-body">
@@ -925,7 +1033,7 @@ onBeforeUnmount(() => {
               <p v-else-if="runStore.error" class="form-error" role="alert">{{ runStore.error }}</p>
               <p v-else-if="!runStore.isRunning" class="output-placeholder">运行代码后将在这里显示结果</p>
             </template>
-            <template v-else>
+            <template v-else-if="activeOutputTab === 'submit'">
               <template v-if="submissionStore.latest"><p>{{ submissionStore.latest.message }}</p><dl><div v-if="submissionStore.latest.totalTestCases"><dt>通过用例</dt><dd>{{ submissionStore.latest.testCasesPassed }} / {{ submissionStore.latest.totalTestCases }}</dd></div><div v-if="submissionStore.latest.runtime"><dt>执行用时</dt><dd>{{ submissionStore.latest.runtime }}</dd></div><div v-if="submissionStore.latest.memory"><dt>内存消耗</dt><dd>{{ submissionStore.latest.memory }}</dd></div></dl>
                 <div v-if="submissionStore.latest.compileOutput" class="run-block"><span>编译输出</span><pre>{{ submissionStore.latest.compileOutput }}</pre></div>
                 <template v-if="latestFailedCase">
@@ -938,6 +1046,36 @@ onBeforeUnmount(() => {
               </template>
               <p v-else class="output-placeholder">提交代码后将在这里显示评测结果</p>
               <p v-if="submissionStore.error" class="form-error" role="alert">{{ submissionStore.error }}</p>
+            </template>
+            <template v-else>
+              <template v-if="!authStore.isAuthenticated">
+                <p class="output-placeholder">登录后可查看本题的提交记录</p>
+                <RouterLink class="primary-button" :to="{ name: 'login', query: { redirect: route.fullPath } }">去登录 <span>→</span></RouterLink>
+              </template>
+              <template v-else>
+                <div class="history-toolbar">
+                  <span class="run-note">仅显示本题的提交，可回看代码并重新载入编辑器</span>
+                  <button type="button" class="history-refresh" :disabled="historyLoading" @click="loadHistory(historyPage)">{{ historyLoading ? '刷新中' : '刷新' }}</button>
+                </div>
+                <p v-if="historyError" class="form-error" role="alert">{{ historyError }}</p>
+                <div v-if="historyLoading && !historyItems.length" class="output-placeholder">正在加载提交记录</div>
+                <div v-else-if="historyItems.length" class="history-list">
+                  <button v-for="item in historyItems" :key="item.id" type="button" class="history-item" @click="openHistoryDetail(item)">
+                    <span :class="['result-status', item.status === 'Accepted' ? 'accepted' : 'failed']">{{ item.status }}</span>
+                    <span class="history-id">#{{ item.id }}</span>
+                    <span>{{ languageLabel(item.language) }}</span>
+                    <span>{{ item.testCasesPassed }}/{{ item.totalTestCases }}</span>
+                    <span>{{ item.runtime ?? '—' }}</span>
+                    <time>{{ formatTime(item.createdAt) }}</time>
+                  </button>
+                </div>
+                <div v-else-if="historyLoaded" class="output-placeholder">还没有提交记录</div>
+                <div v-if="historyTotalPages > 1" class="history-pagination">
+                  <button type="button" :disabled="historyPage <= 1 || historyLoading" @click="loadHistory(historyPage - 1)">上一页</button>
+                  <span>{{ historyPage }} / {{ historyTotalPages }}</span>
+                  <button type="button" :disabled="historyPage >= historyTotalPages || historyLoading" @click="loadHistory(historyPage + 1)">下一页</button>
+                </div>
+              </template>
             </template>
           </div>
         </section>
@@ -978,6 +1116,63 @@ onBeforeUnmount(() => {
         </template>
       </div>
       <footer><button class="run-button" type="button" @click="closeRunDialog">取消</button><button class="primary-button" type="button" :disabled="runStore.isRunning" @click="startRun">运行</button></footer>
+    </section>
+  </div>
+
+  <div v-if="historyDetail || historyDetailLoading || historyDetailError" class="modal-backdrop" @click.self="closeHistoryDetail">
+    <section class="run-dialog run-record-dialog history-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="history-detail-title">
+      <header>
+        <div>
+          <h2 id="history-detail-title">提交 #{{ historyDetail?.id ?? '' }}</h2>
+          <p v-if="historyDetail">{{ languageLabel(historyDetail.language) }} · {{ formatTime(historyDetail.createdAt) }}</p>
+          <p v-else>正在加载提交详情</p>
+        </div>
+        <button type="button" aria-label="关闭" @click="closeHistoryDetail">×</button>
+      </header>
+      <div class="run-dialog-body">
+        <p v-if="historyDetailLoading" class="run-note">正在加载提交详情</p>
+        <p v-if="historyDetailError" class="form-error" role="alert">{{ historyDetailError }}</p>
+        <template v-if="historyDetail">
+          <p :class="historyDetail.status === 'Accepted' ? 'run-note' : 'form-error'">{{ historyDetail.message }}</p>
+          <dl>
+            <div><dt>状态</dt><dd>{{ historyDetail.status }}</dd></div>
+            <div><dt>通过用例</dt><dd>{{ historyDetail.testCasesPassed }} / {{ historyDetail.totalTestCases }}</dd></div>
+            <div v-if="historyDetail.runtime"><dt>执行用时</dt><dd>{{ historyDetail.runtime }}</dd></div>
+            <div v-if="historyDetail.memory"><dt>内存消耗</dt><dd>{{ historyDetail.memory }}</dd></div>
+          </dl>
+          <div v-if="historyDetail.compileOutput" class="run-block"><span>编译输出</span><pre>{{ historyDetail.compileOutput }}</pre></div>
+          <template v-if="historyDetail.failedCase">
+            <div class="run-block"><span>失败用例 #{{ historyDetail.failedCase.index + 1 }} · 输入</span><pre>{{ formatInline(historyDetail.failedCase.args) }}</pre></div>
+            <div v-if="historyDetail.failedCase.expected !== undefined" class="run-block"><span>期望</span><pre>{{ formatInline(historyDetail.failedCase.expected) }}</pre></div>
+            <div v-if="historyDetail.failedCase.actual !== null" class="run-block"><span>实际</span><pre>{{ formatInline(historyDetail.failedCase.actual) }}</pre></div>
+            <div v-if="historyDetail.failedCase.stdout" class="run-block"><span>stdout</span><pre>{{ historyDetail.failedCase.stdout }}</pre></div>
+            <div v-if="historyDetail.failedCase.stderr" class="run-block"><span>stderr</span><pre>{{ historyDetail.failedCase.stderr }}</pre></div>
+          </template>
+          <div class="history-code-block">
+            <div class="history-code-heading">
+              <span>代码</span>
+              <button type="button" class="history-diff-toggle" @click="showHistoryDiff = !showHistoryDiff">{{ showHistoryDiff ? '收起对比' : '对比当前代码' }}</button>
+            </div>
+            <pre class="history-code">{{ historyDetail.code }}</pre>
+          </div>
+          <div v-if="showHistoryDiff" class="history-diff">
+            <div class="history-diff-heading"><span>历史代码</span><span>当前编辑器</span></div>
+            <div v-if="historyDiffRows" class="history-diff-body">
+              <div v-for="(row, index) in historyDiffRows" :key="index" :class="['history-diff-row', row.kind]">
+                <span class="history-diff-no">{{ row.leftNumber ?? '' }}</span>
+                <pre>{{ row.left ?? '' }}</pre>
+                <span class="history-diff-no">{{ row.rightNumber ?? '' }}</span>
+                <pre>{{ row.right ?? '' }}</pre>
+              </div>
+            </div>
+            <p v-else class="run-note">代码较长，已跳过逐行对比</p>
+          </div>
+        </template>
+      </div>
+      <footer>
+        <button class="run-button" type="button" @click="closeHistoryDetail">关闭</button>
+        <button class="primary-button" type="button" :disabled="!historyDetail" @click="applyHistoryCode">载入编辑器</button>
+      </footer>
     </section>
   </div>
 

@@ -24,6 +24,7 @@
 | `2610302_教学数据导入导出设计方案.md` | CSV 批量导入学生、作业成绩 CSV 导出与导入结果反馈 | 已实现 |
 | `2610303_审计中心设计方案.md` | 审计日志数据模型、写入范围、管理员查询/筛选/导出与权限边界 | 已实现（v1） |
 | `2610304_竞赛收尾设计方案.md` | 赛季与软重置、年级范围、赛事申诉与成绩导出 | 已实现（v1） |
+| `2610311_提交记录与代码回看.md` | 题目页提交记录分页、详情回看、载入编辑器与逐行对比 | 已实现（前端） |
 | `2610305_服务器部署方案.md` | Docker Compose 单机部署、健康检查、TLS 反代、备份恢复与运维 | 构建与脚本已实现；实际上线需在服务器执行 |
 | `2610241_运行代码功能设计方案.md` | 运行代码、沙箱与多语言执行 | 已实现 |
 | `2610260_快捷键方案.md` | OJ 快捷键与自定义配置 | 已实现 |
@@ -57,6 +58,7 @@
 - 竞赛收尾：新增赛季与软重置（`seasons`、`season_ratings`、`contests.season_id`），赛季首次被访问时惰性激活，按系数把段位压回 1000 附近；排行榜支持赛季切换；用户新增年级字段，赛事支持年级范围并在报名/进入时校验；比赛结束后可提交一次赛事申诉，管理员通过后恢复信誉分、撤销作弊判定并重新排名；管理端可导出赛事成绩 CSV；新增 `/admin/seasons` 与 `/admin/contest-appeals` 页面。
 - 容器化部署：后端多阶段镜像内置 API 与两个 Worker，前端 Node 构建 + Nginx 反代 `/api` 与 `/uploads`；`deploy/compose.yaml` 编排 PostgreSQL、Redis、API、判题/防作弊 Worker 与前端；新增 `/healthz`、`/readyz` 健康检查；提供备份、恢复与管理员提升脚本，以及 TLS 反代与运维手册（`2610305`）。
 - 冒烟脚本：`smoke_teaching.sh`、`smoke_submission.sh`、`smoke_forum.sh`、`smoke_problem_review.sh`、`smoke_auth_email.sh`、`smoke_contest_events.sh`、`smoke_notifications.sh`、`smoke_realtime.sh`、`smoke_anticheat.sh`、`smoke_import_export.sh`、`smoke_audit.sh`。
+- 题目页提交记录：新增「提交记录」Tab，按题分页查看本人提交，详情展示代码、编译输出与失败用例，可载入编辑器或与当前代码逐行对比；复用 `GET /api/submissions` 与 `GET /api/submissions/{id}`，新增前端行级 diff（`2610311`）。
 
 **部分完成**
 

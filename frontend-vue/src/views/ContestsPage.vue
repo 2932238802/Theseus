@@ -591,29 +591,6 @@ onBeforeUnmount(() => {
     </div>
 
     <section v-else-if="phase === 'idle'" class="teaching-panel contest-intro">
-<<<<<<< Updated upstream
-      <div class="section-heading contest-intro-heading">
-        <h2>{{ ranked?.title ?? '4 人排位赛' }}</h2>
-        <div class="contest-heading-actions">
-          <span class="teaching-badge">{{ participantLabel }} · {{ durationLabel }} · {{ problemLabel }}</span>
-          <RouterLink class="contest-rules-button contest-rules-link" :to="{ name: 'contest-rankings' }">
-            排行榜
-          </RouterLink>
-          <button
-            class="contest-rules-button"
-            type="button"
-            :aria-expanded="rulesOpen"
-            @click="openRules"
-          >
-            比赛规则
-          </button>
-        </div>
-      </div>
-      <p class="contest-summary">
-        与段位分相近的 {{ Math.max(1, (ranked?.participants ?? 4) - 1) }} 名选手匹配
-      </p>
-      <p v-if="seasonLabel" class="teaching-subtle">{{ seasonLabel }}</p>
-=======
       <div class="contest-intro-layout">
         <div class="contest-intro-copy">
           <div class="section-heading contest-intro-heading">
@@ -639,7 +616,7 @@ onBeforeUnmount(() => {
           <p class="contest-summary">
             与段位分相近的 {{ Math.max(1, (ranked?.participants ?? 4) - 1) }} 名选手匹配
           </p>
->>>>>>> Stashed changes
+          <p v-if="seasonLabel" class="teaching-subtle">{{ seasonLabel }}</p>
 
           <div class="contest-rating-strip">
             <div>
