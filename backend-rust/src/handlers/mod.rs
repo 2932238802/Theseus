@@ -14,6 +14,7 @@ pub mod health_handler;
 pub mod home_handler;
 pub mod invitation_handler;
 pub mod notification_handler;
+pub mod plus_handler;
 pub mod problem_handler;
 pub mod profile_handler;
 pub mod ranking_handler;

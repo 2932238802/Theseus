@@ -1,0 +1,148 @@
+/* 商店与 Plus Theseus 申请 ---------------------------------------------- */
+.shop-page {
+  max-width: 880px;
+}
+
+.shop-plus-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.shop-plus-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.shop-plus-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.shop-plus-title h2 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.shop-plus-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.shop-plus-copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.shop-status {
+  flex: 0 0 auto;
+  padding: 4px var(--space-sm);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.shop-status.is-pending {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.shop-status.is-approved {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.shop-status.is-rejected {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.shop-application {
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.shop-application dl {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+}
+
+.shop-application dl > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--space-sm);
+}
+
+.shop-application dt {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.shop-application dd {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.shop-apply-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.shop-apply-form label {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.shop-apply-form textarea {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.shop-apply-form textarea:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.shop-apply-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+@media (max-width: 720px) {
+  .shop-plus-header {
+    align-items: flex-start;
+  }
+
+  .shop-application dl > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

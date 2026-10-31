@@ -28,7 +28,8 @@ Theseus/
 ├── frontend-vue/     # Vue 3 单页应用
 ├── deploy/           # Docker Compose 单机部署、备份/恢复脚本
 ├── doc/              # 总体设计、接口与实施文档
-└── dev.sh            # 本地一键启动 API + Worker + 前端
+├── dev.sh            # 本地一键启动 API + Worker + 前端
+└── update.sh         # 服务器拉取代码后的增量更新（备份 / 构建 / 迁移 / 核对）
 ```
 
 ## 本地运行
@@ -88,7 +89,7 @@ docker compose build
 docker compose up -d
 ```
 
-健康检查：`GET /healthz`（存活）与 `GET /readyz`（PostgreSQL / Redis）。备份使用 `deploy/scripts/backup.sh`，恢复使用 `deploy/scripts/restore.sh`。完整步骤、gVisor 安装、HTTPS 反代与运维清单见 [`doc/2610305_服务器部署方案.md`](doc/2610305_服务器部署方案.md)。
+健康检查：`GET /healthz`（存活）与 `GET /readyz`（PostgreSQL / Redis）。备份使用 `deploy/scripts/backup.sh`，恢复使用 `deploy/scripts/restore.sh`。服务器拉取新代码后执行 `./update.sh` 即可完成「备份 → 构建 → 数据库增量迁移 → 启动服务 → 健康核对」。完整步骤、gVisor 安装、HTTPS 反代与运维清单见 [`doc/2610305_服务器部署方案.md`](doc/2610305_服务器部署方案.md)。
 
 ## 检查与测试
 

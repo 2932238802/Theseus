@@ -82,6 +82,10 @@ cargo run
 | GET | `/api/profile/favorites/comments` | 用户 | 当前用户评论收藏列表 |
 | GET | `/api/profile/notification-preferences` | 用户 | 通知邮件偏好与邮箱验证状态 |
 | PUT | `/api/profile/notification-preferences` | 用户 | 批量更新通知邮件偏好 |
+| GET | `/api/shop/plus` | 用户 | 当前用户 Plus Theseus 开通状态与最近一条申请 |
+| POST | `/api/shop/plus/apply` | 学生 / 教师 | 提交 Plus 开通申请 `{reason}`，需已验证邮箱 |
+| GET | `/api/admin/plus-applications` | 管理员 | Plus 申请分页，支持 `status`、`page`、`size` |
+| POST | `/api/admin/plus-applications/{id}/resolve` | 管理员 | 通过或驳回 Plus 申请 `{status:"approved\|rejected",note}` |
 | GET | `/api/contests/featured` | 用户 | 竞赛首页：排位赛配置、规则分组与限时赛事列表 |
 | GET | `/api/contests/events` | 用户 | 赛事列表，支持 `type`、`status`、`following`、`page`、`page_size` |
 | GET | `/api/contests/events/{id}` | 用户 | 赛事详情（含说明、规则和报名链接） |
@@ -311,6 +315,15 @@ Authorization: Bearer <teacher>
 - `GET /api/profile/notification-preferences` 返回 `{email,email_verified,preferences:[{category,channel,enabled}]}`，未保存过的类别返回代码里的默认值
 - `PUT /api/profile/notification-preferences` 请求 `{"preferences":[{"category":"forum","enabled":true}]}`，可一次提交多项，返回与 GET 相同的完整偏好；`category` 取 `class|assignment|forum|account|contest|announcement`
 - 偏好只控制邮件渠道，站内信始终接收；通知邮件只发送到已验证的邮箱，后台邮件循环每轮把待处理通知转入发件箱，用户关闭某类别后该类别不再产生新邮件
+
+## 商店与 Plus Theseus 接口
+
+完整设计见 `doc/2610312_商店与Plus申请设计方案.md`。本期只记录申请与审核状态，不定义权益、有效期或续费。
+
+- `GET /api/shop/plus` 返回 `{is_plus, application?}`。`is_plus` 表示是否存在已通过的申请；`application` 是最近一条申请，含 `id`、`user_id`、`username`、`reason`、`status`、`review_note`、`reviewed_by`、`reviewed_at`、`created_at`。
+- `POST /api/shop/plus/apply` 请求 `{"reason":"..."}`，说明去掉首尾空白后 1–500 字；管理员调用返回 403；已有待审核或已通过申请时返回 409，驳回后可重新提交。
+- `GET /api/admin/plus-applications?status=pending&page=1&size=20` 返回 `{total,page,size,items[]}`，`status` 取 `pending|approved|rejected`，`size` 上限 100。
+- `POST /api/admin/plus-applications/{id}/resolve` 请求 `{"status":"approved|rejected","note":"..."}`，说明 ≤500 字；只允许处理 `pending`。审核成功后向申请人写入 `plus_application` 站内信（邮件类别 `account`），并记录审计动作 `plus.application_resolve`。
 
 ## 竞赛与限时赛事接口
 

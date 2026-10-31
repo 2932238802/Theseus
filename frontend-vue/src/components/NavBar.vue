@@ -49,6 +49,8 @@ const isCampusOpen = ref(false)
 const campusRef = ref<HTMLElement | null>(null)
 const isContestOpen = ref(false)
 const contestRef = ref<HTMLElement | null>(null)
+const isShopOpen = ref(false)
+const shopRef = ref<HTMLElement | null>(null)
 const isProfileMenuOpen = ref(false)
 const profileMenuRef = ref<HTMLElement | null>(null)
 const isCampusArea = computed(() =>
@@ -58,6 +60,9 @@ const isCampusArea = computed(() =>
 )
 const isContestArea = computed(
   () => route.path === '/contests' || route.path.startsWith('/contests/'),
+)
+const isShopArea = computed(
+  () => route.path === '/shop' || route.path.startsWith('/shop/'),
 )
 const isProfileArea = computed(
   () =>
@@ -80,6 +85,10 @@ const closeContest = (): void => {
   isContestOpen.value = false
 }
 
+const closeShop = (): void => {
+  isShopOpen.value = false
+}
+
 const closeProfileMenu = (): void => {
   isProfileMenuOpen.value = false
 }
@@ -89,6 +98,7 @@ const onDocumentPointerDown = (event: PointerEvent): void => {
   if (isManageOpen.value && !manageRef.value?.contains(event.target)) closeManage()
   if (isCampusOpen.value && !campusRef.value?.contains(event.target)) closeCampus()
   if (isContestOpen.value && !contestRef.value?.contains(event.target)) closeContest()
+  if (isShopOpen.value && !shopRef.value?.contains(event.target)) closeShop()
   if (isProfileMenuOpen.value && !profileMenuRef.value?.contains(event.target)) closeProfileMenu()
 }
 
@@ -97,6 +107,7 @@ const onWindowKeydown = (event: KeyboardEvent): void => {
   if (isManageOpen.value) closeManage()
   if (isCampusOpen.value) closeCampus()
   if (isContestOpen.value) closeContest()
+  if (isShopOpen.value) closeShop()
   if (isProfileMenuOpen.value) closeProfileMenu()
   if (isMenuOpen.value) isMenuOpen.value = false
 }
@@ -111,6 +122,7 @@ watch(
     closeManage()
     closeCampus()
     closeContest()
+    closeShop()
     closeProfileMenu()
     isMenuOpen.value = false
   },
@@ -306,6 +318,33 @@ onBeforeUnmount(() => {
           </RouterLink>
         </div>
       </div>
+      <div
+        v-if="canBrowseAssignments"
+        ref="shopRef"
+        class="nav-menu nav-shop"
+        :class="{ 'is-active': isShopArea }"
+      >
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-controls="shop-menu-panel"
+          :aria-expanded="isShopOpen"
+          @click="isShopOpen = !isShopOpen"
+        >
+          商店<span class="nav-caret" aria-hidden="true"></span>
+        </button>
+        <div
+          v-if="isShopOpen"
+          id="shop-menu-panel"
+          class="nav-menu-panel"
+          role="menu"
+          aria-label="商店"
+        >
+          <RouterLink role="menuitem" to="/shop" @click="closeShop">
+            升级为 Plus Theseus
+          </RouterLink>
+        </div>
+      </div>
       <div v-if="authStore.isAdmin" ref="manageRef" class="nav-menu" :class="{ 'is-active': isAdminArea }">
         <button
           id="admin-menu-button"
@@ -330,6 +369,9 @@ onBeforeUnmount(() => {
           <RouterLink role="menuitem" to="/admin/users" @click="closeManage">用户管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/notifications" @click="closeManage">通知管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/audit" @click="closeManage">审计日志</RouterLink>
+          <RouterLink role="menuitem" to="/admin/plus-applications" @click="closeManage">
+            Plus 申请
+          </RouterLink>
         </div>
       </div>
     </nav>

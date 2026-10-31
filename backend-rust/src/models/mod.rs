@@ -7,6 +7,7 @@ pub mod favorite;
 pub mod forum;
 pub mod home;
 pub mod notification;
+pub mod plus;
 pub mod problem;
 pub mod profile;
 pub mod ranking;

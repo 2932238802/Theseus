@@ -11,8 +11,8 @@ use crate::{
         admin_forum_handler, admin_user_handler, anticheat_handler, assignment_handler,
         audit_handler, auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
         favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
-        notification_handler, problem_handler, profile_handler, ranking_handler, run_handler,
-        submission_handler, ws_handler,
+        notification_handler, plus_handler, problem_handler, profile_handler, ranking_handler,
+        run_handler, submission_handler, ws_handler,
     },
 };
 
@@ -334,6 +334,16 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/home/overview", get(home_handler::overview))
         .route("/api/home/check-in", post(home_handler::check_in))
+        .route("/api/shop/plus", get(plus_handler::my_state))
+        .route("/api/shop/plus/apply", post(plus_handler::submit))
+        .route(
+            "/api/admin/plus-applications",
+            get(plus_handler::admin_list),
+        )
+        .route(
+            "/api/admin/plus-applications/{id}/resolve",
+            post(plus_handler::admin_resolve),
+        )
         .route("/api/problems", get(problem_handler::list))
         .route("/api/problems/random", get(home_handler::random_problem))
         .route("/api/problems/tags", get(problem_handler::tags))

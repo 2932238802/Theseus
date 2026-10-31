@@ -5,6 +5,7 @@ import AdminContestAppealsPage from '../views/AdminContestAppealsPage.vue'
 import AdminEventsPage from '../views/AdminEventsPage.vue'
 import AdminForumPage from '../views/AdminForumPage.vue'
 import AdminNotifyPage from '../views/AdminNotifyPage.vue'
+import AdminPlusApplicationsPage from '../views/AdminPlusApplicationsPage.vue'
 import AdminProblemsPage from '../views/AdminProblemsPage.vue'
 import AdminSeasonsPage from '../views/AdminSeasonsPage.vue'
 import AdminUsersPage from '../views/AdminUsersPage.vue'
@@ -36,6 +37,7 @@ import PersonalProblemsPage from '../views/PersonalProblemsPage.vue'
 import ProfilePage from '../views/ProfilePage.vue'
 import ProfileFavoritesPage from '../views/ProfileFavoritesPage.vue'
 import ResetPasswordPage from '../views/ResetPasswordPage.vue'
+import ShopPage from '../views/ShopPage.vue'
 import StudentAppealsPage from '../views/StudentAppealsPage.vue'
 import TeacherCheatReportsPage from '../views/TeacherCheatReportsPage.vue'
 import VerifyEmailPage from '../views/VerifyEmailPage.vue'
@@ -69,6 +71,12 @@ const router = createRouter({
     { path: '/contests/:id/proctor', name: 'contest-proctor', component: ContestProctorPage, meta: { requiresAuth: true, requiresAdmin: true } },
     { path: '/contests/:id/result', name: 'contest-result', component: ContestResultPage, meta: { requiresAuth: true } },
     { path: '/forum', name: 'forum', component: ForumPage },
+    {
+      path: '/shop',
+      name: 'shop',
+      component: ShopPage,
+      meta: { requiresAuth: true, requiresTeaching: true },
+    },
     { path: '/forum/new', name: 'forum-compose', component: ForumComposePage, meta: { requiresAuth: true } },
     { path: '/forum/:id', name: 'forum-post', component: ForumPostPage },
     { path: '/notifications', name: 'notifications', component: NotificationsPage, meta: { requiresAuth: true } },
@@ -185,6 +193,12 @@ const router = createRouter({
       path: '/admin/audit',
       name: 'admin-audit',
       component: AdminAuditPage,
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: '/admin/plus-applications',
+      name: 'admin-plus-applications',
+      component: AdminPlusApplicationsPage,
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },
