@@ -49,6 +49,8 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   class_invite: '组织邀请',
   class_invite_accepted: '邀请结果',
   class_invite_declined: '邀请结果',
+  plus_application: 'Plus 审核',
+  plus_expiry: 'Plus 到期',
   system_notice: '站内通知',
 }
 
@@ -65,6 +67,8 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
   class_invite: '✉',
   class_invite_accepted: '✅',
   class_invite_declined: '↩',
+  plus_application: 'Plus',
+  plus_expiry: '⏰',
   system_notice: '📣',
 }
 

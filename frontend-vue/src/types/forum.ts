@@ -325,6 +325,8 @@ export type NotificationType =
   | 'class_invite'
   | 'class_invite_accepted'
   | 'class_invite_declined'
+  | 'plus_application'
+  | 'plus_expiry'
   | 'system_notice'
 
 export interface ForumNotification {

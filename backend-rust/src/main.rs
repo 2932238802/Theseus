@@ -3,6 +3,7 @@ use std::time::Duration;
 use backend_rust::{
     AppState, config::Config, db, db::pool::create_pool, judge::queue, routes,
     services::contest_service, services::email_service, services::notification_service,
+    services::plus_service,
 };
 
 #[tokio::main]
@@ -43,6 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     tokio::spawn(email_dispatch_loop(state.clone()));
     tokio::spawn(contest_settlement_loop(state.clone()));
+    tokio::spawn(plus_reminder_loop(state.clone()));
     tokio::spawn(realtime_fanout_loop(state.clone()));
     if state.config.run_code_enabled || state.config.submit_judge_enabled {
         tokio::spawn(reaper_loop(state.clone()));
@@ -91,6 +93,20 @@ async fn reaper_loop(state: AppState) {
                     tracing::error!(error = %error, "failed to expire stale submissions")
                 }
             }
+        }
+    }
+}
+
+/// 每小时检查一次即将到期的 Plus 会员，在到期前 7/3/1 天各提醒一次。
+async fn plus_reminder_loop(state: AppState) {
+    let mut ticker = tokio::time::interval(Duration::from_secs(3_600));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        ticker.tick().await;
+        match plus_service::remind_expiring(&state.pool).await {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "sent Plus expiry reminders"),
+            Err(error) => tracing::error!(error = %error, "Plus expiry reminder failed"),
         }
     }
 }

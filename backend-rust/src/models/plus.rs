@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub const PLUS_STATUS_PENDING: &str = "pending";
 pub const PLUS_STATUS_APPROVED: &str = "approved";
 pub const PLUS_STATUS_REJECTED: &str = "rejected";
+pub const PLUS_KIND_NEW: &str = "new";
+pub const PLUS_KIND_RENEWAL: &str = "renewal";
 
 /// 当前有效的 Plus 会员期。到期后 `is_plus` 为 false，可重新申请。
 #[derive(Debug, Clone, Serialize)]
@@ -20,6 +22,7 @@ pub struct PlusApplicationItem {
     pub user_id: i32,
     pub username: String,
     pub reason: String,
+    pub kind: String,
     pub status: String,
     pub review_note: Option<String>,
     pub reviewed_by: Option<String>,

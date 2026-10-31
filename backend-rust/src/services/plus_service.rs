@@ -5,10 +5,10 @@ use crate::{
     common::error::{AppError, is_unique_violation},
     middleware::auth::AuthUser,
     models::plus::{
-        MyPlusStateResponse, PLUS_STATUS_APPROVED, PLUS_STATUS_PENDING, PLUS_STATUS_REJECTED,
-        PlusApplicationInput, PlusApplicationItem, PlusApplicationListResponse,
-        PlusApplicationQuery, PlusApplicationResolveInput, PlusApplicationResolveResponse,
-        PlusMembership,
+        MyPlusStateResponse, PLUS_KIND_NEW, PLUS_KIND_RENEWAL, PLUS_STATUS_APPROVED,
+        PLUS_STATUS_PENDING, PLUS_STATUS_REJECTED, PlusApplicationInput, PlusApplicationItem,
+        PlusApplicationListResponse, PlusApplicationQuery, PlusApplicationResolveInput,
+        PlusApplicationResolveResponse, PlusMembership,
     },
     services::notification_service,
 };
@@ -27,6 +27,7 @@ struct ApplicationRow {
     user_id: i32,
     username: String,
     reason: String,
+    kind: String,
     status: String,
     review_note: Option<String>,
     reviewed_by: Option<String>,
@@ -42,6 +43,7 @@ impl From<ApplicationRow> for PlusApplicationItem {
             user_id: row.user_id,
             username: row.username,
             reason: row.reason,
+            kind: row.kind,
             status: row.status,
             review_note: row.review_note,
             reviewed_by: row.reviewed_by,
@@ -91,7 +93,7 @@ pub async fn my_state(pool: &PgPool, user_id: i32) -> Result<MyPlusStateResponse
     });
 
     let row: Option<ApplicationRow> = sqlx::query_as(
-        "SELECT a.id, a.user_id, u.username, a.reason, a.status, \
+        "SELECT a.id, a.user_id, u.username, a.reason, a.kind, a.status, \
          a.review_note, r.username AS reviewed_by, a.reviewed_at, \
          m.expires_at AS membership_expires_at, a.created_at \
          FROM plus_applications a \
@@ -110,6 +112,68 @@ pub async fn my_state(pool: &PgPool, user_id: i32) -> Result<MyPlusStateResponse
         membership,
         application: row.map(PlusApplicationItem::from),
     })
+}
+
+/// 在到期前 7/3/1 天各提醒一次，靠 `plus_expiry_notices` 去重。
+/// 续费改变 `expires_at` 后会重新计算提醒节点。
+pub async fn remind_expiring(pool: &PgPool) -> Result<usize, AppError> {
+    let rows: Vec<(i32, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT user_id, expires_at FROM plus_memberships \
+         WHERE expires_at > CURRENT_TIMESTAMP \
+           AND expires_at <= CURRENT_TIMESTAMP + INTERVAL '7 days'",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    let now = Utc::now();
+    let mut sent = 0usize;
+    for (user_id, expires_at) in rows {
+        let days_left = days_left_until(expires_at, now);
+        if !matches!(days_left, 1 | 3 | 7) {
+            continue;
+        }
+        let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+        let inserted: Option<i32> = sqlx::query_scalar(
+            "INSERT INTO plus_expiry_notices (user_id, expires_at, days_left) \
+             VALUES ($1, $2, $3) \
+             ON CONFLICT (user_id, expires_at, days_left) DO NOTHING \
+             RETURNING user_id",
+        )
+        .bind(user_id)
+        .bind(expires_at)
+        .bind(days_left as i32)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
+        if inserted.is_none() {
+            continue;
+        }
+        let title = if days_left == 1 {
+            "Plus Theseus 明天到期".to_owned()
+        } else {
+            format!("Plus Theseus 还有 {days_left} 天到期")
+        };
+        let body = format!(
+            "有效期至 {}\n到期前可以在商店提前续费",
+            expires_at.format("%Y-%m-%d")
+        );
+        notification_service::create(
+            &mut transaction,
+            user_id,
+            "plus_expiry",
+            None,
+            &title,
+            Some(&body),
+            Some("/shop"),
+            Some("plus_membership"),
+            None,
+        )
+        .await?;
+        transaction.commit().await.map_err(AppError::Database)?;
+        sent += 1;
+    }
+    Ok(sent)
 }
 
 pub async fn submit(
@@ -132,11 +196,11 @@ pub async fn submit(
         )));
     }
 
-    if is_plus(pool, user.id).await? {
-        return Err(AppError::ConflictWith(
-            "你已经开通了 Plus Theseus".to_owned(),
-        ));
-    }
+    let kind = if is_plus(pool, user.id).await? {
+        PLUS_KIND_RENEWAL
+    } else {
+        PLUS_KIND_NEW
+    };
 
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT status FROM plus_applications \
@@ -152,11 +216,13 @@ pub async fn submit(
         ));
     }
 
-    let inserted = sqlx::query("INSERT INTO plus_applications (user_id, reason) VALUES ($1, $2)")
-        .bind(user.id)
-        .bind(reason)
-        .execute(pool)
-        .await;
+    let inserted =
+        sqlx::query("INSERT INTO plus_applications (user_id, reason, kind) VALUES ($1, $2, $3)")
+            .bind(user.id)
+            .bind(reason)
+            .bind(kind)
+            .execute(pool)
+            .await;
     if let Err(error) = inserted {
         if is_unique_violation(&error) {
             return Err(AppError::ConflictWith(
@@ -202,7 +268,7 @@ pub async fn admin_list(
     .map_err(AppError::Database)?;
 
     let rows: Vec<ApplicationRow> = sqlx::query_as(
-        "SELECT a.id, a.user_id, u.username, a.reason, a.status, \
+        "SELECT a.id, a.user_id, u.username, a.reason, a.kind, a.status, \
          a.review_note, r.username AS reviewed_by, a.reviewed_at, \
          m.expires_at AS membership_expires_at, a.created_at \
          FROM plus_applications a \
@@ -258,13 +324,14 @@ pub async fn admin_resolve(
     }
 
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
-    let current: Option<(i32, String)> =
-        sqlx::query_as("SELECT user_id, status FROM plus_applications WHERE id = $1 FOR UPDATE")
-            .bind(application_id)
-            .fetch_optional(&mut *transaction)
-            .await
-            .map_err(AppError::Database)?;
-    let Some((user_id, current_status)) = current else {
+    let current: Option<(i32, String, String)> = sqlx::query_as(
+        "SELECT user_id, status, kind FROM plus_applications WHERE id = $1 FOR UPDATE",
+    )
+    .bind(application_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    let Some((user_id, current_status, kind)) = current else {
         return Err(AppError::NotFound("申请不存在".to_owned()));
     };
     if current_status != PLUS_STATUS_PENDING {
@@ -310,20 +377,23 @@ pub async fn admin_resolve(
         None
     };
 
-    let title = if approved {
-        "Plus Theseus 申请已通过"
+    let renewal = kind == PLUS_KIND_RENEWAL;
+    let title = match (approved, renewal) {
+        (true, true) => "Plus Theseus 续费已通过",
+        (true, false) => "Plus Theseus 申请已通过",
+        (false, _) => "Plus Theseus 申请未通过",
+    };
+    let success_body = if renewal {
+        "已续费 Plus Theseus"
     } else {
-        "Plus Theseus 申请未通过"
+        "已开通 Plus Theseus"
     };
     let body = match (approved, note, expires_at) {
         (true, Some(note), Some(expires_at)) => {
             format!("{note}\n有效期至 {}", expires_at.format("%Y-%m-%d"))
         }
         (true, None, Some(expires_at)) => {
-            format!(
-                "已开通 Plus Theseus\n有效期至 {}",
-                expires_at.format("%Y-%m-%d")
-            )
+            format!("{success_body}\n有效期至 {}", expires_at.format("%Y-%m-%d"))
         }
         (false, Some(note), _) => note.to_owned(),
         _ => "你的开通申请未通过".to_owned(),
@@ -345,10 +415,10 @@ pub async fn admin_resolve(
 
     Ok(PlusApplicationResolveResponse {
         status: status.to_owned(),
-        message: if approved {
-            "已通过申请".to_owned()
-        } else {
-            "已驳回申请".to_owned()
+        message: match (approved, renewal) {
+            (true, true) => "已通过续费申请".to_owned(),
+            (true, false) => "已通过申请".to_owned(),
+            (false, _) => "已驳回申请".to_owned(),
         },
         expires_at,
     })

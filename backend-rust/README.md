@@ -19,7 +19,7 @@
 - 角色变更需要清理数据：学生升教师前退出所有组织；教师降级前没有未归档的自有组织，或确认归档后降级；最后一个管理员不能降级。
 - 角色变更立即生效；认证中间件每次请求从数据库读取 `users.role`，JWT 里的角色不作为权限依据。
 
-**当前代码状态：** 已实现 `student` / `teacher` / `admin` 迁移、教师角色、组织/作业/批改接口、管理员用户管理接口、竞赛/赛事、审计、商店 Plus 申请与会员有效期、论坛与面经板块接口和对应前端页面。`user` 由迁移回填为 `student`。
+**当前代码状态：** 已实现 `student` / `teacher` / `admin` 迁移、教师角色、组织/作业/批改接口、管理员用户管理接口、竞赛/赛事、审计、商店 Plus 申请、会员有效期、续费与到期提醒、论坛与面经板块接口和对应前端页面。`user` 由迁移回填为 `student`。
 
 ## 运行
 
@@ -75,7 +75,8 @@ cargo run
 - `GET /api/admin/problems` 管理员分页查看题目，可按 `status`、`q` 筛选
 - `GET /api/admin/problems/:id` 管理员查看题目完整配置
 - `GET /api/shop/plus` 当前用户的 Plus 状态、会员期与最近一条申请
-- `POST /api/shop/plus/apply` 学生/教师提交开通申请 `{reason}`，需已验证邮箱
+- `POST /api/shop/plus/apply` 学生/教师提交开通申请或续费申请 `{reason}`，需已验证邮箱；有效期内提交记为 `renewal`
+- API 进程每小时检查 Plus 到期时间，在 7/3/1 天前各写入一次 `plus_expiry` 站内信
 - `GET /api/admin/plus-applications` 管理员分页查看 Plus 申请，可按 `status` 筛选
 - `POST /api/admin/plus-applications/:id/resolve` 管理员通过或驳回申请 `{status,note,days}`，通过时写入或顺延会员有效期，写站内信与审计日志
 - `GET /api/forum/posts?board=interview` 面经列表，仅 Plus 用户、管理员与作者可见，支持 `company`、`role` 精确筛选

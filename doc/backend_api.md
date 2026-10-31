@@ -83,7 +83,7 @@ cargo run
 | GET | `/api/profile/notification-preferences` | 用户 | 通知邮件偏好与邮箱验证状态 |
 | PUT | `/api/profile/notification-preferences` | 用户 | 批量更新通知邮件偏好 |
 | GET | `/api/shop/plus` | 用户 | 当前 Plus 状态、当前会员期与最近一条申请 |
-| POST | `/api/shop/plus/apply` | 学生 / 教师 | 提交 Plus 开通申请 `{reason}`，需已验证邮箱 |
+| POST | `/api/shop/plus/apply` | 学生 / 教师 | 提交 Plus 开通或续费申请 `{reason}`，需已验证邮箱 |
 | GET | `/api/admin/plus-applications` | 管理员 | Plus 申请分页，支持 `status`、`page`、`size` |
 | POST | `/api/admin/plus-applications/{id}/resolve` | 管理员 | 通过或驳回 `{status:"approved\|rejected",note,days}` |
 | GET | `/api/contests/featured` | 用户 | 竞赛首页：排位赛配置、规则分组与限时赛事列表 |
@@ -320,10 +320,11 @@ Authorization: Bearer <teacher>
 
 完整设计见 `doc/2610312_商店与Plus申请设计方案.md`。Plus 权益为面经板块权限与专属标识，有效期由管理员审核时填写。
 
-- `GET /api/shop/plus` 返回 `{is_plus, membership?, application?}`。`is_plus` 表示 `plus_memberships.expires_at` 是否晚于当前时间；`membership` 含 `started_at`、`expires_at`、`days_left`；`application` 是最近一条申请，含 `id`、`user_id`、`username`、`reason`、`status`、`review_note`、`reviewed_by`、`reviewed_at`、`membership_expires_at`、`created_at`。
-- `POST /api/shop/plus/apply` 请求 `{"reason":"..."}`，说明去掉首尾空白后 1–500 字；管理员调用返回 403；会员有效或已有待审核申请时返回 409；已到期可以重新提交。
+- `GET /api/shop/plus` 返回 `{is_plus, membership?, application?}`。`is_plus` 表示 `plus_memberships.expires_at` 是否晚于当前时间；`membership` 含 `started_at`、`expires_at`、`days_left`；`application` 是最近一条申请，含 `id`、`user_id`、`username`、`reason`、`kind`、`status`、`review_note`、`reviewed_by`、`reviewed_at`、`membership_expires_at`、`created_at`。
+- `POST /api/shop/plus/apply` 请求 `{"reason":"..."}`，说明去掉首尾空白后 1–500 字；管理员调用返回 403；已有待审核申请时返回 409；会员有效时提交的是续费申请（`kind:"renewal"`），否则为新开通（`kind:"new"`）。
 - `GET /api/admin/plus-applications?status=pending&page=1&size=20` 返回 `{total,page,size,items[]}`，`status` 取 `pending|approved|rejected`，`size` 上限 100。
-- `POST /api/admin/plus-applications/{id}/resolve` 请求 `{"status":"approved|rejected","note":"...","days":30}`，说明 ≤500 字；只允许处理 `pending`。`approved` 时 `days` 必填且为 1–3650，写入或顺延 `plus_memberships`；`rejected` 忽略 `days`。审核成功后向申请人写入 `plus_application` 站内信（邮件类别 `account`，通过时包含到期日期），并记录审计动作 `plus.application_resolve`。
+- `POST /api/admin/plus-applications/{id}/resolve` 请求 `{"status":"approved|rejected","note":"...","days":30}`，说明 ≤500 字；只允许处理 `pending`。`approved` 时 `days` 必填且为 1–3650，写入或顺延 `plus_memberships`；`rejected` 忽略 `days`。审核成功后向申请人写入 `plus_application` 站内信（邮件类别 `account`，通过时包含到期日期，续费时文案为续费），并记录审计动作 `plus.application_resolve`。
+- API 进程每小时检查到期时间，在 7/3/1 天前写入 `plus_expiry` 站内信（邮件类别 `account`），同一会员期的每个节点只发一次；续费改变到期时间后重新计算。
 
 ## 面经板块（论坛）
 

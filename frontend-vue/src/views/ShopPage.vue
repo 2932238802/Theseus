@@ -25,18 +25,25 @@ const isExpired = computed(
   () => !state.value?.is_plus && application.value?.status === 'approved',
 )
 const statusLabel = computed(() => {
+  if (application.value?.status === 'pending') {
+    return state.value?.is_plus ? '续费审核中' : '审核中'
+  }
   if (state.value?.is_plus) return '已开通'
   if (isExpired.value) return '已过期'
   return application.value ? STATUS_LABELS[application.value.status] : ''
 })
 const statusClass = computed(() => {
+  if (application.value?.status === 'pending') return 'pending'
   if (state.value?.is_plus) return 'approved'
   if (isExpired.value) return 'expired'
   return application.value?.status ?? ''
 })
-const canApply = computed(
-  () => !state.value?.is_plus && application.value?.status !== 'pending',
-)
+const canApply = computed(() => application.value?.status !== 'pending')
+const applyLabel = computed(() => {
+  if (state.value?.is_plus) return '续费申请'
+  if (isExpired.value) return '重新开通'
+  return application.value?.status === 'rejected' ? '重新申请' : '开通申请'
+})
 const reasonLength = computed(() => reason.value.trim().length)
 
 const load = async (): Promise<void> => {
@@ -62,7 +69,9 @@ const submit = async (): Promise<void> => {
   try {
     state.value = await applyPlusTheseus(reason.value.trim())
     reason.value = ''
-    toast.success('申请已提交，请等待管理员审核')
+    toast.success(
+      state.value?.is_plus ? '续费申请已提交，请等待管理员审核' : '申请已提交，请等待管理员审核',
+    )
   } catch (exception: unknown) {
     error.value = toErrorMessage(exception)
   } finally {
@@ -103,6 +112,7 @@ onMounted(() => {
       <p class="shop-plus-copy">
         <span>Plus 权益：面经板块完整权限</span>
         <span>Plus 专属标识</span>
+        <span>有效期内可以提前续费</span>
         <span>有效期结束后自动失效 可以重新申请</span>
       </p>
 
@@ -110,6 +120,10 @@ onMounted(() => {
       <template v-else>
         <div v-if="application" class="shop-application">
           <dl>
+            <div>
+              <dt>类型</dt>
+              <dd>{{ application.kind === 'renewal' ? '续费' : '开通' }}</dd>
+            </div>
             <div>
               <dt>提交时间</dt>
               <dd>{{ formatDateTime(application.created_at) }}</dd>
@@ -147,9 +161,7 @@ onMounted(() => {
         </div>
 
         <form v-if="canApply" class="shop-apply-form" @submit.prevent="submit">
-          <label for="plus-reason">
-            {{ isExpired ? '重新开通' : application?.status === 'rejected' ? '重新申请' : '开通申请' }}
-          </label>
+          <label for="plus-reason">{{ applyLabel }}</label>
           <textarea
             id="plus-reason"
             v-model="reason"
@@ -164,11 +176,9 @@ onMounted(() => {
             </button>
           </div>
         </form>
-        <p v-else-if="state?.is_plus" class="shop-plus-copy">
-          <span>你已开通 Plus Theseus</span>
-          <span v-if="membership">有效期至 {{ formatDateTime(membership.expires_at) }}</span>
+        <p v-else class="shop-plus-copy">
+          {{ state?.is_plus ? '续费申请已提交，请等待管理员审核' : '申请已提交，请等待管理员审核' }}
         </p>
-        <p v-else class="shop-plus-copy">申请已提交，请等待管理员审核</p>
       </template>
     </section>
   </main>

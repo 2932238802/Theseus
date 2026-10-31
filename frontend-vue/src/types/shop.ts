@@ -1,4 +1,5 @@
 export type PlusApplicationStatus = 'pending' | 'approved' | 'rejected'
+export type PlusApplicationKind = 'new' | 'renewal'
 
 export interface PlusMembership {
   started_at: string
@@ -11,6 +12,7 @@ export interface PlusApplication {
   user_id: number
   username: string
   reason: string
+  kind: PlusApplicationKind
   status: PlusApplicationStatus
   review_note: string | null
   reviewed_by: string | null

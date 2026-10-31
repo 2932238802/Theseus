@@ -134,6 +134,7 @@ onMounted(() => {
             <tr v-for="item in items" :key="item.id">
               <td>
                 {{ item.username }}
+                <div v-if="item.kind === 'renewal'" class="teaching-subtle">续费申请</div>
                 <div class="teaching-subtle">{{ formatDateTime(item.created_at) }}</div>
               </td>
               <td class="contest-appeal-reason">{{ item.reason }}</td>
