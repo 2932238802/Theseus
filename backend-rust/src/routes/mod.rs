@@ -11,8 +11,8 @@ use crate::{
         admin_forum_handler, admin_user_handler, anticheat_handler, assignment_handler,
         audit_handler, auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
         favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
-        note_handler, notification_handler, plus_handler, problem_handler, profile_handler,
-        ranking_handler, run_handler, submission_handler, ws_handler,
+        lsp_handler, note_handler, notification_handler, plus_handler, problem_handler,
+        profile_handler, ranking_handler, run_handler, submission_handler, ws_handler,
     },
 };
 
@@ -23,6 +23,7 @@ pub fn router(state: AppState) -> Router {
         .route("/readyz", get(health_handler::readiness))
         .route("/api/ws/ticket", post(ws_handler::issue_ticket))
         .route("/api/ws", get(ws_handler::connect))
+        .route("/api/lsp/ticket", post(lsp_handler::issue_ticket))
         .route("/api/auth/register", post(auth_handler::register))
         .route("/api/auth/login", post(auth_handler::login))
         .route("/api/auth/me", get(auth_handler::me))

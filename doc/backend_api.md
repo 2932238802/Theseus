@@ -103,6 +103,7 @@ cargo run
 | POST | `/api/contests/{id}/appeal` | 用户 | 提交赛事申诉 `{reason}`，每场一次 |
 | POST | `/api/ws/ticket` | 用户 | 换取一次性 WebSocket 连接票据 |
 | GET | `/api/ws?ticket=...` | 票据 | WebSocket 升级，见「实时推送」一节 |
+| POST | `/api/lsp/ticket` | 用户 | 换取短期语义补全连接票据 |
 | GET | `/api/admin/events` | 管理员 | 赛事管理列表 |
 | POST | `/api/admin/events` | 管理员 | 创建赛事 |
 | GET | `/api/admin/events/{id}` | 管理员 | 赛事管理详情 |
@@ -683,6 +684,34 @@ Authorization: Bearer <teacher>
 - 匹配成局后房间内所有选手都会收到 `match.found`，客户端随后调用 `GET /api/contests/{id}` 获取题目与时间。
 - 通知在写入数据库后约 2 秒内推送；离线期间的通知不补推，重连后通过 `GET /api/notifications/unread-count` 与列表接口恢复。
 - v1 不支持通过 WebSocket 加入/取消匹配，也不支持 `last_event_id` 重放。
+
+## 语义补全（LSP）
+
+完整设计见 `doc/2610316_语义补全设计方案.md`。v1 只支持 C++ 与 Python。
+
+### 连接票据
+
+`POST /api/lsp/ticket` 需要登录，请求体：
+
+```json
+{"language": "cpp"}
+```
+
+`language` 接受 `cpp`、`c++`、`python`、`python3`；其它语言返回 400。成功响应：
+
+```json
+{"ticket": "短期 JWT", "expires_in_seconds": 60, "language": "cpp", "path": "/lsp/ws"}
+```
+
+票据 60 秒内有效。浏览器用它连接 `GET /api/lsp/ws?ticket=...`：生产环境由前端 Nginx 反代到 `lsp:3001`，开发环境由 Vite 代理到 `127.0.0.1:3001`。网关校验票据后启动语言服务器（C++ 为 `clangd`，Python 为 `pyright-langserver`），并发超过 `LSP_MAX_SESSIONS` 时握手返回 503。
+
+WebSocket 文本帧直接承载 LSP JSON-RPC 消息。连接建立后网关先发送：
+
+```json
+{"jsonrpc":"2.0","method":"theseus/ready","params":{"rootUri":"file:///tmp/theseus-lsp-1-xxxxxxxxxxxx","language":"cpp"}}
+```
+
+客户端以 `rootUri` 作为 `initialize` 的工作区，并在其下打开 `main.cpp` / `main.py`。支持补全、悬停与诊断；语言服务退出或 WebSocket 断开后会话结束，前端需重新开启语义补全。
 
 ## 题目草稿接口
 

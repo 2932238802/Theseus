@@ -3,6 +3,7 @@ pub mod config;
 pub mod db;
 pub mod handlers;
 pub mod judge;
+pub mod lsp;
 pub mod middleware;
 pub mod models;
 pub mod realtime;

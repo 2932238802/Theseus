@@ -17,6 +17,7 @@ import { fetchProblemDraft, saveProblemDraft } from '../api/drafts'
 import { setProblemFavorite } from '../api/favorites'
 import { fetchSubmission, fetchSubmissions } from '../api/submissions'
 import { toErrorMessage } from '../api/client'
+import { isLspLanguage, type LspStatus } from '../utils/lspClient'
 import type { AssignmentDetail } from '../types/teaching'
 import {
   DIFFICULTY_LABELS,
@@ -115,10 +116,25 @@ const contestId = computed(() => {
   return Number.isInteger(value) && value > 0 ? value : null
 })
 const contestEventsEnabled = computed(() => contestId.value !== null)
-// 语法补全默认关闭，比赛模式下不可开启（按钮保留但置灰）
+// 语义补全默认关闭，比赛模式与暂不支持的语言下按钮置灰
 const completionEnabled = ref(localStorage.getItem(EDITOR_COMPLETION_KEY) === 'on')
-const completionAllowed = computed(() => contestId.value === null)
+const languageSupportsLsp = computed(() => isLspLanguage(language.value))
+const completionAllowed = computed(
+  () => contestId.value === null && languageSupportsLsp.value,
+)
 const editorCompletion = computed(() => completionAllowed.value && completionEnabled.value)
+const lspStatus = ref<LspStatus | 'off'>('off')
+const completionTitle = computed(() => {
+  if (contestId.value !== null) return '比赛模式下不可使用语义补全'
+  if (!languageSupportsLsp.value) return '当前语言暂不支持语义补全'
+  return completionEnabled.value ? '关闭语义补全' : '开启语义补全'
+})
+const lspStatusLabel = computed(() => {
+  if (!editorCompletion.value) return ''
+  if (lspStatus.value === 'connecting') return '连接中'
+  if (lspStatus.value === 'error') return '连接失败'
+  return ''
+})
 const toggleProblemFavorite = async (): Promise<void> => {
   if (!authStore.isAuthenticated) {
     void router.push({ name: 'login', query: { redirect: route.fullPath } })
@@ -1041,8 +1057,8 @@ onBeforeUnmount(() => {
         @keydown.right.prevent="nudgeSplit(24)"
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
-        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionAllowed ? (completionEnabled ? '关闭语法补全' : '开启语法补全') : '比赛模式下不可使用语法补全'" @click="completionEnabled = !completionEnabled">支持语义补全</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
-        <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :theme="editorThemeName" :completion="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" />
+        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
+        <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :theme="editorThemeName" :lsp-enabled="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" @lsp-status="lspStatus = $event" />
         <div
           ref="outputResizerRef"
           class="pane-resizer-h"

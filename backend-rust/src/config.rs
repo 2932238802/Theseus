@@ -71,6 +71,7 @@ pub struct Config {
     pub forum_report_daily_limit: u64,
     pub forum_report_hide_threshold: i32,
     pub forum_max_pinned: i64,
+    pub lsp_enabled: bool,
 }
 
 impl Config {
@@ -334,6 +335,7 @@ impl Config {
             .and_then(|value| value.parse::<i64>().ok())
             .unwrap_or(5)
             .max(1);
+        let lsp_enabled = env_bool("LSP_ENABLED", true)?;
         if run_sandbox_runtime != "runsc" && !run_sandbox_allow_runc {
             return Err(AppError::Internal(
                 "RUN_SANDBOX_RUNTIME 必须为 runsc；本地开发需显式设置 RUN_SANDBOX_ALLOW_RUNC=true"
@@ -408,6 +410,7 @@ impl Config {
             forum_report_daily_limit,
             forum_report_hide_threshold,
             forum_max_pinned,
+            lsp_enabled,
         })
     }
 }

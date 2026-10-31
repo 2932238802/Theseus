@@ -267,6 +267,16 @@ body.is-resizing-rows {
   opacity: 0.45;
 }
 
+.editor-tools .lsp-status {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.editor-tools .lsp-status.is-error {
+  color: var(--color-danger);
+}
+
 .code-editor-shell {
   position: relative;
   min-width: 0;

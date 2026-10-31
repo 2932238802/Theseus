@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Theseus 本地开发一键启动：API + Judge Worker + 前端 dev server
+# Theseus 本地开发一键启动：API + Judge Worker + 语义补全网关 + 前端 dev server
 #
 # 用法：
 #   ./dev.sh
@@ -9,7 +9,8 @@
 #   - API 与 Worker 是 backend-rust 的两个 binary，共享 PostgreSQL / Redis。
 #   - Worker 需要访问 /var/run/docker.sock；当前 shell 没有 docker 组权限时，
 #     脚本会尝试用 sudo 启动（必要时提示输入密码）。
-#   - 各服务日志同时输出到终端（带 [api]/[worker]/[frontend] 前缀）并写入 .dev-logs/。
+#   - 语义补全需要系统安装 clangd 与 pyright（npm install -g pyright）。
+#   - 各服务日志同时输出到终端（带 [api]/[worker]/[lsp]/[frontend] 前缀）并写入 .dev-logs/。
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
@@ -19,11 +20,13 @@ LOGDIR="$ROOT/.dev-logs"
 API_BIN="$BACKEND/target/debug/backend-rust"
 WORKER_BIN="$BACKEND/target/debug/judge_worker"
 ANTICHEAT_BIN="$BACKEND/target/debug/anticheat_worker"
+LSP_BIN="$BACKEND/target/debug/lsp_gateway"
 
 mkdir -p "$LOGDIR"
 : >"$LOGDIR/api.log"
 : >"$LOGDIR/worker.log"
 : >"$LOGDIR/anticheat.log"
+: >"$LOGDIR/lsp.log"
 : >"$LOGDIR/frontend.log"
 
 pids=()
@@ -114,14 +117,23 @@ command -v cargo >/dev/null 2>&1 || { warn "未找到 cargo，请先安装 Rust"
 [[ -x "$FRONTEND/node_modules/.bin/vite" ]] || { warn "缺少前端依赖，请先执行：cd frontend-vue && npm install"; exit 1; }
 pg_isready >/dev/null 2>&1 || warn "PostgreSQL 未就绪，请执行：sudo systemctl start postgresql"
 redis-cli ping >/dev/null 2>&1 || warn "Redis 未就绪，请执行：sudo systemctl start redis-server"
+command -v "${LSP_CPP_COMMAND:-clangd}" >/dev/null 2>&1 || warn "未找到 clangd，C++ 语义补全不可用"
+command -v "${LSP_PYTHON_COMMAND:-pyright-langserver}" >/dev/null 2>&1 || warn "未找到 pyright-langserver，Python 语义补全不可用；可执行 npm install -g pyright"
+command -v python >/dev/null 2>&1 || warn "未找到 python，pyright 可能无法解析标准库；可安装 python-is-python3"
 
 # ---------- 编译后端 ----------
 need_api=1
 need_worker=1
+need_lsp=1
 if port_in_use 3000; then
     # 旧 API 可能刚收到 SIGTERM，给它几秒退出时间
     if ! wait_port_free 3000 5; then
         need_api=0
+    fi
+fi
+if port_in_use 3001; then
+    if ! wait_port_free 3001 5; then
+        need_lsp=0
     fi
 fi
 if worker_running; then
@@ -132,9 +144,9 @@ if worker_running; then
     fi
 fi
 
-if ((need_api || need_worker)); then
-    say "编译 backend-rust（backend-rust / judge_worker / anticheat_worker）"
-    ( cd "$BACKEND" && cargo build --bin backend-rust --bin judge_worker --bin anticheat_worker )
+if ((need_api || need_worker || need_lsp)); then
+    say "编译 backend-rust（backend-rust / judge_worker / anticheat_worker / lsp_gateway）"
+    ( cd "$BACKEND" && cargo build --bin backend-rust --bin judge_worker --bin anticheat_worker --bin lsp_gateway )
 fi
 
 # ---------- API ----------
@@ -170,6 +182,13 @@ if anticheat_running; then
     warn "已有 anticheat_worker 进程在运行，跳过防作弊扫描"
 else
     start_service anticheat "$BACKEND" "$ANTICHEAT_BIN"
+fi
+
+# ---------- 语义补全网关 ----------
+if ((need_lsp)); then
+    start_service lsp "$BACKEND" "$LSP_BIN"
+else
+    warn ":3001 已被占用，跳过语义补全网关（若是旧进程请先停止）"
 fi
 
 # ---------- 前端 ----------
@@ -212,8 +231,9 @@ fi
 if ((${#started[@]})); then
     say "启动完成：${started[*]}"
     echo "    API        http://127.0.0.1:3000"
+    echo "    语义补全   ws://127.0.0.1:3001/api/lsp/ws"
     echo "    前端       http://127.0.0.1:5173"
-    echo "    日志       .dev-logs/{api,worker,anticheat,frontend}.log"
+    echo "    日志       .dev-logs/{api,worker,anticheat,lsp,frontend}.log"
     echo "    Ctrl+C 停止全部"
 else
     warn "没有启动任何服务"

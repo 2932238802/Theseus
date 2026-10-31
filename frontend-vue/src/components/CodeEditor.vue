@@ -11,20 +11,26 @@ import { LANGUAGE_OPTIONS } from '../utils/constants'
 import type { Language } from '../types/oj'
 import { SHORTCUT_ACTIONS, resolveBinding, toMonacoKeybinding } from '../utils/shortcuts'
 import { registerMonacoThemes } from '../utils/monacoTheme'
-import { registerCompletionProviders } from '../utils/monacoCompletion'
+import {
+  createLspSession,
+  isLspLanguage,
+  type LspSession,
+  type LspStatus,
+} from '../utils/lspClient'
 
 const props = defineProps<{
   modelValue: string
   language: Language
   fontSize: number
   theme: string
-  completion: boolean
+  lspEnabled: boolean
   shortcutBindings?: Record<string, string | null>
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   shortcut: [actionId: string]
   pasteText: [text: string]
+  lspStatus: [status: LspStatus | 'off']
 }>()
 
 // 编辑器静态资源随前端一起部署，不再依赖公网 CDN
@@ -36,8 +42,10 @@ let monacoEditor: editor.IStandaloneCodeEditor | undefined
 let monacoApi: Monaco | undefined
 let shortcutRuleDisposable: { dispose: () => void } | undefined
 let commandDisposables: Array<{ dispose: () => void }> = []
-let completionDisposables: Array<{ dispose: () => void }> = []
 let completionKeyRuleDisposable: { dispose: () => void } | undefined
+let lspSession: LspSession | undefined
+let lspGeneration = 0
+let lspSignature = 'off'
 let commandPrefix = ''
 let disposed = false
 
@@ -51,16 +59,15 @@ const completionOptions = (
 ): editor.IEditorOptions & editor.IGlobalEditorOptions => ({
   quickSuggestions: enabled ? { other: true, comments: false, strings: false } : false,
   suggestOnTriggerCharacters: enabled,
-  wordBasedSuggestions: enabled ? 'currentDocument' : 'off',
+  // 有语言服务时只显示语义结果，关掉 Monaco 自带的单词补全
+  wordBasedSuggestions: 'off',
   parameterHints: { enabled },
   tabCompletion: enabled ? 'on' : 'off',
   acceptSuggestionOnEnter: enabled ? 'on' : 'off',
   snippetSuggestions: enabled ? 'inline' : 'none',
 })
 
-const applyCompletion = (monaco: Monaco, enabled: boolean): void => {
-  for (const disposable of completionDisposables) disposable.dispose()
-  completionDisposables = enabled ? registerCompletionProviders(monaco) : []
+const applyCompletionKeyRule = (monaco: Monaco, enabled: boolean): void => {
   // 关闭时连 Ctrl+Space 手动触发也一并禁用
   completionKeyRuleDisposable?.dispose()
   completionKeyRuleDisposable = undefined
@@ -73,6 +80,32 @@ const applyCompletion = (monaco: Monaco, enabled: boolean): void => {
       },
     ])
   }
+}
+
+const syncLsp = (): void => {
+  // 语言与开关同时变化时两个 watcher 都会触发，用签名去重
+  const signature =
+    props.lspEnabled && monacoApi && monacoEditor && isLspLanguage(props.language)
+      ? props.language
+      : 'off'
+  if (signature === lspSignature) return
+  lspSignature = signature
+  lspGeneration += 1
+  const generation = lspGeneration
+  lspSession?.dispose()
+  lspSession = undefined
+  emit('lspStatus', 'off')
+  if (signature === 'off') return
+  const model = monacoEditor?.getModel()
+  if (!model) return
+  lspSession = createLspSession({
+    monaco: monacoApi as Monaco,
+    model,
+    language: signature,
+    onStatus: (status) => {
+      if (generation === lspGeneration) emit('lspStatus', status)
+    },
+  })
 }
 
 const commandId = (actionId: string): string => `${commandPrefix}${actionId}`
@@ -166,14 +199,15 @@ const initialize = async (): Promise<void> => {
       cursorBlinking: 'smooth',
       smoothScrolling: true,
       scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-      ...completionOptions(props.completion),
+      ...completionOptions(props.lspEnabled),
     })
     monacoEditor = instance
     registerShortcutCommands(monaco)
     applyShortcutRules()
-    applyCompletion(monaco, props.completion)
+    applyCompletionKeyRule(monaco, props.lspEnabled)
     instance.onDidChangeModelContent(() => emit('update:modelValue', instance.getValue()))
     status.value = 'ready'
+    syncLsp()
   } catch (error: unknown) {
     if (disposed) return
     status.value = 'error'
@@ -205,14 +239,16 @@ watch(monacoLanguage, (language) => {
   if (!model || !monacoApi) return
   monacoApi.editor.setModelLanguage(model, language)
   model.updateOptions({ tabSize: tabSize.value, insertSpaces: true })
+  syncLsp()
 })
 watch(() => props.fontSize, (fontSize) => monacoEditor?.updateOptions({ fontSize }))
 watch(() => props.theme, (theme) => {
   monacoApi?.editor.setTheme(theme)
 })
-watch(() => props.completion, (enabled) => {
+watch(() => props.lspEnabled, (enabled) => {
   monacoEditor?.updateOptions(completionOptions(enabled))
-  if (monacoApi) applyCompletion(monacoApi, enabled)
+  if (monacoApi) applyCompletionKeyRule(monacoApi, enabled)
+  syncLsp()
 })
 watch(() => props.shortcutBindings, applyShortcutRules, { deep: true })
 
@@ -228,10 +264,11 @@ onBeforeUnmount(() => {
   shortcutRuleDisposable = undefined
   for (const disposable of commandDisposables) disposable.dispose()
   commandDisposables = []
-  for (const disposable of completionDisposables) disposable.dispose()
-  completionDisposables = []
   completionKeyRuleDisposable?.dispose()
   completionKeyRuleDisposable = undefined
+  lspGeneration += 1
+  lspSession?.dispose()
+  lspSession = undefined
   monacoEditor?.dispose()
   monacoEditor = undefined
   monacoApi = undefined

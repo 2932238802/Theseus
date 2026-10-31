@@ -115,6 +115,40 @@ services:
     stop_grace_period: 60s
     logging: *default-logging
 
+  lsp:
+    build:
+      context: ../backend-rust
+      dockerfile: Dockerfile
+      target: lsp
+      args:
+        CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-1}
+        CARGO_MIRROR: ${CARGO_MIRROR:-}
+        APT_MIRROR: ${APT_MIRROR:-}
+    image: theseus/lsp:latest
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      LSP_BIND_ADDRESS: 0.0.0.0:3001
+      LSP_MAX_SESSIONS: ${LSP_MAX_SESSIONS:-4}
+      RUST_LOG: ${RUST_LOG:-info}
+    expose:
+      - "3001"
+    # 每个会话在 /tmp 下创建临时工作区，无需持久化。
+    tmpfs:
+      - /tmp:size=256m
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/healthz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging: *default-logging
+
   frontend:
     build:
       context: ../frontend-vue
@@ -130,6 +164,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      lsp:
+        condition: service_started
     logging: *default-logging
 
 volumes:

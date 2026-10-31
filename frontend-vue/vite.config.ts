@@ -35,6 +35,11 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     proxy: {
+      // 语义补全网关独立运行在 3001，必须放在 '/api' 之前
+      '/api/lsp/ws': {
+        target: 'ws://127.0.0.1:3001',
+        ws: true,
+      },
       '/api': {
         target: 'http://127.0.0.1:3000',
         changeOrigin: true,
