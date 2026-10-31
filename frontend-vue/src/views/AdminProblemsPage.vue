@@ -195,67 +195,69 @@ onMounted(() => {
       </button>
     </nav>
 
-    <form class="admin-content-filters" @submit.prevent="search">
-      <label>
-        <span>搜索</span>
-        <input v-model="query" placeholder="题目标题" />
-      </label>
-      <button class="primary-button" type="submit" :disabled="loading">搜索</button>
-      <span class="admin-total">{{ total }} 道题目</span>
-    </form>
+    <section class="admin-panel">
+      <form class="admin-content-filters" @submit.prevent="search">
+        <label>
+          <span>搜索</span>
+          <input v-model="query" placeholder="题目标题" />
+        </label>
+        <button class="primary-button" type="submit" :disabled="loading">搜索</button>
+        <span class="admin-total">{{ total }} 道题目</span>
+      </form>
 
-    <p v-if="listError" class="form-error" role="alert">{{ listError }}</p>
-    <p v-if="loading" class="teaching-subtle">正在加载题目</p>
+      <p v-if="listError" class="form-error" role="alert">{{ listError }}</p>
+      <p v-if="loading" class="teaching-subtle">正在加载题目</p>
 
-    <section v-else-if="!problems.length" class="empty-state">
-      <p>这个状态下还没有题目</p>
-    </section>
+      <section v-else-if="!problems.length" class="empty-state">
+        <p>这个状态下还没有题目</p>
+      </section>
 
-    <section v-else class="teaching-panel">
-      <div class="admin-table-scroll">
-        <table class="admin-users-table problem-review-table">
-          <thead>
-            <tr>
-              <th>题目</th>
-              <th>难度</th>
-              <th>出题人</th>
-              <th>状态</th>
-              <th>提交时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="problem in problems" :key="problem.id">
-              <td>
-                <strong>{{ problem.title }}</strong>
-                <small>#{{ problem.id }}</small>
-              </td>
-              <td>{{ DIFFICULTY_LABELS[problem.difficulty] }}</td>
-              <td>{{ problem.createdByUsername || '—' }}</td>
-              <td>
-                <span :class="['review-badge', problem.reviewStatus]">
-                  {{ REVIEW_STATUS_LABELS[problem.reviewStatus] }}
-                </span>
-              </td>
-              <td class="problem-review-time">{{ formatDateTime(problem.createdAt) }}</td>
-              <td>
-                <button class="teaching-secondary-button" type="button" @click="openDetail(problem)">
-                  {{ problem.reviewStatus === 'pending' ? '审核' : '查看' }}
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="pagination">
-        <span>显示 {{ totalStart }}–{{ totalEnd }} / {{ total }}</span>
-        <div>
-          <button type="button" :disabled="page <= 1 || loading" @click="changePage(page - 1)">← 上一页</button>
-          <span>{{ page }} / {{ pageCount }}</span>
-          <button type="button" :disabled="page >= pageCount || loading" @click="changePage(page + 1)">下一页 →</button>
+      <section v-else class="teaching-panel">
+        <div class="admin-table-scroll">
+          <table class="admin-users-table problem-review-table">
+            <thead>
+              <tr>
+                <th>题目</th>
+                <th>难度</th>
+                <th>出题人</th>
+                <th>状态</th>
+                <th>提交时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="problem in problems" :key="problem.id">
+                <td>
+                  <strong>{{ problem.title }}</strong>
+                  <small>#{{ problem.id }}</small>
+                </td>
+                <td>{{ DIFFICULTY_LABELS[problem.difficulty] }}</td>
+                <td>{{ problem.createdByUsername || '—' }}</td>
+                <td>
+                  <span :class="['review-badge', problem.reviewStatus]">
+                    {{ REVIEW_STATUS_LABELS[problem.reviewStatus] }}
+                  </span>
+                </td>
+                <td class="problem-review-time">{{ formatDateTime(problem.createdAt) }}</td>
+                <td>
+                  <button class="teaching-secondary-button" type="button" @click="openDetail(problem)">
+                    {{ problem.reviewStatus === 'pending' ? '审核' : '查看' }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-      </div>
+
+        <div class="pagination">
+          <span>显示 {{ totalStart }}–{{ totalEnd }} / {{ total }}</span>
+          <div>
+            <button type="button" :disabled="page <= 1 || loading" @click="changePage(page - 1)">← 上一页</button>
+            <span>{{ page }} / {{ pageCount }}</span>
+            <button type="button" :disabled="page >= pageCount || loading" @click="changePage(page + 1)">下一页 →</button>
+          </div>
+        </div>
+      </section>
     </section>
 
     <div v-if="detailOpen" class="modal-backdrop" @click.self="closeDetail">
