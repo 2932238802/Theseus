@@ -86,6 +86,14 @@ cargo run
 | POST | `/api/shop/plus/apply` | 学生 / 教师 | 提交 Plus 开通申请 `{reason}`，需已验证邮箱 |
 | GET | `/api/admin/plus-applications` | 管理员 | Plus 申请分页，支持 `status`、`page`、`size` |
 | POST | `/api/admin/plus-applications/{id}/resolve` | 管理员 | 通过或驳回 Plus 申请 `{status:"approved\|rejected",note}` |
+| GET | `/api/knowledge` | 用户 | 已通过的 408/面经列表，支持 `category`、`tag`、`q`、`page`、`size` |
+| GET | `/api/knowledge/{id}` | 用户 | 文章详情；非 Plus 用户 `content` 为空且 `locked=true` |
+| POST | `/api/knowledge` | Plus 用户 | 投稿 `{category,title,summary?,content,tags}`，需已验证邮箱 |
+| PUT | `/api/knowledge/{id}` | 作者 | 编辑待审核或被退回的投稿，保存后重新进入待审核 |
+| DELETE | `/api/knowledge/{id}` | 作者 / 管理员 | 删除投稿；作者只能删除未通过文章 |
+| GET | `/api/knowledge/mine` | 用户 | 本人投稿，支持 `category`、`status`、`page`、`size` |
+| GET | `/api/admin/knowledge` | 管理员 | 全部投稿，支持 `category`、`status`、`q`、`page`、`size` |
+| POST | `/api/admin/knowledge/{id}/resolve` | 管理员 | 通过、退回或下架 `{status:"approved\|rejected",note}` |
 | GET | `/api/contests/featured` | 用户 | 竞赛首页：排位赛配置、规则分组与限时赛事列表 |
 | GET | `/api/contests/events` | 用户 | 赛事列表，支持 `type`、`status`、`following`、`page`、`page_size` |
 | GET | `/api/contests/events/{id}` | 用户 | 赛事详情（含说明、规则和报名链接） |
@@ -324,6 +332,19 @@ Authorization: Bearer <teacher>
 - `POST /api/shop/plus/apply` 请求 `{"reason":"..."}`，说明去掉首尾空白后 1–500 字；管理员调用返回 403；已有待审核或已通过申请时返回 409，驳回后可重新提交。
 - `GET /api/admin/plus-applications?status=pending&page=1&size=20` 返回 `{total,page,size,items[]}`，`status` 取 `pending|approved|rejected`，`size` 上限 100。
 - `POST /api/admin/plus-applications/{id}/resolve` 请求 `{"status":"approved|rejected","note":"..."}`，说明 ≤500 字；只允许处理 `pending`。审核成功后向申请人写入 `plus_application` 站内信（邮件类别 `account`），并记录审计动作 `plus.application_resolve`。
+
+## 学习专区：408 与面经接口
+
+完整设计见 `doc/2610313_学习专区408与面经设计方案.md`。`category` 取 `408` 或 `interview`，`status` 取 `pending|approved|rejected`。
+
+- `GET /api/knowledge?category=408&tag=数据结构&q=搜索&page=1&size=12` 只返回 `approved` 文章，按创建时间倒序；响应包含 `{total,page,size,items[],is_plus,can_submit}`，列表项不包含正文。
+- `GET /api/knowledge/{id}` 返回文章详情。非 Plus 用户查看已通过文章时 `content` 为 `null`、`locked=true`；待审核或被退回文章只有作者本人与管理员可查看，其他人返回 404。
+- `POST /api/knowledge` 请求 `{"category":"408","title":"...","summary":"...","content":"...","tags":["..."]}`，需 Plus 身份与已验证邮箱。标题 ≤120 字，摘要 ≤300 字，正文 ≤20000 字，标签 ≤8 个且每个 ≤20 字；摘要留空时自动截取正文开头。投稿落库为 `pending`。
+- `PUT /api/knowledge/{id}` 仅作者本人可调用；已通过文章返回 409，需要管理员先退回或下架。编辑成功后状态回到 `pending` 并清空审核信息。
+- `DELETE /api/knowledge/{id}` 允许作者删除未通过文章，管理员可删除任意文章。
+- `GET /api/knowledge/mine?status=pending&category=408` 返回本人全部状态投稿。
+- `GET /api/admin/knowledge?status=pending&category=408&q=关键词` 返回全部投稿，`size` 上限 100，待审核优先排序。
+- `POST /api/admin/knowledge/{id}/resolve` 请求 `{"status":"approved|rejected","note":"..."}`，说明 ≤500 字；已通过文章再次处理为 `rejected` 即下架。审核成功后向作者写入 `knowledge_review` 站内信（邮件类别 `account`），并记录审计动作 `knowledge.resolve`，审计不保存正文。
 
 ## 竞赛与限时赛事接口
 

@@ -47,8 +47,8 @@ const manageRef = ref<HTMLElement | null>(null)
 const isAdminArea = computed(() => route.path.startsWith('/admin'))
 const isCampusOpen = ref(false)
 const campusRef = ref<HTMLElement | null>(null)
-const isContestOpen = ref(false)
-const contestRef = ref<HTMLElement | null>(null)
+const isLearnOpen = ref(false)
+const learnRef = ref<HTMLElement | null>(null)
 const isShopOpen = ref(false)
 const shopRef = ref<HTMLElement | null>(null)
 const isProfileMenuOpen = ref(false)
@@ -58,8 +58,13 @@ const isCampusArea = computed(() =>
     (prefix) => route.path === prefix || route.path.startsWith(`${prefix}/`),
   ) || route.path === '/profile/assignments',
 )
-const isContestArea = computed(
-  () => route.path === '/contests' || route.path.startsWith('/contests/'),
+const isLearnArea = computed(
+  () =>
+    route.path === '/contests' ||
+    route.path.startsWith('/contests/') ||
+    route.path === '/knowledge' ||
+    route.path.startsWith('/knowledge/') ||
+    route.path === '/personal/knowledge',
 )
 const isShopArea = computed(
   () => route.path === '/shop' || route.path.startsWith('/shop/'),
@@ -70,7 +75,8 @@ const isProfileArea = computed(
       route.path.startsWith('/profile/') ||
       route.path === '/personal' ||
       route.path.startsWith('/personal/')) &&
-    route.path !== '/profile/assignments',
+    route.path !== '/profile/assignments' &&
+    route.path !== '/personal/knowledge',
 )
 
 const closeManage = (): void => {
@@ -81,8 +87,8 @@ const closeCampus = (): void => {
   isCampusOpen.value = false
 }
 
-const closeContest = (): void => {
-  isContestOpen.value = false
+const closeLearn = (): void => {
+  isLearnOpen.value = false
 }
 
 const closeShop = (): void => {
@@ -97,7 +103,7 @@ const onDocumentPointerDown = (event: PointerEvent): void => {
   if (!(event.target instanceof Node)) return
   if (isManageOpen.value && !manageRef.value?.contains(event.target)) closeManage()
   if (isCampusOpen.value && !campusRef.value?.contains(event.target)) closeCampus()
-  if (isContestOpen.value && !contestRef.value?.contains(event.target)) closeContest()
+  if (isLearnOpen.value && !learnRef.value?.contains(event.target)) closeLearn()
   if (isShopOpen.value && !shopRef.value?.contains(event.target)) closeShop()
   if (isProfileMenuOpen.value && !profileMenuRef.value?.contains(event.target)) closeProfileMenu()
 }
@@ -106,7 +112,7 @@ const onWindowKeydown = (event: KeyboardEvent): void => {
   if (event.key !== 'Escape') return
   if (isManageOpen.value) closeManage()
   if (isCampusOpen.value) closeCampus()
-  if (isContestOpen.value) closeContest()
+  if (isLearnOpen.value) closeLearn()
   if (isShopOpen.value) closeShop()
   if (isProfileMenuOpen.value) closeProfileMenu()
   if (isMenuOpen.value) isMenuOpen.value = false
@@ -121,7 +127,7 @@ watch(
   () => {
     closeManage()
     closeCampus()
-    closeContest()
+    closeLearn()
     closeShop()
     closeProfileMenu()
     isMenuOpen.value = false
@@ -196,29 +202,47 @@ onBeforeUnmount(() => {
       <RouterLink class="nav-forum" to="/forum">论坛</RouterLink>
       <div
         v-if="authStore.isAuthenticated"
-        ref="contestRef"
+        ref="learnRef"
         class="nav-menu nav-contest"
-        :class="{ 'is-active': isContestArea }"
+        :class="{ 'is-active': isLearnArea }"
       >
         <button
           type="button"
           aria-haspopup="menu"
-          aria-controls="contest-menu-panel"
-          :aria-expanded="isContestOpen"
-          @click="isContestOpen = !isContestOpen"
+          aria-controls="learn-menu-panel"
+          :aria-expanded="isLearnOpen"
+          @click="isLearnOpen = !isLearnOpen"
         >
-          赛事<span class="nav-caret" aria-hidden="true"></span>
+          学习<span class="nav-caret" aria-hidden="true"></span>
         </button>
         <div
-          v-if="isContestOpen"
-          id="contest-menu-panel"
+          v-if="isLearnOpen"
+          id="learn-menu-panel"
           class="nav-menu-panel"
           role="menu"
-          aria-label="赛事"
+          aria-label="学习"
         >
-          <RouterLink role="menuitem" to="/contests" @click="closeContest">竞赛</RouterLink>
-          <RouterLink role="menuitem" to="/contests/rankings" @click="closeContest">
+          <RouterLink role="menuitem" to="/contests" @click="closeLearn">竞赛</RouterLink>
+          <RouterLink role="menuitem" to="/contests/rankings" @click="closeLearn">
             排行榜
+          </RouterLink>
+          <RouterLink
+            role="menuitem"
+            to="/knowledge/408"
+            title="Plus Theseus 专享 · 正文需开通"
+            @click="closeLearn"
+          >
+            408
+            <span class="nav-vip-badge">VIP</span>
+          </RouterLink>
+          <RouterLink
+            role="menuitem"
+            to="/knowledge/interview"
+            title="Plus Theseus 专享 · 正文需开通"
+            @click="closeLearn"
+          >
+            面经
+            <span class="nav-vip-badge">VIP</span>
           </RouterLink>
         </div>
       </div>
@@ -305,6 +329,14 @@ onBeforeUnmount(() => {
           >
             个人出题
           </RouterLink>
+          <RouterLink
+            v-if="canBrowseAssignments"
+            role="menuitem"
+            to="/personal/knowledge"
+            @click="closeProfileMenu"
+          >
+            我的投稿
+          </RouterLink>
           <RouterLink role="menuitem" to="/profile/favorites" @click="closeProfileMenu">
             个人收藏
           </RouterLink>
@@ -366,6 +398,9 @@ onBeforeUnmount(() => {
           <RouterLink role="menuitem" to="/admin/problems" @click="closeManage">题目审核</RouterLink>
           <RouterLink role="menuitem" to="/admin/events" @click="closeManage">赛事管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/forum" @click="closeManage">论坛管理</RouterLink>
+          <RouterLink role="menuitem" to="/admin/knowledge" @click="closeManage">
+            408 与面经
+          </RouterLink>
           <RouterLink role="menuitem" to="/admin/users" @click="closeManage">用户管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/notifications" @click="closeManage">通知管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/audit" @click="closeManage">审计日志</RouterLink>

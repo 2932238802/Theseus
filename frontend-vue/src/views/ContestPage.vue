@@ -407,7 +407,7 @@ onBeforeUnmount(() => {
         <div class="section-heading">
           <div>
             <h2>题目</h2>
-            <p class="section-heading-note">先完成有把握的题目，再回头处理高难度题目。</p>
+            <p class="section-heading-note">先拿稳分 再挑战高难度</p>
           </div>
           <span class="teaching-subtle">共 {{ problems.length }} 题</span>
         </div>
@@ -468,7 +468,7 @@ onBeforeUnmount(() => {
         <div class="section-heading">
           <div>
             <h2>选手</h2>
-            <p class="section-heading-note">实时显示本场参赛者的作答状态。</p>
+            <p class="section-heading-note">实时查看本场作答状态</p>
           </div>
           <span class="teaching-subtle">{{ detail.participants.length }} 人</span>
         </div>

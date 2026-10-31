@@ -82,6 +82,19 @@
   color: var(--color-text);
 }
 
+.nav-menu-panel .nav-vip-badge {
+  margin-left: auto;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+
 .nav-menu-panel .nav-menu-disabled {
   display: flex;
   align-items: center;

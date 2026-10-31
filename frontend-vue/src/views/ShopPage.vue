@@ -87,7 +87,9 @@ onMounted(() => {
       </header>
 
       <p class="shop-plus-copy">
-        Plus Theseus 的权益仍在规划中。现在提交申请，管理员审核通过后会记录开通状态，后续权益上线时直接生效。
+        <span>Plus Theseus 的权益仍在规划中</span>
+        <span>现在提交申请，管理员审核通过后会记录开通状态</span>
+        <span>后续权益上线时直接生效</span>
       </p>
 
       <div v-if="loading" class="empty-state"><p>正在加载</p></div>
@@ -131,8 +133,8 @@ onMounted(() => {
             </button>
           </div>
         </form>
-        <p v-else-if="state?.is_plus" class="shop-plus-copy">你已开通 Plus Theseus。</p>
-        <p v-else class="shop-plus-copy">申请已提交，请等待管理员审核。</p>
+        <p v-else-if="state?.is_plus" class="shop-plus-copy">你已开通 Plus Theseus</p>
+        <p v-else class="shop-plus-copy">申请已提交，请等待管理员审核</p>
       </template>
     </section>
   </main>

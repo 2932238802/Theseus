@@ -6,6 +6,7 @@ pub mod draft;
 pub mod favorite;
 pub mod forum;
 pub mod home;
+pub mod knowledge;
 pub mod notification;
 pub mod plus;
 pub mod problem;

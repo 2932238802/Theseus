@@ -19,7 +19,7 @@
 - 角色变更需要清理数据：学生升教师前退出所有组织；教师降级前没有未归档的自有组织，或确认归档后降级；最后一个管理员不能降级。
 - 角色变更立即生效；认证中间件每次请求从数据库读取 `users.role`，JWT 里的角色不作为权限依据。
 
-**当前代码状态：** 已实现 `student` / `teacher` / `admin` 迁移、教师角色、组织/作业/批改接口、管理员用户管理接口、竞赛/赛事、审计与商店 Plus 申请接口和对应前端页面。`user` 由迁移回填为 `student`。
+**当前代码状态：** 已实现 `student` / `teacher` / `admin` 迁移、教师角色、组织/作业/批改接口、管理员用户管理接口、竞赛/赛事、审计、商店 Plus 申请与学习专区 408/面经接口和对应前端页面。`user` 由迁移回填为 `student`。
 
 ## 运行
 
@@ -78,6 +78,14 @@ cargo run
 - `POST /api/shop/plus/apply` 学生/教师提交开通申请 `{reason}`，需已验证邮箱
 - `GET /api/admin/plus-applications` 管理员分页查看 Plus 申请，可按 `status` 筛选
 - `POST /api/admin/plus-applications/:id/resolve` 管理员通过或驳回申请 `{status,note}`，写站内信与审计日志
+- `GET /api/knowledge` 已通过的 408/面经列表，支持 `category`、`tag`、`q`、`page`、`size`
+- `GET /api/knowledge/:id` 文章详情；非 Plus 用户正文为空且 `locked=true`
+- `POST /api/knowledge` Plus 用户投稿 `{category,title,summary,content,tags}`，需已验证邮箱
+- `PUT /api/knowledge/:id` 作者编辑待审核或被退回的投稿，重新进入待审核
+- `DELETE /api/knowledge/:id` 作者删除未通过投稿，管理员可删除任意文章
+- `GET /api/knowledge/mine` 本人投稿，支持 `category`、`status`
+- `GET /api/admin/knowledge` 管理员查看全部投稿，支持 `category`、`status`、`q`
+- `POST /api/admin/knowledge/:id/resolve` 管理员通过、退回或下架 `{status,note}`，写站内信与审计日志
 
 ### 角色相关行为
 

@@ -141,7 +141,7 @@ onMounted(() => {
       </article>
     </div>
     <div v-else class="anticheat-empty">
-      暂无可申诉记录。教师确认相似度报告后，可在这里提交一次申诉。
+      暂无可申诉记录<br />教师确认相似度报告后，可在这里提交一次申诉
     </div>
 
     <section class="teaching-section">
@@ -171,7 +171,7 @@ onMounted(() => {
         </RouterLink>
       </div>
       <div v-else class="anticheat-empty">
-        比赛结束后可以在结果页对成绩或作弊判定提交申诉。
+        比赛结束后可以在结果页对成绩或作弊判定提交申诉
       </div>
     </section>
 
@@ -238,7 +238,7 @@ onMounted(() => {
           <section v-if="detail.report.status === 'confirmed'" class="anticheat-block">
             <h3>提交申诉</h3>
             <p class="anticheat-card-subtle">
-              每份报告只能申诉一次，将由处理该报告的老师裁定。
+              每份报告只能申诉一次<br />由处理该报告的老师裁定
             </p>
             <textarea
               v-model="reason"

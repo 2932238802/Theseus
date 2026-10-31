@@ -628,14 +628,15 @@ onBeforeUnmount(() => {
               <strong>±{{ ranked?.rating_window ?? '—' }}</strong>
             </div>
             <p class="teaching-subtle">
-              只与分差不超过 {{ ranked?.rating_window ?? '—' }} 分的对手匹配，在线人数够但分差过大时不会强行开局。
+              只匹配分差不超过 {{ ranked?.rating_window ?? '—' }} 分的对手<br />
+              在线人数够但分差过大时不会强行开局
             </p>
           </div>
 
           <ul class="contest-rules">
-            <li>匹配成功后自动进入比赛，比赛中不能取消。</li>
-            <li>可以提前「完成并离场」，离场后成绩保留并等待结算。</li>
-            <li>开始前需授权摄像头和屏幕共享；系统仅记录授权状态，不会录制或上传画面。</li>
+            <li>匹配成功后自动进入比赛，比赛中不能取消</li>
+            <li>可以提前「完成并离场」，离场后成绩保留并等待结算</li>
+            <li>开始前需授权摄像头和屏幕共享<br />系统仅记录授权状态，不会录制或上传画面</li>
           </ul>
 
           <div class="teaching-toolbar contest-start-row">
@@ -667,7 +668,7 @@ onBeforeUnmount(() => {
               <dd>综合排名</dd>
             </div>
           </dl>
-          <p>完成题目、速度和代码质量共同决定最终得分。</p>
+          <p>题目、速度与代码质量<br />共同决定最终得分</p>
         </aside>
       </div>
 
@@ -697,7 +698,7 @@ onBeforeUnmount(() => {
           <p class="teaching-subtle">
             段位分 {{ myRating ?? '—' }} · 仅匹配分差 ≤ {{ ranked?.rating_window ?? '—' }} 的对手
           </p>
-          <p class="teaching-subtle">系统每隔 3 秒刷新队列，匹配成功后会自动进入比赛。</p>
+          <p class="teaching-subtle">系统每隔 3 秒刷新队列<br />匹配成功后会自动进入比赛</p>
 
           <div class="teaching-toolbar contest-queue-actions">
             <button

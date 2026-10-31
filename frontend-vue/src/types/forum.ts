@@ -296,6 +296,7 @@ export type NotificationType =
   | 'assignment_published'
   | 'assignment_grades_published'
   | 'problem_review'
+  | 'knowledge_review'
   | 'class_invite'
   | 'class_invite_accepted'
   | 'class_invite_declined'

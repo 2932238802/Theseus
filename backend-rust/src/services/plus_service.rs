@@ -47,15 +47,19 @@ impl From<ApplicationRow> for PlusApplicationItem {
     }
 }
 
-pub async fn my_state(pool: &PgPool, user_id: i32) -> Result<MyPlusStateResponse, AppError> {
-    let is_plus: bool = sqlx::query_scalar(
+pub async fn is_plus(pool: &PgPool, user_id: i32) -> Result<bool, AppError> {
+    sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM plus_applications \
          WHERE user_id = $1 AND status = 'approved')",
     )
     .bind(user_id)
     .fetch_one(pool)
     .await
-    .map_err(AppError::Database)?;
+    .map_err(AppError::Database)
+}
+
+pub async fn my_state(pool: &PgPool, user_id: i32) -> Result<MyPlusStateResponse, AppError> {
+    let is_plus = is_plus(pool, user_id).await?;
 
     let row: Option<ApplicationRow> = sqlx::query_as(
         "SELECT a.id, a.user_id, u.username, a.reason, a.status, \
@@ -250,9 +254,9 @@ pub async fn admin_resolve(
     };
     let body = note.map(str::to_owned).unwrap_or_else(|| {
         if approved {
-            "你的开通申请已通过。".to_owned()
+            "你的开通申请已通过".to_owned()
         } else {
-            "你的开通申请未通过。".to_owned()
+            "你的开通申请未通过".to_owned()
         }
     });
     notification_service::create(
