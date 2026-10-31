@@ -8,6 +8,7 @@ use crate::{
         MyPlusStateResponse, PLUS_STATUS_APPROVED, PLUS_STATUS_PENDING, PLUS_STATUS_REJECTED,
         PlusApplicationInput, PlusApplicationItem, PlusApplicationListResponse,
         PlusApplicationQuery, PlusApplicationResolveInput, PlusApplicationResolveResponse,
+        PlusMembership,
     },
     services::notification_service,
 };
@@ -17,6 +18,8 @@ const DEFAULT_SIZE: u32 = 20;
 const MAX_PAGE_SIZE: u32 = 100;
 const MAX_REASON_CHARS: usize = 500;
 const MAX_NOTE_CHARS: usize = 500;
+const MIN_PLUS_DAYS: i64 = 1;
+const MAX_PLUS_DAYS: i64 = 3650;
 
 #[derive(FromRow)]
 struct ApplicationRow {
@@ -28,6 +31,7 @@ struct ApplicationRow {
     review_note: Option<String>,
     reviewed_by: Option<String>,
     reviewed_at: Option<DateTime<Utc>>,
+    membership_expires_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
 }
 
@@ -42,15 +46,24 @@ impl From<ApplicationRow> for PlusApplicationItem {
             review_note: row.review_note,
             reviewed_by: row.reviewed_by,
             reviewed_at: row.reviewed_at,
+            membership_expires_at: row.membership_expires_at,
             created_at: row.created_at,
         }
     }
 }
 
+fn days_left_until(expires_at: DateTime<Utc>, now: DateTime<Utc>) -> i64 {
+    if expires_at <= now {
+        return 0;
+    }
+    let seconds = (expires_at - now).num_seconds();
+    (seconds + 86_399) / 86_400
+}
+
 pub async fn is_plus(pool: &PgPool, user_id: i32) -> Result<bool, AppError> {
     sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM plus_applications \
-         WHERE user_id = $1 AND status = 'approved')",
+        "SELECT EXISTS(SELECT 1 FROM plus_memberships \
+         WHERE user_id = $1 AND expires_at > CURRENT_TIMESTAMP)",
     )
     .bind(user_id)
     .fetch_one(pool)
@@ -61,12 +74,30 @@ pub async fn is_plus(pool: &PgPool, user_id: i32) -> Result<bool, AppError> {
 pub async fn my_state(pool: &PgPool, user_id: i32) -> Result<MyPlusStateResponse, AppError> {
     let is_plus = is_plus(pool, user_id).await?;
 
+    let membership_row: Option<(DateTime<Utc>, DateTime<Utc>)> =
+        sqlx::query_as("SELECT started_at, expires_at FROM plus_memberships WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::Database)?;
+    let membership = membership_row.map(|(started_at, expires_at)| {
+        let now = Utc::now();
+        let days_left = days_left_until(expires_at, now);
+        PlusMembership {
+            started_at,
+            expires_at,
+            days_left,
+        }
+    });
+
     let row: Option<ApplicationRow> = sqlx::query_as(
         "SELECT a.id, a.user_id, u.username, a.reason, a.status, \
-         a.review_note, r.username AS reviewed_by, a.reviewed_at, a.created_at \
+         a.review_note, r.username AS reviewed_by, a.reviewed_at, \
+         m.expires_at AS membership_expires_at, a.created_at \
          FROM plus_applications a \
          JOIN users u ON u.id = a.user_id \
          LEFT JOIN users r ON r.id = a.reviewed_by \
+         LEFT JOIN plus_memberships m ON m.user_id = a.user_id \
          WHERE a.user_id = $1 ORDER BY a.created_at DESC, a.id DESC LIMIT 1",
     )
     .bind(user_id)
@@ -76,6 +107,7 @@ pub async fn my_state(pool: &PgPool, user_id: i32) -> Result<MyPlusStateResponse
 
     Ok(MyPlusStateResponse {
         is_plus,
+        membership,
         application: row.map(PlusApplicationItem::from),
     })
 }
@@ -100,27 +132,24 @@ pub async fn submit(
         )));
     }
 
+    if is_plus(pool, user.id).await? {
+        return Err(AppError::ConflictWith(
+            "你已经开通了 Plus Theseus".to_owned(),
+        ));
+    }
+
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT status FROM plus_applications \
-         WHERE user_id = $1 AND status IN ('pending', 'approved') \
-         ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END LIMIT 1",
+         WHERE user_id = $1 AND status = 'pending' LIMIT 1",
     )
     .bind(user.id)
     .fetch_optional(pool)
     .await
     .map_err(AppError::Database)?;
-    match existing.as_deref() {
-        Some(PLUS_STATUS_APPROVED) => {
-            return Err(AppError::ConflictWith(
-                "你已经开通了 Plus Theseus".to_owned(),
-            ));
-        }
-        Some(_) => {
-            return Err(AppError::ConflictWith(
-                "已有一条申请正在审核，请等待处理".to_owned(),
-            ));
-        }
-        None => {}
+    if existing.is_some() {
+        return Err(AppError::ConflictWith(
+            "已有一条申请正在审核，请等待处理".to_owned(),
+        ));
     }
 
     let inserted = sqlx::query("INSERT INTO plus_applications (user_id, reason) VALUES ($1, $2)")
@@ -174,10 +203,12 @@ pub async fn admin_list(
 
     let rows: Vec<ApplicationRow> = sqlx::query_as(
         "SELECT a.id, a.user_id, u.username, a.reason, a.status, \
-         a.review_note, r.username AS reviewed_by, a.reviewed_at, a.created_at \
+         a.review_note, r.username AS reviewed_by, a.reviewed_at, \
+         m.expires_at AS membership_expires_at, a.created_at \
          FROM plus_applications a \
          JOIN users u ON u.id = a.user_id \
          LEFT JOIN users r ON r.id = a.reviewed_by \
+         LEFT JOIN plus_memberships m ON m.user_id = a.user_id \
          WHERE $1::text IS NULL OR a.status = $1 \
          ORDER BY a.created_at DESC, a.id DESC LIMIT $2 OFFSET $3",
     )
@@ -218,6 +249,13 @@ pub async fn admin_resolve(
             "处理说明不能超过 {MAX_NOTE_CHARS} 字"
         )));
     }
+    let approved = status == PLUS_STATUS_APPROVED;
+    let days = input.days.unwrap_or(0);
+    if approved && !(MIN_PLUS_DAYS..=MAX_PLUS_DAYS).contains(&days) {
+        return Err(AppError::BadRequest(format!(
+            "开通天数需在 {MIN_PLUS_DAYS} 到 {MAX_PLUS_DAYS} 天之间"
+        )));
+    }
 
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
     let current: Option<(i32, String)> =
@@ -246,19 +284,50 @@ pub async fn admin_resolve(
     .await
     .map_err(AppError::Database)?;
 
-    let approved = status == PLUS_STATUS_APPROVED;
+    let expires_at = if approved {
+        Some(
+            sqlx::query_scalar::<_, DateTime<Utc>>(
+                "INSERT INTO plus_memberships (user_id, application_id, started_at, expires_at) \
+                 VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + make_interval(days => $3)) \
+                 ON CONFLICT (user_id) DO UPDATE SET \
+                   application_id = EXCLUDED.application_id, \
+                   started_at = CASE \
+                     WHEN plus_memberships.expires_at > CURRENT_TIMESTAMP \
+                     THEN plus_memberships.started_at ELSE CURRENT_TIMESTAMP END, \
+                   expires_at = GREATEST(plus_memberships.expires_at, CURRENT_TIMESTAMP) \
+                     + make_interval(days => $3), \
+                   updated_at = CURRENT_TIMESTAMP \
+                 RETURNING expires_at",
+            )
+            .bind(user_id)
+            .bind(application_id)
+            .bind(days as i32)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?,
+        )
+    } else {
+        None
+    };
+
     let title = if approved {
         "Plus Theseus 申请已通过"
     } else {
         "Plus Theseus 申请未通过"
     };
-    let body = note.map(str::to_owned).unwrap_or_else(|| {
-        if approved {
-            "你的开通申请已通过".to_owned()
-        } else {
-            "你的开通申请未通过".to_owned()
+    let body = match (approved, note, expires_at) {
+        (true, Some(note), Some(expires_at)) => {
+            format!("{note}\n有效期至 {}", expires_at.format("%Y-%m-%d"))
         }
-    });
+        (true, None, Some(expires_at)) => {
+            format!(
+                "已开通 Plus Theseus\n有效期至 {}",
+                expires_at.format("%Y-%m-%d")
+            )
+        }
+        (false, Some(note), _) => note.to_owned(),
+        _ => "你的开通申请未通过".to_owned(),
+    };
     notification_service::create(
         &mut transaction,
         user_id,
@@ -281,5 +350,30 @@ pub async fn admin_resolve(
         } else {
             "已驳回申请".to_owned()
         },
+        expires_at,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::days_left_until;
+    use chrono::{TimeDelta, Utc};
+
+    #[test]
+    fn days_left_rounds_up_partial_days() {
+        let now = Utc::now();
+        assert_eq!(days_left_until(now + TimeDelta::seconds(1), now), 1);
+        assert_eq!(days_left_until(now + TimeDelta::days(1), now), 1);
+        assert_eq!(
+            days_left_until(now + TimeDelta::days(1) + TimeDelta::seconds(1), now),
+            2
+        );
+    }
+
+    #[test]
+    fn expired_membership_has_no_days_left() {
+        let now = Utc::now();
+        assert_eq!(days_left_until(now, now), 0);
+        assert_eq!(days_left_until(now - TimeDelta::seconds(1), now), 0);
+    }
 }

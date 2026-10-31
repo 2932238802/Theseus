@@ -1,9 +1,15 @@
 export type ForumTagCode = 'general' | 'help' | 'solution' | 'discussion' | 'announcement'
+export type ForumBoard = 'general' | 'interview'
 export type ForumSort = 'latest' | 'hot'
 export type ForumStatus = 'published' | 'hidden' | 'deleted'
 export type ReportTargetType = 'post' | 'comment'
 export type ReportReason = 'spam' | 'abuse' | 'spoiler' | 'illegal' | 'other'
 export type ReportStatus = 'pending' | 'resolved' | 'rejected'
+
+export const FORUM_BOARDS = [
+  { code: 'general', label: '综合', plusOnly: false },
+  { code: 'interview', label: '面经', plusOnly: true },
+] as const satisfies ReadonlyArray<{ code: ForumBoard; label: string; plusOnly: boolean }>
 
 export const FORUM_TAGS = [
   { code: 'general', label: '综合', adminOnly: false },
@@ -41,6 +47,7 @@ export interface ForumAuthor {
   displayName: string
   isAnonymous: boolean
   isSelf: boolean
+  isPlus: boolean
 }
 
 export interface ForumProblemRef {
@@ -51,8 +58,13 @@ export interface ForumProblemRef {
 
 export interface ForumPostSummary {
   id: number
+  board: ForumBoard
   title: string
   excerpt: string
+  interviewDate: string | null
+  company: string | null
+  role: string | null
+  viewCount: number
   tags: string[]
   author: ForumAuthor
   problem: ForumProblemRef | null
@@ -127,17 +139,29 @@ export interface ForumRepliesResult {
 export interface ForumPostListQuery {
   page: number
   size: number
+  board?: ForumBoard
   tag?: string
+  company?: string
+  role?: string
   q?: string
   sort?: ForumSort
   mine?: boolean
 }
 
 export interface ForumPostPayload {
+  board?: ForumBoard
   title: string
   body_md: string
   tags: string[]
+  interview_date?: string | null
+  company?: string | null
+  role?: string | null
   problem_id: number | null
+}
+
+export interface ForumInterviewFacets {
+  companies: string[]
+  roles: string[]
 }
 
 export interface ForumCommentPayload {
@@ -273,6 +297,7 @@ export interface AdminForumPostListQuery {
   page: number
   size: number
   status?: ForumStatus
+  board?: ForumBoard
   q?: string
   author?: string
 }

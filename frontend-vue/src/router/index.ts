@@ -4,7 +4,6 @@ import AdminAuditPage from '../views/AdminAuditPage.vue'
 import AdminContestAppealsPage from '../views/AdminContestAppealsPage.vue'
 import AdminEventsPage from '../views/AdminEventsPage.vue'
 import AdminForumPage from '../views/AdminForumPage.vue'
-import AdminKnowledgePage from '../views/AdminKnowledgePage.vue'
 import AdminNotifyPage from '../views/AdminNotifyPage.vue'
 import AdminPlusApplicationsPage from '../views/AdminPlusApplicationsPage.vue'
 import AdminProblemsPage from '../views/AdminProblemsPage.vue'
@@ -27,12 +26,8 @@ import ForumPostPage from '../views/ForumPostPage.vue'
 import ForgotPasswordPage from '../views/ForgotPasswordPage.vue'
 import GradebookPage from '../views/GradebookPage.vue'
 import IndexPage from '../views/IndexPage.vue'
-import KnowledgeComposePage from '../views/KnowledgeComposePage.vue'
-import KnowledgeDetailPage from '../views/KnowledgeDetailPage.vue'
-import KnowledgeListPage from '../views/KnowledgeListPage.vue'
 import LoginAndRegisterPage from '../views/LoginAndRegisterPage.vue'
 import MyAssignmentsPage from '../views/MyAssignmentsPage.vue'
-import MyKnowledgePage from '../views/MyKnowledgePage.vue'
 import NotFoundPage from '../views/NotFoundPage.vue'
 import NotificationsPage from '../views/NotificationsPage.vue'
 import OjPage from '../views/OjPage.vue'
@@ -75,44 +70,11 @@ const router = createRouter({
     { path: '/contests/:id', name: 'contest', component: ContestPage, meta: { requiresAuth: true } },
     { path: '/contests/:id/proctor', name: 'contest-proctor', component: ContestProctorPage, meta: { requiresAuth: true, requiresAdmin: true } },
     { path: '/contests/:id/result', name: 'contest-result', component: ContestResultPage, meta: { requiresAuth: true } },
-    {
-      path: '/knowledge/408',
-      name: 'knowledge-408',
-      component: KnowledgeListPage,
-      props: { category: '408' },
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/knowledge/interview',
-      name: 'knowledge-interview',
-      component: KnowledgeListPage,
-      props: { category: 'interview' },
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/knowledge/new',
-      name: 'knowledge-new',
-      component: KnowledgeComposePage,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/knowledge/:id(\\d+)',
-      name: 'knowledge-detail',
-      component: KnowledgeDetailPage,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/knowledge/:id(\\d+)/edit',
-      name: 'knowledge-edit',
-      component: KnowledgeComposePage,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/personal/knowledge',
-      name: 'my-knowledge',
-      component: MyKnowledgePage,
-      meta: { requiresAuth: true },
-    },
+    { path: '/knowledge/interview', redirect: { path: '/forum', query: { board: 'interview' } } },
+    { path: '/knowledge/new', redirect: '/forum/new' },
+    { path: '/knowledge/:id(\\d+)', redirect: '/forum' },
+    { path: '/knowledge/:id(\\d+)/edit', redirect: '/forum' },
+    { path: '/personal/knowledge', redirect: '/forum' },
     { path: '/forum', name: 'forum', component: ForumPage },
     {
       path: '/shop',
@@ -220,12 +182,7 @@ const router = createRouter({
       component: AdminForumPage,
       meta: { requiresAuth: true, requiresAdmin: true },
     },
-    {
-      path: '/admin/knowledge',
-      name: 'admin-knowledge',
-      component: AdminKnowledgePage,
-      meta: { requiresAuth: true, requiresAdmin: true },
-    },
+    { path: '/admin/knowledge', redirect: '/admin/forum' },
     {
       path: '/admin/users',
       name: 'admin-users',

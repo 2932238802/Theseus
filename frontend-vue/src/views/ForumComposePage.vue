@@ -6,8 +6,10 @@ import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
 import { createForumPost, fetchForumPost, updateForumPost } from '../api/forum'
 import { fetchProblems } from '../api/problems'
+import { fetchMyPlusState } from '../api/shop'
 import { useAuthStore } from '../store/auth'
-import { FORUM_TAGS } from '../types/forum'
+import { FORUM_BOARDS, FORUM_TAGS } from '../types/forum'
+import type { ForumBoard } from '../types/forum'
 import type { Difficulty, Problem } from '../types/oj'
 import { DIFFICULTY_LABELS } from '../utils/constants'
 
@@ -23,12 +25,20 @@ const editId = computed(() => {
   return Number.isInteger(value) && value > 0 ? value : null
 })
 const isEdit = computed(() => editId.value !== null)
-const isAdmin = computed(() => authStore.user?.role === 'admin')
+const isAdmin = computed(() => authStore.isAdmin)
+const isPlus = ref(false)
+const canInterview = computed(() => isAdmin.value || isPlus.value)
 const draftKey = `${DRAFT_PREFIX}:${authStore.user?.id ?? 'guest'}`
 
+const board = ref<ForumBoard>('general')
+const interviewDate = ref('')
+const company = ref('')
+const role = ref('')
+const isInterview = computed(() => board.value === 'interview')
 const title = ref('')
 const bodyMd = ref('')
 const tags = ref<string[]>([])
+const tagInput = ref('')
 const anonymous = ref(false)
 const selectedProblem = ref<Problem | null>(null)
 const preview = ref(false)
@@ -48,6 +58,7 @@ let problemSequence = 0
 let draftEnabled = false
 
 const availableTags = computed(() => FORUM_TAGS.filter((tag) => !tag.adminOnly || isAdmin.value))
+const maxTags = computed(() => (isInterview.value ? 8 : 3))
 const canSubmit = computed(
   () =>
     title.value.trim().length > 0 &&
@@ -55,14 +66,45 @@ const canSubmit = computed(
     bodyMd.value.trim().length > 0 &&
     bodyMd.value.trim().length <= 20_000 &&
     tags.value.length >= 1 &&
-    tags.value.length <= 3,
+    tags.value.length <= maxTags.value &&
+    (!isInterview.value || !interviewDate.value || /^\d{4}-\d{2}$/.test(interviewDate.value)),
 )
 
 const toggleTag = (code: string): void => {
   if (tags.value.includes(code)) {
     tags.value = tags.value.filter((tag) => tag !== code)
-  } else if (tags.value.length < 3) {
+  } else if (tags.value.length < maxTags.value) {
     tags.value = [...tags.value, code]
+  }
+}
+
+const addTag = (): void => {
+  const candidates = tagInput.value
+    .split(/[,，、]/)
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+  tagInput.value = ''
+  for (const candidate of candidates) {
+    if (tags.value.length >= 8) break
+    const tag = candidate.slice(0, 20)
+    if (!tags.value.includes(tag)) tags.value = [...tags.value, tag]
+  }
+}
+
+const removeTag = (tag: string): void => {
+  tags.value = tags.value.filter((item) => item !== tag)
+}
+
+const selectBoard = (next: ForumBoard): void => {
+  if (next === board.value) return
+  if (next === 'interview' && !canInterview.value) return
+  board.value = next
+  tags.value = []
+  tagInput.value = ''
+  if (next === 'general') {
+    interviewDate.value = ''
+    company.value = ''
+    role.value = ''
   }
 }
 
@@ -117,6 +159,10 @@ const saveDraft = (): void => {
   localStorage.setItem(
     draftKey,
     JSON.stringify({
+      board: board.value,
+      interviewDate: interviewDate.value,
+      company: company.value,
+      role: role.value,
       title: title.value,
       bodyMd: bodyMd.value,
       tags: tags.value,
@@ -148,18 +194,28 @@ const restoreDraft = (): void => {
   if (!raw) return
   try {
     const draft = JSON.parse(raw) as {
+      board?: unknown
+      interviewDate?: unknown
+      company?: unknown
+      role?: unknown
       title?: unknown
       bodyMd?: unknown
       tags?: unknown
       anonymous?: unknown
       problem?: unknown
     }
+    if (draft.board === 'interview' && canInterview.value) board.value = 'interview'
+    if (typeof draft.interviewDate === 'string') interviewDate.value = draft.interviewDate
+    if (typeof draft.company === 'string') company.value = draft.company.slice(0, 40)
+    if (typeof draft.role === 'string') role.value = draft.role.slice(0, 40)
     if (typeof draft.title === 'string') title.value = draft.title
     if (typeof draft.bodyMd === 'string') bodyMd.value = draft.bodyMd
     if (Array.isArray(draft.tags)) {
-      tags.value = draft.tags.filter(
-        (tag): tag is string => typeof tag === 'string' && availableTags.value.some((item) => item.code === tag),
-      )
+      const values = draft.tags.filter((tag): tag is string => typeof tag === 'string')
+      tags.value =
+        board.value === 'interview'
+          ? values.slice(0, 8).map((tag) => tag.slice(0, 20))
+          : values.filter((tag) => availableTags.value.some((item) => item.code === tag))
     }
     if (typeof draft.anonymous === 'boolean') anonymous.value = draft.anonymous
     if (draft.problem && typeof draft.problem === 'object') {
@@ -189,6 +245,10 @@ const loadEditTarget = async (): Promise<void> => {
     }
     title.value = post.title
     bodyMd.value = post.bodyMd
+    board.value = post.board
+    interviewDate.value = post.interviewDate ?? ''
+    company.value = post.company ?? ''
+    role.value = post.role ?? ''
     tags.value = post.tags
     if (post.problem) {
       selectedProblem.value = {
@@ -220,15 +280,22 @@ const loadEditTarget = async (): Promise<void> => {
 const submit = async (): Promise<void> => {
   error.value = ''
   if (!canSubmit.value) {
-    error.value = '请填写标题 正文 并选择 1–3 个标签'
+    error.value =
+      board.value === 'interview'
+        ? '请填写标题 正文 并选择 1–8 个标签'
+        : '请填写标题 正文 并选择 1–3 个标签'
     return
   }
   submitting.value = true
   try {
     const payload = {
+      board: board.value,
       title: title.value.trim(),
       body_md: bodyMd.value.trim(),
       tags: tags.value,
+      interview_date: isInterview.value ? interviewDate.value || null : null,
+      company: isInterview.value ? company.value.trim() || null : null,
+      role: isInterview.value ? role.value.trim() || null : null,
       problem_id: selectedProblem.value?.id ?? null,
     }
     if (isEdit.value && editId.value) {
@@ -249,15 +316,33 @@ const submit = async (): Promise<void> => {
   }
 }
 
-watch([title, bodyMd, tags, anonymous, selectedProblem], saveDraft, { deep: true })
+watch([board, interviewDate, company, role, title, bodyMd, tags, anonymous, selectedProblem], saveDraft, {
+  deep: true,
+})
 
 onMounted(async () => {
   if (isEdit.value) {
     await loadEditTarget()
-  } else {
-    restoreDraft()
-    draftEnabled = true
+    return
   }
+  if (authStore.isAuthenticated && !authStore.isAdmin) {
+    try {
+      const state = await fetchMyPlusState()
+      isPlus.value = state.is_plus
+    } catch {
+      isPlus.value = false
+    }
+  }
+  const requested = Array.isArray(route.query.board) ? route.query.board[0] : route.query.board
+  if (requested === 'interview') {
+    if (canInterview.value) {
+      board.value = 'interview'
+    } else {
+      error.value = '面经需要开通 Plus Theseus'
+    }
+  }
+  restoreDraft()
+  draftEnabled = true
 })
 
 onBeforeUnmount(() => {
@@ -280,12 +365,51 @@ onBeforeUnmount(() => {
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
     <form v-if="!loading && !loadFailed" class="forum-compose-form" @submit.prevent="submit">
+      <fieldset v-if="!isEdit" class="forum-field forum-tag-picker">
+        <legend>板块</legend>
+        <div class="forum-tag-picker-options">
+          <button
+            v-for="item in FORUM_BOARDS"
+            :key="item.code"
+            type="button"
+            :class="['forum-filter-pill', { active: board === item.code }]"
+            :disabled="item.plusOnly && !canInterview"
+            @click="selectBoard(item.code)"
+          >
+            {{ item.label }}<template v-if="item.plusOnly"> · VIP</template>
+          </button>
+        </div>
+        <p v-if="!canInterview" class="run-note">面经仅对 Plus Theseus 开放</p>
+      </fieldset>
+
       <label class="forum-field">
         <span>标题 <small>{{ title.trim().length }} / 120</small></span>
-        <input v-model="title" type="text" maxlength="120" placeholder="用一句话说明你想讨论什么" required />
+        <input
+          v-model="title"
+          type="text"
+          maxlength="120"
+          :placeholder="isInterview ? '公司 · 岗位 · 轮次' : '用一句话说明你想讨论什么'"
+          required
+        />
       </label>
 
-      <fieldset class="forum-field forum-tag-picker">
+      <label v-if="isInterview" class="forum-field">
+        <span>面试时间 <small>可选</small></span>
+        <input v-model="interviewDate" type="month" />
+      </label>
+
+      <div v-if="isInterview" class="forum-field-group">
+        <label class="forum-field">
+          <span>公司 <small>可选</small></span>
+          <input v-model="company" type="text" maxlength="40" placeholder="如 百度" />
+        </label>
+        <label class="forum-field">
+          <span>岗位 <small>可选</small></span>
+          <input v-model="role" type="text" maxlength="40" placeholder="如 后端" />
+        </label>
+      </div>
+
+      <fieldset v-if="!isInterview" class="forum-field forum-tag-picker">
         <legend>标签 <small>选择 1–3 个</small></legend>
         <div class="forum-tag-picker-options">
           <button
@@ -299,6 +423,31 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </fieldset>
+
+      <div v-else class="forum-field">
+        <span>标签 <small>{{ tags.length }} / 8</small></span>
+        <div class="forum-tag-input">
+          <input
+            v-model="tagInput"
+            type="text"
+            maxlength="20"
+            placeholder="公司 方向 等 回车添加"
+            @keydown.enter.prevent="addTag"
+          />
+          <button type="button" class="forum-secondary-button" @click="addTag">添加</button>
+        </div>
+        <div v-if="tags.length" class="forum-tag-picker-options">
+          <button
+            v-for="tag in tags"
+            :key="tag"
+            type="button"
+            class="forum-filter-pill active"
+            @click="removeTag(tag)"
+          >
+            {{ tag }} ×
+          </button>
+        </div>
+      </div>
 
       <div class="forum-field">
         <span>关联题目 <small>可选 最多 1 道</small></span>
@@ -347,7 +496,7 @@ onBeforeUnmount(() => {
           v-model="bodyMd"
           rows="18"
           maxlength="20000"
-          placeholder="写下你的想法 支持标题 列表 引用 代码块和链接"
+          :placeholder="isInterview ? '写下这次面试的流程 题目和你的思路 答案可以留给评论区' : '写下你的想法 支持标题 列表 引用 代码块和链接'"
           required
         ></textarea>
         <div v-else class="forum-editor-preview">

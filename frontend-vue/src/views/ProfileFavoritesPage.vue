@@ -292,6 +292,7 @@ onMounted(() => loadTab(activeTab.value, 1))
             <p class="profile-favorite-excerpt">{{ commentExcerpt(item.bodyMd) }}</p>
             <p>
               {{ item.author.displayName }}
+              <span v-if="item.author.isPlus" class="forum-plus-badge">Plus</span>
               <template v-if="item.parentId !== null"> · 回复</template>
               · 收藏于 {{ new Date(item.favoritedAt).toLocaleString('zh-CN') }}
             </p>

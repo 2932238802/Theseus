@@ -20,6 +20,20 @@ const reason = ref('')
 const submitting = ref(false)
 
 const application = computed(() => state.value?.application ?? null)
+const membership = computed(() => state.value?.membership ?? null)
+const isExpired = computed(
+  () => !state.value?.is_plus && application.value?.status === 'approved',
+)
+const statusLabel = computed(() => {
+  if (state.value?.is_plus) return '已开通'
+  if (isExpired.value) return '已过期'
+  return application.value ? STATUS_LABELS[application.value.status] : ''
+})
+const statusClass = computed(() => {
+  if (state.value?.is_plus) return 'approved'
+  if (isExpired.value) return 'expired'
+  return application.value?.status ?? ''
+})
 const canApply = computed(
   () => !state.value?.is_plus && application.value?.status !== 'pending',
 )
@@ -81,15 +95,15 @@ onMounted(() => {
           <span class="shop-plus-badge" aria-hidden="true">Plus</span>
           <h2>Plus Theseus</h2>
         </div>
-        <span v-if="application" :class="['shop-status', `is-${application.status}`]">
-          {{ STATUS_LABELS[application.status] }}
+        <span v-if="statusLabel" :class="['shop-status', `is-${statusClass}`]">
+          {{ statusLabel }}
         </span>
       </header>
 
       <p class="shop-plus-copy">
-        <span>Plus Theseus 的权益仍在规划中</span>
-        <span>现在提交申请，管理员审核通过后会记录开通状态</span>
-        <span>后续权益上线时直接生效</span>
+        <span>Plus 权益：面经板块完整权限</span>
+        <span>Plus 专属标识</span>
+        <span>有效期结束后自动失效 可以重新申请</span>
       </p>
 
       <div v-if="loading" class="empty-state"><p>正在加载</p></div>
@@ -115,9 +129,26 @@ onMounted(() => {
           </dl>
         </div>
 
+        <div v-if="membership" class="shop-application shop-membership">
+          <dl>
+            <div>
+              <dt>开通时间</dt>
+              <dd>{{ formatDateTime(membership.started_at) }}</dd>
+            </div>
+            <div>
+              <dt>有效期至</dt>
+              <dd>{{ formatDateTime(membership.expires_at) }}</dd>
+            </div>
+            <div>
+              <dt>剩余</dt>
+              <dd>{{ isExpired ? '已过期' : `${membership.days_left} 天` }}</dd>
+            </div>
+          </dl>
+        </div>
+
         <form v-if="canApply" class="shop-apply-form" @submit.prevent="submit">
           <label for="plus-reason">
-            {{ application?.status === 'rejected' ? '重新申请' : '开通申请' }}
+            {{ isExpired ? '重新开通' : application?.status === 'rejected' ? '重新申请' : '开通申请' }}
           </label>
           <textarea
             id="plus-reason"
@@ -133,7 +164,10 @@ onMounted(() => {
             </button>
           </div>
         </form>
-        <p v-else-if="state?.is_plus" class="shop-plus-copy">你已开通 Plus Theseus</p>
+        <p v-else-if="state?.is_plus" class="shop-plus-copy">
+          <span>你已开通 Plus Theseus</span>
+          <span v-if="membership">有效期至 {{ formatDateTime(membership.expires_at) }}</span>
+        </p>
         <p v-else class="shop-plus-copy">申请已提交，请等待管理员审核</p>
       </template>
     </section>

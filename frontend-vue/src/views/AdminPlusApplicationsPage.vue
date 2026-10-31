@@ -29,6 +29,8 @@ const loading = ref(true)
 const error = ref('')
 const resolvingId = ref<number | null>(null)
 const notes = reactive<Record<number, string>>({})
+const days = reactive<Record<number, number>>({})
+const DEFAULT_DAYS = 30
 
 const pendingCount = computed(() => items.value.filter((item) => item.status === 'pending').length)
 
@@ -37,6 +39,9 @@ const load = async (): Promise<void> => {
   error.value = ''
   try {
     items.value = (await fetchAdminPlusApplications(status.value || undefined)).items
+    for (const item of items.value) {
+      if (item.status === 'pending' && days[item.id] === undefined) days[item.id] = DEFAULT_DAYS
+    }
   } catch (exception: unknown) {
     error.value = toErrorMessage(exception)
   } finally {
@@ -55,10 +60,20 @@ const resolve = async (
   decision: 'approved' | 'rejected',
 ): Promise<void> => {
   if (resolvingId.value !== null) return
+  const openDays = days[item.id] ?? DEFAULT_DAYS
+  if (decision === 'approved' && (!Number.isInteger(openDays) || openDays < 1 || openDays > 3650)) {
+    error.value = '开通天数需在 1 到 3650 天之间'
+    return
+  }
   resolvingId.value = item.id
   error.value = ''
   try {
-    const result = await resolveAdminPlusApplication(item.id, decision, notes[item.id] ?? '')
+    const result = await resolveAdminPlusApplication(
+      item.id,
+      decision,
+      notes[item.id] ?? '',
+      decision === 'approved' ? openDays : undefined,
+    )
     toast.success(result.message)
     delete notes[item.id]
     await load()
@@ -133,6 +148,9 @@ onMounted(() => {
                 <div v-if="item.review_note" class="teaching-subtle">
                   说明：{{ item.review_note }}
                 </div>
+                <div v-if="item.membership_expires_at" class="teaching-subtle">
+                  有效期至 {{ formatDateTime(item.membership_expires_at) }}
+                </div>
               </td>
               <td>
                 <div v-if="item.status === 'pending'" class="contest-admin-actions">
@@ -141,6 +159,15 @@ onMounted(() => {
                     type="text"
                     maxlength="500"
                     placeholder="处理说明（可选）"
+                  />
+                  <input
+                    v-model.number="days[item.id]"
+                    type="number"
+                    min="1"
+                    max="3650"
+                    class="plus-days-input"
+                    placeholder="天数"
+                    aria-label="开通天数"
                   />
                   <button
                     class="primary-button"

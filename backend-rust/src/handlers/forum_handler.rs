@@ -30,6 +30,15 @@ pub async fn list_posts(
     Ok(ok(data))
 }
 
+pub async fn interview_facets(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let viewer = optional_authenticate(&state.pool, &headers, &state.config).await;
+    let data = forum_service::interview_facets(&state.pool, &state.config, viewer.as_ref()).await?;
+    Ok(ok(data))
+}
+
 pub async fn get_post(
     State(state): State<AppState>,
     headers: HeaderMap,

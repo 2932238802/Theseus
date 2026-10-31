@@ -26,6 +26,8 @@ const postId = computed(() => {
   return Number.isInteger(value) && value > 0 ? value : 0
 })
 
+const locked = computed(() => forumStore.postError.includes('Plus'))
+
 const commentBody = ref('')
 const commentAnonymous = ref(false)
 const commentError = ref('')
@@ -361,6 +363,11 @@ onMounted(() => {
   <NavBar />
   <main class="forum-page forum-detail-page page-shell">
     <p v-if="forumStore.postLoading" class="run-note">正在加载帖子</p>
+    <section v-else-if="locked" class="forum-locked">
+      <h1>面经仅对 Plus Theseus 开放</h1>
+      <p>开通后可以查看面经 并在评论区留下答案</p>
+      <RouterLink class="primary-button" to="/shop">去开通</RouterLink>
+    </section>
     <section v-else-if="!postId || forumStore.postError" class="forum-not-found">
       <h1>帖子不存在或已被删除</h1>
       <p>{{ forumStore.postError || '请检查链接是否正确' }}</p>
@@ -376,13 +383,23 @@ onMounted(() => {
         <header class="forum-detail-heading">
           <div class="forum-post-card-topline">
             <span v-if="post.isPinned" class="forum-pin-badge">置顶</span>
-            <span v-for="tag in post.tags" :key="tag" class="forum-tag">{{ tagLabel(tag) }}</span>
+            <span v-if="post.board === 'interview'" class="forum-board-badge">面经</span>
+            <span v-if="post.company" class="forum-tag forum-tag-structured">{{ post.company }}</span>
+            <span v-if="post.role" class="forum-tag forum-tag-structured">{{ post.role }}</span>
+            <span
+              v-for="tag in post.tags.filter((tag) => tag !== post?.company)"
+              :key="tag"
+              class="forum-tag"
+            >{{ tagLabel(tag) }}</span>
           </div>
           <h1>{{ post.title }}</h1>
           <div class="forum-post-card-meta">
             <span :class="{ 'forum-author-anonymous': post.author.isAnonymous }">{{ post.author.displayName }}</span>
+            <span v-if="post.author.isPlus" class="forum-plus-badge">Plus</span>
             <span aria-hidden="true">·</span>
-            <time :datetime="post.createdAt">{{ formatForumTime(post.createdAt) }}</time>
+            <time v-if="post.interviewDate" :datetime="post.interviewDate">面试 {{ post.interviewDate }}</time>
+            <time v-else :datetime="post.createdAt">{{ formatForumTime(post.createdAt) }}</time>
+            <span>· 浏览 {{ post.viewCount }}</span>
             <span v-if="post.editedAt">· 已编辑 {{ formatForumDateTime(post.editedAt) }}</span>
           </div>
         </header>
@@ -425,6 +442,7 @@ onMounted(() => {
       <section class="forum-comments" aria-label="评论">
         <div class="forum-comments-heading">
           <h2>评论 <span>{{ post.commentCount }}</span></h2>
+          <p v-if="post.board === 'interview'" class="run-note">答案可以直接写在评论区</p>
         </div>
 
         <form v-if="authStore.isAuthenticated && post.status === 'published'" class="forum-comment-form" @submit.prevent="submitComment">
@@ -451,6 +469,7 @@ onMounted(() => {
             <div class="forum-comment-main">
               <header class="forum-comment-header">
                 <span :class="{ 'forum-author-anonymous': comment.author.isAnonymous }">{{ comment.author.displayName }}</span>
+                <span v-if="comment.author.isPlus" class="forum-plus-badge">Plus</span>
                 <span v-if="comment.isTombstone" class="forum-tombstone-label">该评论已隐藏</span>
                 <time :datetime="comment.createdAt">{{ formatForumTime(comment.createdAt) }}</time>
                 <span v-if="comment.editedAt" class="run-note">已编辑</span>
@@ -503,6 +522,7 @@ onMounted(() => {
                 <article v-for="reply in comment.replies" :id="`comment-${reply.id}`" :key="reply.id" class="forum-reply">
                   <header class="forum-comment-header">
                     <span :class="{ 'forum-author-anonymous': reply.author.isAnonymous }">{{ reply.author.displayName }}</span>
+                    <span v-if="reply.author.isPlus" class="forum-plus-badge">Plus</span>
                     <span v-if="reply.replyTo" class="forum-reply-mention">{{ replyDisplay(reply, comment.id) }}</span>
                     <time :datetime="reply.createdAt">{{ formatForumTime(reply.createdAt) }}</time>
                   </header>

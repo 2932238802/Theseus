@@ -23,6 +23,7 @@ import type {
   AdminMuteResult,
   ForumComment,
   ForumCommentsResult,
+  ForumBoard,
   ForumMutation,
   ForumPostDetail,
   ForumPostListQuery,
@@ -36,11 +37,13 @@ import type {
   ForumReportResult,
   ForumRepliesResult,
   ForumCommentPayload,
+  ForumInterviewFacets,
   ForumStatus,
 } from '../types/forum'
 
 const status = (value: unknown): ForumStatus =>
   value === 'hidden' || value === 'deleted' ? value : 'published'
+const board = (value: unknown): ForumBoard => (value === 'interview' ? 'interview' : 'general')
 const hiddenReason = (value: unknown): 'moderation' | 'report_threshold' | null =>
   value === 'moderation' || value === 'report_threshold' ? value : null
 
@@ -50,6 +53,7 @@ const mapAuthor = (value: unknown) => {
     displayName: text(item.display_name, '匿名同学'),
     isAnonymous: bool(item.is_anonymous),
     isSelf: bool(item.is_self),
+    isPlus: bool(item.is_plus),
   }
 }
 
@@ -67,8 +71,13 @@ const mapPostSummary = (value: unknown): ForumPostSummary => {
   const item = record(value)
   return {
     id: number(item.id),
+    board: board(item.board),
     title: text(item.title),
     excerpt: text(item.excerpt),
+    interviewDate: nullableText(item.interview_date),
+    company: nullableText(item.company),
+    role: nullableText(item.role),
+    viewCount: number(item.view_count),
     tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === 'string') : [],
     author: mapAuthor(item.author),
     problem: mapProblem(item.problem),
@@ -148,8 +157,13 @@ const mapAdminPost = (value: unknown): AdminForumPostSummary => {
   const item = record(value)
   return {
     id: number(item.id),
+    board: board(item.board),
     title: text(item.title),
     excerpt: text(item.excerpt),
+    interviewDate: nullableText(item.interview_date),
+    company: nullableText(item.company),
+    role: nullableText(item.role),
+    viewCount: number(item.view_count),
     tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === 'string') : [],
     author: mapAdminAuthor(item.author),
     problem: mapProblem(item.problem),
@@ -219,7 +233,10 @@ const mapReport = (value: unknown): AdminReport => {
 
 const listParams = (query: ForumPostListQuery): Record<string, string | number | boolean> => {
   const params: Record<string, string | number | boolean> = { page: query.page, size: query.size }
+  if (query.board) params.board = query.board
   if (query.tag) params.tag = query.tag
+  if (query.company) params.company = query.company
+  if (query.role) params.role = query.role
   if (query.q) params.q = query.q
   if (query.sort) params.sort = query.sort
   if (query.mine) params.mine = true
@@ -237,6 +254,14 @@ export const fetchForumPosts = async (query: ForumPostListQuery): Promise<ForumP
     size: number(data.size, query.size),
     posts,
   }
+}
+
+export const fetchForumInterviewFacets = async (): Promise<ForumInterviewFacets> => {
+  const data = await unwrap(http.get<ApiEnvelope<unknown>>('/forum/interview/facets'))
+  const item = record(data)
+  const list = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
+  return { companies: list(item.companies), roles: list(item.roles) }
 }
 
 export const fetchForumPost = async (id: number): Promise<ForumPostDetail> => {
@@ -378,6 +403,7 @@ export const fetchAdminForumPosts = async (
 ): Promise<AdminForumPostListResult> => {
   const params: Record<string, string | number> = { page: query.page, size: query.size }
   if (query.status) params.status = query.status
+  if (query.board) params.board = query.board
   if (query.q) params.q = query.q
   if (query.author) params.author = query.author
   const data = await unwrap(

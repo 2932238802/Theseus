@@ -69,7 +69,11 @@ pub async fn admin_resolve(
                 input.status.trim()
             ),
         )
-        .after(json!({ "status": response.status, "note": input.note })),
+        .after(json!({
+            "status": response.status,
+            "note": input.note,
+            "days": input.days,
+        })),
     )
     .await;
     Ok(ok(response))

@@ -6,6 +6,7 @@ import NavSearch from './NavSearch.vue'
 import { fetchCurrentUser } from '../api/auth'
 import { toErrorMessage } from '../api/client'
 import { uploadAvatar } from '../api/profile'
+import { fetchMyPlusState } from '../api/shop'
 import { useAuthStore } from '../store/auth'
 import { useClassStore } from '../store/classes'
 import { isDarkTheme, toggleTheme as applyThemeToggle } from '../utils/theme'
@@ -19,6 +20,7 @@ const isDark = ref(isDarkTheme())
 const avatarInput = ref<HTMLInputElement | null>(null)
 const avatarBusy = ref(false)
 const avatarError = ref('')
+const isPlus = ref(false)
 
 const canBrowseAssignments = computed(() => authStore.isStudent || authStore.isTeacher)
 const classListReady = computed(
@@ -62,9 +64,7 @@ const isLearnArea = computed(
   () =>
     route.path === '/contests' ||
     route.path.startsWith('/contests/') ||
-    route.path === '/knowledge' ||
-    route.path.startsWith('/knowledge/') ||
-    route.path === '/personal/knowledge',
+    (route.path === '/forum' && route.query.board === 'interview'),
 )
 const isShopArea = computed(
   () => route.path === '/shop' || route.path.startsWith('/shop/'),
@@ -75,8 +75,7 @@ const isProfileArea = computed(
       route.path.startsWith('/profile/') ||
       route.path === '/personal' ||
       route.path.startsWith('/personal/')) &&
-    route.path !== '/profile/assignments' &&
-    route.path !== '/personal/knowledge',
+    route.path !== '/profile/assignments',
 )
 
 const closeManage = (): void => {
@@ -134,10 +133,23 @@ watch(
   },
 )
 
+const loadPlusState = async (): Promise<void> => {
+  try {
+    isPlus.value = (await fetchMyPlusState()).is_plus
+  } catch {
+    isPlus.value = false
+  }
+}
+
 watch(
   () => authStore.user?.id,
   (id) => {
-    if (id && canBrowseAssignments.value) void classStore.ensureLoadedFor(id)
+    if (id && canBrowseAssignments.value) {
+      void classStore.ensureLoadedFor(id)
+      void loadPlusState()
+    } else {
+      isPlus.value = false
+    }
   },
   { immediate: true },
 )
@@ -228,17 +240,8 @@ onBeforeUnmount(() => {
           </RouterLink>
           <RouterLink
             role="menuitem"
-            to="/knowledge/408"
-            title="Plus Theseus 专享 · 正文需开通"
-            @click="closeLearn"
-          >
-            408
-            <span class="nav-vip-badge">VIP</span>
-          </RouterLink>
-          <RouterLink
-            role="menuitem"
-            to="/knowledge/interview"
-            title="Plus Theseus 专享 · 正文需开通"
+            to="/forum?board=interview"
+            title="Plus Theseus 专享 · 开通后可查看与评论"
             @click="closeLearn"
           >
             面经
@@ -329,14 +332,6 @@ onBeforeUnmount(() => {
           >
             个人出题
           </RouterLink>
-          <RouterLink
-            v-if="canBrowseAssignments"
-            role="menuitem"
-            to="/personal/knowledge"
-            @click="closeProfileMenu"
-          >
-            我的投稿
-          </RouterLink>
           <RouterLink role="menuitem" to="/profile/favorites" @click="closeProfileMenu">
             个人收藏
           </RouterLink>
@@ -398,9 +393,6 @@ onBeforeUnmount(() => {
           <RouterLink role="menuitem" to="/admin/problems" @click="closeManage">题目审核</RouterLink>
           <RouterLink role="menuitem" to="/admin/events" @click="closeManage">赛事管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/forum" @click="closeManage">论坛管理</RouterLink>
-          <RouterLink role="menuitem" to="/admin/knowledge" @click="closeManage">
-            408 与面经
-          </RouterLink>
           <RouterLink role="menuitem" to="/admin/users" @click="closeManage">用户管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/notifications" @click="closeManage">通知管理</RouterLink>
           <RouterLink role="menuitem" to="/admin/audit" @click="closeManage">审计日志</RouterLink>
@@ -434,7 +426,10 @@ onBeforeUnmount(() => {
           </span>
         </button>
         <div v-if="isMenuOpen" class="user-menu">
-          <strong>{{ authStore.user?.username }}</strong>
+          <strong>
+            {{ authStore.user?.username }}
+            <span v-if="isPlus" class="nav-plus-badge">Plus</span>
+          </strong>
           <span>{{ authStore.user?.email }}</span>
           <hr />
           <RouterLink v-if="canBrowseAssignments" to="/personal/problems" @click="isMenuOpen = false">个人出题</RouterLink>

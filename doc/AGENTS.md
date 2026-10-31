@@ -6,7 +6,7 @@
 
 | 文档 | 用途 | 当前状态 |
 |---|---|---|
-| `总体设计.md` | 产品定位、架构、权限、数据模型、接口、路线与总体进度 | 进度基线：2026-10-31，`f075cd8` + 防作弊 M2 + 教学数据导入导出 + 个人出题与导航调整 + 审计中心 + 竞赛收尾 + 容器化部署 + 提交记录 + 商店与 Plus 申请 + 学习专区 |
+| `总体设计.md` | 产品定位、架构、权限、数据模型、接口、路线与总体进度 | 进度基线：2026-10-31，`f075cd8` + 防作弊 M2 + 教学数据导入导出 + 个人出题与导航调整 + 审计中心 + 竞赛收尾 + 容器化部署 + 提交记录 + 商店与 Plus 会员有效期 + 面经板块与结构化筛选 |
 | `backend_api.md` | 后端接口契约与错误码 | 随接口变更维护 |
 | `2610259_班级与作业设计方案.md` | 三角色、组织、作业、提交、批改详细设计 | 核心闭环已实现 |
 | `2610261_班级邀请与通知完善设计方案.md` | 组织邀请、邀请通知与通知中心 | 已实现 |
@@ -25,8 +25,9 @@
 | `2610303_审计中心设计方案.md` | 审计日志数据模型、写入范围、管理员查询/筛选/导出与权限边界 | 已实现（v1） |
 | `2610304_竞赛收尾设计方案.md` | 赛季与软重置、年级范围、赛事申诉与成绩导出 | 已实现（v1） |
 | `2610311_提交记录与代码回看.md` | 题目页提交记录分页、详情回看、载入编辑器与逐行对比 | 已实现（前端） |
-| `2610312_商店与Plus申请设计方案.md` | 顶部商店入口、Plus Theseus 申请、管理员审核与审计 | 已实现（v1，权益待定义） |
-| `2610313_学习专区408与面经设计方案.md` | 「学习」导航、408 与面经投稿、Plus 阅读权限与管理员审核 | 已实现（v1） |
+| `2610312_商店与Plus申请设计方案.md` | 顶部商店入口、Plus Theseus 申请、会员有效期、权益、管理员审核与审计 | 已实现（v2） |
+| `2610313_面经板块设计方案.md` | 面经并入论坛板块、Plus 访问权限、评论区放答案、公司/岗位筛选与阅读数 | 已实现（v3，独立学习专区已下线） |
+| `interview/` | 面经归档、整理规范与索引，按公司/岗位/轮次存放 Markdown；`import_interview.sh` 可批量导入面经板块 | 按面试记录持续补充 |
 | `2610305_服务器部署方案.md` | Docker Compose 单机部署、健康检查、TLS 反代、备份恢复与运维 | 构建与脚本已实现；实际上线需在服务器执行 |
 | `2610241_运行代码功能设计方案.md` | 运行代码、沙箱与多语言执行 | 已实现 |
 | `2610260_快捷键方案.md` | OJ 快捷键与自定义配置 | 已实现 |
@@ -61,8 +62,9 @@
 - 容器化部署：后端多阶段镜像内置 API 与两个 Worker，前端 Node 构建 + Nginx 反代 `/api` 与 `/uploads`；`deploy/compose.yaml` 编排 PostgreSQL、Redis、API、判题/防作弊 Worker 与前端；新增 `/healthz`、`/readyz` 健康检查；提供备份、恢复、管理员提升与 `update.sh` 增量更新脚本，以及 TLS 反代与运维手册（`2610305`）。
 - 冒烟脚本：`smoke_teaching.sh`、`smoke_submission.sh`、`smoke_forum.sh`、`smoke_problem_review.sh`、`smoke_auth_email.sh`、`smoke_contest_events.sh`、`smoke_notifications.sh`、`smoke_realtime.sh`、`smoke_anticheat.sh`、`smoke_import_export.sh`、`smoke_audit.sh`。
 - 题目页提交记录：新增「提交记录」Tab，按题分页查看本人提交，详情展示代码、编译输出与失败用例，可载入编辑器或与当前代码逐行对比；复用 `GET /api/submissions` 与 `GET /api/submissions/{id}`，新增前端行级 diff（`2610311`）。
-- 商店与 Plus 申请：学生与教师顶部新增「商店」下拉菜单（管理员不显示），`/shop` 展示「升级为 Plus Theseus」；新增 `plus_applications` 与 `GET /api/shop/plus`、`POST /api/shop/plus/apply`、`GET /api/admin/plus-applications`、`POST /api/admin/plus-applications/{id}/resolve`；管理员审核后写站内信与审计日志，新增 `/admin/plus-applications` 页面。Plus 权益与有效期尚未定义（`2610312`）。
-- 学习专区：顶部原「赛事」菜单改为「学习」，包含竞赛、排行榜、408、面经；新增 `knowledge_articles` 与 `/api/knowledge*`、`/api/admin/knowledge*`；Plus 用户可投稿，管理员审核通过后公开，正文仅 Plus 用户与管理员可读；非 Plus 用户可浏览列表与摘要；新增 `/knowledge/408`、`/knowledge/interview`、`/knowledge/:id`、`/personal/knowledge` 与 `/admin/knowledge` 页面（`2610313`）。
+- 商店与 Plus 申请：学生与教师顶部新增「商店」下拉菜单（管理员不显示），`/shop` 展示「升级为 Plus Theseus」；新增 `plus_applications`、`plus_memberships` 与 `GET /api/shop/plus`、`POST /api/shop/plus/apply`、`GET /api/admin/plus-applications`、`POST /api/admin/plus-applications/{id}/resolve`；管理员审核时填写 1–3650 天，通过后写入或顺延会员有效期，到期自动失效并可重新申请；管理员审核后写站内信与审计日志，新增 `/admin/plus-applications` 页面；Plus 权益为面经板块权限与导航、论坛作者旁的 Plus 标识（`2610312`）。
+- 面经板块：面经并入论坛，`forum_posts` 新增 `board`（`general` / `interview`）与 `interview_date`；`0032` 把历史已通过面经复制为面经帖子，并按标题去重；面经列表、详情、评论、点赞、收藏、举报要求 Plus、管理员或作者，非 Plus 返回 403；发面经也只有 Plus 与管理员可选；导航「学习 → 面经」指向 `/forum?board=interview`；旧 `/api/knowledge*`、`/knowledge/*`、`/personal/knowledge`、`/admin/knowledge` 已删除或重定向到论坛；`doc/interview` 可通过 `import_interview.sh --author` 批量导入面经板块（`2610313`）。
+- 面经结构化收尾：`0034` 为 `forum_posts` 新增 `company`、`role` 与 `view_count`；列表支持公司与岗位精确筛选，新增 `GET /api/forum/interview/facets` 返回可选公司与岗位；详情页打开后阅读数 +1；发帖/编辑与导入脚本同步写入公司与岗位；前端面经列表新增公司/岗位下拉筛选，卡片与详情显示结构化标签与阅读数（`2610313`）。
 
 **部分完成**
 
@@ -70,7 +72,7 @@
 - 论坛：发帖、评论、举报、管理端已实现；更完整的治理统计仍在后续阶段。
 - 通知：站内信、管理员发送、通知邮件偏好与按类别投递已完成；退订链接、邮件模板、站内信渠道开关尚未实现。
 - 竞赛：赛事闭环、排位榜、赛季与软重置、年级范围、赛事申诉与成绩导出已实现；赛季奖励与定时切换尚未实现。
-- 商店：入口、Plus 申请与管理员审核已实现；Plus 权益、有效期与续费尚未定义。
+- 商店：入口、Plus 申请、管理员审核、会员有效期与基础权益已实现；到期提醒、付费开通与续费尚未实现。
 - 部署：Docker Compose 单机部署、健康检查、Nginx 反代、备份/恢复脚本与 `update.sh` 增量更新已完成；Prometheus 指标与告警、CI/CD、多实例与 TLS 自动化尚未实现。
 - 防作弊：摄像头/屏幕授权、切屏与粘贴事件、粘贴内容初筛、管理员负载均衡复核、信誉分处罚与恢复，以及作业代码相似度扫描、教师复核、可选判零、学生申诉与成绩恢复已实现；行为信号并入作业报告、跨作业/跨语言比对、报告导出与阈值校准尚未实现。
 

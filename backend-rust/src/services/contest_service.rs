@@ -4079,7 +4079,11 @@ pub async fn sync_event_forum(
         &CreatePostRequest {
             title,
             body_md: body,
-            tags: vec!["赛事".to_owned()],
+            tags: vec!["announcement".to_owned()],
+            board: None,
+            interview_date: None,
+            company: None,
+            role: None,
             problem_id: None,
             is_anonymous: false,
         },

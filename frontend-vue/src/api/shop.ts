@@ -26,10 +26,11 @@ export const resolveAdminPlusApplication = async (
   id: number,
   status: 'approved' | 'rejected',
   note?: string,
+  days?: number,
 ): Promise<PlusApplicationResolveResult> =>
   unwrap(
     http.post<ApiEnvelope<PlusApplicationResolveResult>>(
       `/admin/plus-applications/${id}/resolve`,
-      { status, note: note || undefined },
+      { status, note: note || undefined, days: status === 'approved' ? days : undefined },
     ),
   )

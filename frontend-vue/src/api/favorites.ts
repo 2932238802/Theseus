@@ -46,6 +46,7 @@ const mapAuthor = (value: unknown) => {
     displayName: text(item.display_name, '匿名同学'),
     isAnonymous: bool(item.is_anonymous),
     isSelf: bool(item.is_self),
+    isPlus: bool(item.is_plus),
   }
 }
 

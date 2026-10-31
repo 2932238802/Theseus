@@ -82,18 +82,10 @@ cargo run
 | GET | `/api/profile/favorites/comments` | 用户 | 当前用户评论收藏列表 |
 | GET | `/api/profile/notification-preferences` | 用户 | 通知邮件偏好与邮箱验证状态 |
 | PUT | `/api/profile/notification-preferences` | 用户 | 批量更新通知邮件偏好 |
-| GET | `/api/shop/plus` | 用户 | 当前用户 Plus Theseus 开通状态与最近一条申请 |
+| GET | `/api/shop/plus` | 用户 | 当前 Plus 状态、当前会员期与最近一条申请 |
 | POST | `/api/shop/plus/apply` | 学生 / 教师 | 提交 Plus 开通申请 `{reason}`，需已验证邮箱 |
 | GET | `/api/admin/plus-applications` | 管理员 | Plus 申请分页，支持 `status`、`page`、`size` |
-| POST | `/api/admin/plus-applications/{id}/resolve` | 管理员 | 通过或驳回 Plus 申请 `{status:"approved\|rejected",note}` |
-| GET | `/api/knowledge` | 用户 | 已通过的 408/面经列表，支持 `category`、`tag`、`q`、`page`、`size` |
-| GET | `/api/knowledge/{id}` | 用户 | 文章详情；非 Plus 用户 `content` 为空且 `locked=true` |
-| POST | `/api/knowledge` | Plus 用户 | 投稿 `{category,title,summary?,content,tags}`，需已验证邮箱 |
-| PUT | `/api/knowledge/{id}` | 作者 | 编辑待审核或被退回的投稿，保存后重新进入待审核 |
-| DELETE | `/api/knowledge/{id}` | 作者 / 管理员 | 删除投稿；作者只能删除未通过文章 |
-| GET | `/api/knowledge/mine` | 用户 | 本人投稿，支持 `category`、`status`、`page`、`size` |
-| GET | `/api/admin/knowledge` | 管理员 | 全部投稿，支持 `category`、`status`、`q`、`page`、`size` |
-| POST | `/api/admin/knowledge/{id}/resolve` | 管理员 | 通过、退回或下架 `{status:"approved\|rejected",note}` |
+| POST | `/api/admin/plus-applications/{id}/resolve` | 管理员 | 通过或驳回 `{status:"approved\|rejected",note,days}` |
 | GET | `/api/contests/featured` | 用户 | 竞赛首页：排位赛配置、规则分组与限时赛事列表 |
 | GET | `/api/contests/events` | 用户 | 赛事列表，支持 `type`、`status`、`following`、`page`、`page_size` |
 | GET | `/api/contests/events/{id}` | 用户 | 赛事详情（含说明、规则和报名链接） |
@@ -316,7 +308,7 @@ Authorization: Bearer <teacher>
 - `DELETE /api/profile` 请求 `{"password":"...","username":"..."}`；教师有未归档组织或最后一个管理员时返回 409。
 - `POST /api/profile/avatar` 使用 `multipart/form-data`，字段 `file`，JPG/PNG/WebP ≤2MB。
 - `GET /api/profile/analytics?days=30` 返回概览、趋势、难度和标签统计。
-- `GET /api/forum/favorites?page=&size=` 返回当前用户收藏的帖子。
+- `GET /api/forum/favorites?page=&size=` 返回当前用户收藏的帖子；面经收藏只对 Plus 用户、管理员与面经作者返回。
 - `GET /api/profile/favorites/problems?page=&size=` 返回收藏的已审核题目 `{total,page,size,favorites:[{problem_id,title,difficulty,acceptance_rate,favorited_at}]}`
 - `GET /api/profile/favorites/comments?page=&size=` 返回收藏的评论 `{total,page,size,favorites:[{comment_id,post_id,post_title,parent_id,body_md,author,created_at,favorited_at}]}` 作者字段沿用公开作者结构，匿名评论不会泄露真实用户名
 - 收藏与取消收藏接口均返回 `{favorited}`，重复调用幂等；题目详情和列表的 `favorited` 字段、论坛评论和回复的 `favorited` 字段只对当前登录用户生效
@@ -326,25 +318,48 @@ Authorization: Bearer <teacher>
 
 ## 商店与 Plus Theseus 接口
 
-完整设计见 `doc/2610312_商店与Plus申请设计方案.md`。本期只记录申请与审核状态，不定义权益、有效期或续费。
+完整设计见 `doc/2610312_商店与Plus申请设计方案.md`。Plus 权益为面经板块权限与专属标识，有效期由管理员审核时填写。
 
-- `GET /api/shop/plus` 返回 `{is_plus, application?}`。`is_plus` 表示是否存在已通过的申请；`application` 是最近一条申请，含 `id`、`user_id`、`username`、`reason`、`status`、`review_note`、`reviewed_by`、`reviewed_at`、`created_at`。
-- `POST /api/shop/plus/apply` 请求 `{"reason":"..."}`，说明去掉首尾空白后 1–500 字；管理员调用返回 403；已有待审核或已通过申请时返回 409，驳回后可重新提交。
+- `GET /api/shop/plus` 返回 `{is_plus, membership?, application?}`。`is_plus` 表示 `plus_memberships.expires_at` 是否晚于当前时间；`membership` 含 `started_at`、`expires_at`、`days_left`；`application` 是最近一条申请，含 `id`、`user_id`、`username`、`reason`、`status`、`review_note`、`reviewed_by`、`reviewed_at`、`membership_expires_at`、`created_at`。
+- `POST /api/shop/plus/apply` 请求 `{"reason":"..."}`，说明去掉首尾空白后 1–500 字；管理员调用返回 403；会员有效或已有待审核申请时返回 409；已到期可以重新提交。
 - `GET /api/admin/plus-applications?status=pending&page=1&size=20` 返回 `{total,page,size,items[]}`，`status` 取 `pending|approved|rejected`，`size` 上限 100。
-- `POST /api/admin/plus-applications/{id}/resolve` 请求 `{"status":"approved|rejected","note":"..."}`，说明 ≤500 字；只允许处理 `pending`。审核成功后向申请人写入 `plus_application` 站内信（邮件类别 `account`），并记录审计动作 `plus.application_resolve`。
+- `POST /api/admin/plus-applications/{id}/resolve` 请求 `{"status":"approved|rejected","note":"...","days":30}`，说明 ≤500 字；只允许处理 `pending`。`approved` 时 `days` 必填且为 1–3650，写入或顺延 `plus_memberships`；`rejected` 忽略 `days`。审核成功后向申请人写入 `plus_application` 站内信（邮件类别 `account`，通过时包含到期日期），并记录审计动作 `plus.application_resolve`。
 
-## 学习专区：408 与面经接口
+## 面经板块（论坛）
 
-完整设计见 `doc/2610313_学习专区408与面经设计方案.md`。`category` 取 `408` 或 `interview`，`status` 取 `pending|approved|rejected`。
+完整设计见 `doc/2610313_面经板块设计方案.md`。面经是论坛的一个板块，复用论坛的列表、详情、评论、点赞、收藏、举报与审核接口，通过 `board` 区分：
 
-- `GET /api/knowledge?category=408&tag=数据结构&q=搜索&page=1&size=12` 只返回 `approved` 文章，按创建时间倒序；响应包含 `{total,page,size,items[],is_plus,can_submit}`，列表项不包含正文。
-- `GET /api/knowledge/{id}` 返回文章详情。非 Plus 用户查看已通过文章时 `content` 为 `null`、`locked=true`；待审核或被退回文章只有作者本人与管理员可查看，其他人返回 404。
-- `POST /api/knowledge` 请求 `{"category":"408","title":"...","summary":"...","content":"...","tags":["..."]}`，需 Plus 身份与已验证邮箱。标题 ≤120 字，摘要 ≤300 字，正文 ≤20000 字，标签 ≤8 个且每个 ≤20 字；摘要留空时自动截取正文开头。投稿落库为 `pending`。
-- `PUT /api/knowledge/{id}` 仅作者本人可调用；已通过文章返回 409，需要管理员先退回或下架。编辑成功后状态回到 `pending` 并清空审核信息。
-- `DELETE /api/knowledge/{id}` 允许作者删除未通过文章，管理员可删除任意文章。
-- `GET /api/knowledge/mine?status=pending&category=408` 返回本人全部状态投稿。
-- `GET /api/admin/knowledge?status=pending&category=408&q=关键词` 返回全部投稿，`size` 上限 100，待审核优先排序。
-- `POST /api/admin/knowledge/{id}/resolve` 请求 `{"status":"approved|rejected","note":"..."}`，说明 ≤500 字；已通过文章再次处理为 `rejected` 即下架。审核成功后向作者写入 `knowledge_review` 站内信（邮件类别 `account`），并记录审计动作 `knowledge.resolve`，审计不保存正文。
+- 综合板块 `board=general`（默认），标签只接受 `general` / `help` / `solution` / `discussion` / `announcement`，最多 3 个
+- 面经板块 `board=interview`，标签为自由文本，1–8 个，每个 ≤20 字；新增 `interview_date`（`YYYY-MM`，可空）、`company`、`role`（各 ≤40 字，可空）与 `view_count`（阅读数）
+
+权限：
+
+- `GET /api/forum/posts?board=interview`、`GET /api/forum/posts/{id}`、评论列表与详情、点赞、收藏、举报，要求 Plus、管理员或面经作者；其他用户返回 403，错误文案「需要开通 Plus Theseus 才能查看面经」
+- `GET /api/forum/posts?board=interview&company=百度&role=后端` 支持公司与岗位精确筛选
+- `GET /api/forum/interview/facets` 返回 `{companies,roles}`，取自已发布面经；要求 Plus 或管理员
+- `POST /api/forum/posts` 带 `board:"interview"` 时要求 Plus 或管理员
+- 管理员接口不受 Plus 限制，`GET /api/admin/forum/posts` 支持 `board` 筛选
+
+请求示例：
+
+```json
+{
+  "board": "interview",
+  "title": "百度后端 · 二面（2026-10）",
+  "body_md": "## 面试流程\n\n## 题目\n\n...",
+  "tags": ["百度", "后端", "场景题"],
+  "interview_date": "2026-10",
+  "company": "百度",
+  "role": "后端",
+  "problem_id": null,
+  "is_anonymous": false
+}
+```
+
+- 板块创建后不可切换，`PUT /api/forum/posts/{id}` 只更新标题、正文、标签、面试时间、公司与岗位与关联题目
+- 列表与详情响应新增 `board`、`interview_date`、`company`、`role`、`view_count`
+- 详情页每次成功打开后 `view_count` +1，列表与详情返回自增后的值
+- 旧 `/api/knowledge*`、`/api/admin/knowledge*` 接口已移除；历史面经由迁移 `0032` 复制到 `forum_posts`
 
 ## 竞赛与限时赛事接口
 

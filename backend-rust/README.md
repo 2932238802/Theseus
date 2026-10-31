@@ -19,7 +19,7 @@
 - 角色变更需要清理数据：学生升教师前退出所有组织；教师降级前没有未归档的自有组织，或确认归档后降级；最后一个管理员不能降级。
 - 角色变更立即生效；认证中间件每次请求从数据库读取 `users.role`，JWT 里的角色不作为权限依据。
 
-**当前代码状态：** 已实现 `student` / `teacher` / `admin` 迁移、教师角色、组织/作业/批改接口、管理员用户管理接口、竞赛/赛事、审计、商店 Plus 申请与学习专区 408/面经接口和对应前端页面。`user` 由迁移回填为 `student`。
+**当前代码状态：** 已实现 `student` / `teacher` / `admin` 迁移、教师角色、组织/作业/批改接口、管理员用户管理接口、竞赛/赛事、审计、商店 Plus 申请与会员有效期、论坛与面经板块接口和对应前端页面。`user` 由迁移回填为 `student`。
 
 ## 运行
 
@@ -74,18 +74,13 @@ cargo run
 - `PUT /api/problems/mine/:id` 学生/教师修改被退回的题目并重新提交审核
 - `GET /api/admin/problems` 管理员分页查看题目，可按 `status`、`q` 筛选
 - `GET /api/admin/problems/:id` 管理员查看题目完整配置
-- `GET /api/shop/plus` 当前用户的 Plus Theseus 开通状态与最近一条申请
+- `GET /api/shop/plus` 当前用户的 Plus 状态、会员期与最近一条申请
 - `POST /api/shop/plus/apply` 学生/教师提交开通申请 `{reason}`，需已验证邮箱
 - `GET /api/admin/plus-applications` 管理员分页查看 Plus 申请，可按 `status` 筛选
-- `POST /api/admin/plus-applications/:id/resolve` 管理员通过或驳回申请 `{status,note}`，写站内信与审计日志
-- `GET /api/knowledge` 已通过的 408/面经列表，支持 `category`、`tag`、`q`、`page`、`size`
-- `GET /api/knowledge/:id` 文章详情；非 Plus 用户正文为空且 `locked=true`
-- `POST /api/knowledge` Plus 用户投稿 `{category,title,summary,content,tags}`，需已验证邮箱
-- `PUT /api/knowledge/:id` 作者编辑待审核或被退回的投稿，重新进入待审核
-- `DELETE /api/knowledge/:id` 作者删除未通过投稿，管理员可删除任意文章
-- `GET /api/knowledge/mine` 本人投稿，支持 `category`、`status`
-- `GET /api/admin/knowledge` 管理员查看全部投稿，支持 `category`、`status`、`q`
-- `POST /api/admin/knowledge/:id/resolve` 管理员通过、退回或下架 `{status,note}`，写站内信与审计日志
+- `POST /api/admin/plus-applications/:id/resolve` 管理员通过或驳回申请 `{status,note,days}`，通过时写入或顺延会员有效期，写站内信与审计日志
+- `GET /api/forum/posts?board=interview` 面经列表，仅 Plus 用户、管理员与作者可见，支持 `company`、`role` 精确筛选
+- `GET /api/forum/interview/facets` 面经可选公司与岗位，仅 Plus 用户与管理员可见
+- `POST /api/forum/posts` 创建帖子，`board:"interview"` 时要求 Plus 或管理员；面经支持 `interview_date`、`company`、`role` 与自由标签
 
 ### 角色相关行为
 
@@ -214,6 +209,26 @@ redis-cli XPENDING theseus:judge:submissions judge-submit-workers
 redis-cli XLEN theseus:judge:submissions:dead
 redis-cli --scan --pattern 'theseus:submit:worker:*'
 ```
+
+## 面经批量导入
+
+`scripts/import_interview.sh` 把 `doc/interview` 下的 Markdown 批量导入论坛面经板块 `forum_posts`，每个文件一个帖子，标题取一级标题并作为去重键：
+
+```bash
+./backend-rust/scripts/import_interview.sh --dry-run              # 预览解析结果
+./backend-rust/scripts/import_interview.sh --author <用户名>      # 导入并发布
+./backend-rust/scripts/import_interview.sh --author <用户名> --update  # 覆盖已存在标题
+./backend-rust/scripts/import_interview.sh --author <用户名> --update --no-answers  # 只导入题目
+```
+
+- 导入为 `board = 'interview'` 的已发布帖子，作者必填
+- `--no-answers` 只保留题目与 `**题目**` / `**题意**` 描述；面试流程、复盘、待补充与答案都不导入
+- 标签取 frontmatter 的 `tags`，自动加入公司，最多 8 个
+- `interview_date` 取 frontmatter 的 `date`，列表与详情优先显示面试时间
+- `company`、`role` 取 frontmatter 同名字段，缺省回退到目录名，各 ≤40 字
+- `--update` 会同步覆盖公司与岗位，已有面经重新导入后即可按公司/岗位筛选
+- 直接写库，跳过 API 的 Plus 权限校验
+- 只新增或更新，不删除已有帖子
 
 ## 开发种子数据
 

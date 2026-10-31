@@ -6,6 +6,7 @@ import {
   deleteForumPost,
   favoriteForumPost,
   fetchForumComments,
+  fetchForumInterviewFacets,
   fetchForumPost,
   fetchForumPosts,
   fetchForumReplies,
@@ -13,7 +14,9 @@ import {
   updateForumComment,
 } from '../api/forum'
 import type {
+  ForumBoard,
   ForumComment,
+  ForumInterviewFacets,
   ForumPostDetail,
   ForumPostListQuery,
   ForumPostSummary,
@@ -27,6 +30,7 @@ export const useForumStore = defineStore('forum', () => {
   const isLoading = ref(false)
   const error = ref('')
   const query = ref<ForumPostListQuery>({ page: 1, size: 20, sort: 'latest' })
+  const facets = ref<ForumInterviewFacets>({ companies: [], roles: [] })
 
   const currentPost = ref<ForumPostDetail | null>(null)
   const postLoading = ref(false)
@@ -79,6 +83,38 @@ export const useForumStore = defineStore('forum', () => {
 
   const setTag = (tag: string): void => {
     query.value.tag = tag
+    applyFilters()
+  }
+
+  const setBoard = (board: ForumBoard): void => {
+    if (query.value.board === board) return
+    query.value.board = board
+    query.value.tag = undefined
+    query.value.company = undefined
+    query.value.role = undefined
+    applyFilters()
+    void loadFacets()
+  }
+
+  const loadFacets = async (): Promise<void> => {
+    if (query.value.board !== 'interview') {
+      facets.value = { companies: [], roles: [] }
+      return
+    }
+    try {
+      facets.value = await fetchForumInterviewFacets()
+    } catch {
+      facets.value = { companies: [], roles: [] }
+    }
+  }
+
+  const setCompany = (company: string): void => {
+    query.value.company = company || undefined
+    applyFilters()
+  }
+
+  const setRole = (role: string): void => {
+    query.value.role = role || undefined
     applyFilters()
   }
 
@@ -239,6 +275,7 @@ export const useForumStore = defineStore('forum', () => {
     isLoading,
     error,
     query,
+    facets,
     pageCount,
     currentPost,
     postLoading,
@@ -251,7 +288,11 @@ export const useForumStore = defineStore('forum', () => {
     commentsError,
     loadPosts,
     applyFilters,
+    setBoard,
     setTag,
+    setCompany,
+    setRole,
+    loadFacets,
     setSort,
     setSearch,
     setMine,

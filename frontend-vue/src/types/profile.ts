@@ -87,7 +87,7 @@ export interface CommentFavorite {
   postTitle: string
   parentId: number | null
   bodyMd: string
-  author: { displayName: string; isAnonymous: boolean; isSelf: boolean }
+  author: { displayName: string; isAnonymous: boolean; isSelf: boolean; isPlus: boolean }
   createdAt: string
   favoritedAt: string
 }

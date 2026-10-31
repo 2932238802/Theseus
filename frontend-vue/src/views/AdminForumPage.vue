@@ -20,6 +20,7 @@ import type {
   AdminForumPostSummary,
   AdminReport,
   AdminReportTargetPreview,
+  ForumBoard,
   ForumStatus,
   ReportStatus,
 } from '../types/forum'
@@ -72,6 +73,7 @@ const posts = ref<AdminForumPostSummary[]>([])
 const contentTotal = ref(0)
 const contentPage = ref(1)
 const contentFilter = ref<ContentFilter>('all')
+const contentBoard = ref<ForumBoard | 'all'>('all')
 const contentQuery = ref('')
 const contentAuthor = ref('')
 const contentLoading = ref(false)
@@ -140,6 +142,7 @@ const loadContent = async (page = contentPage.value): Promise<void> => {
       page,
       size: PAGE_SIZE,
       status: contentFilter.value === 'all' ? undefined : contentFilter.value,
+      board: contentBoard.value === 'all' ? undefined : contentBoard.value,
       q: contentQuery.value.trim() || undefined,
       author: contentAuthor.value.trim() || undefined,
     })
@@ -172,6 +175,7 @@ const applyContentFilters = (): void => {
 
 const resetContentFilters = (): void => {
   contentFilter.value = 'all'
+  contentBoard.value = 'all'
   contentQuery.value = ''
   contentAuthor.value = ''
   void loadContent(1)
@@ -528,6 +532,14 @@ onMounted(() => {
           </select>
         </label>
         <label>
+          <span>板块</span>
+          <select v-model="contentBoard" @change="applyContentFilters">
+            <option value="all">全部板块</option>
+            <option value="general">综合</option>
+            <option value="interview">面经</option>
+          </select>
+        </label>
+        <label>
           <span>关键词</span>
           <input v-model="contentQuery" type="search" maxlength="100" placeholder="标题或正文" />
         </label>
@@ -546,6 +558,7 @@ onMounted(() => {
           <header>
             <div class="admin-content-title">
               <span :class="['forum-tag', statusClass(post.status)]">{{ FORUM_STATUS_LABELS[post.status] }}</span>
+              <span v-if="post.board === 'interview'" class="forum-board-badge">面经</span>
               <span v-if="post.isPinned" class="forum-tag">置顶</span>
               <button type="button" @click="openDetail(post.id)">#{{ post.id }} {{ post.title }}</button>
             </div>

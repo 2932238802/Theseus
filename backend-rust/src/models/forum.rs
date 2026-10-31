@@ -3,9 +3,16 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 pub const FORUM_TAGS: [&str; 5] = ["general", "help", "solution", "discussion", "announcement"];
+pub const FORUM_BOARDS: [&str; 2] = ["general", "interview"];
+pub const BOARD_GENERAL: &str = "general";
+pub const BOARD_INTERVIEW: &str = "interview";
 pub const REPORT_REASONS: [&str; 5] = ["spam", "abuse", "spoiler", "illegal", "other"];
 pub const MAX_TITLE_CHARS: usize = 120;
 pub const MAX_POST_BODY_CHARS: usize = 20_000;
+pub const MAX_INTERVIEW_TAGS: usize = 8;
+pub const MAX_INTERVIEW_TAG_CHARS: usize = 20;
+pub const MAX_INTERVIEW_DATE_CHARS: usize = 7;
+pub const MAX_INTERVIEW_META_CHARS: usize = 40;
 pub const MAX_COMMENT_BODY_CHARS: usize = 5_000;
 pub const MAX_REPORT_DETAIL_CHARS: usize = 500;
 pub const MAX_REASON_CHARS: usize = 500;
@@ -14,6 +21,10 @@ pub const MAX_EMBEDDED_REPLIES: i64 = 50;
 
 pub fn is_known_tag(value: &str) -> bool {
     FORUM_TAGS.contains(&value)
+}
+
+pub fn is_known_board(value: &str) -> bool {
+    FORUM_BOARDS.contains(&value)
 }
 
 pub fn is_known_report_reason(value: &str) -> bool {
@@ -25,12 +36,19 @@ pub struct PublicAuthor {
     pub display_name: String,
     pub is_anonymous: bool,
     pub is_self: bool,
+    pub is_plus: bool,
 }
 
 impl PublicAuthor {
     /// The only public constructor for content authors. Anonymous content must
     /// never leak the real user id or username through this type.
-    pub fn new(author_id: i32, username: &str, is_anonymous: bool, viewer_id: Option<i32>) -> Self {
+    pub fn new(
+        author_id: i32,
+        username: &str,
+        is_anonymous: bool,
+        is_plus: bool,
+        viewer_id: Option<i32>,
+    ) -> Self {
         Self {
             display_name: if is_anonymous {
                 "匿名同学".to_owned()
@@ -39,6 +57,7 @@ impl PublicAuthor {
             },
             is_anonymous,
             is_self: viewer_id == Some(author_id),
+            is_plus: !is_anonymous && is_plus,
         }
     }
 
@@ -47,6 +66,7 @@ impl PublicAuthor {
             display_name: "已隐藏".to_owned(),
             is_anonymous: false,
             is_self: false,
+            is_plus: false,
         }
     }
 }
@@ -93,7 +113,10 @@ pub struct ReplyTo {
 pub struct ForumPostListQuery {
     pub page: Option<u32>,
     pub size: Option<u32>,
+    pub board: Option<String>,
     pub tag: Option<String>,
+    pub company: Option<String>,
+    pub role: Option<String>,
     pub q: Option<String>,
     pub sort: Option<String>,
     pub mine: Option<bool>,
@@ -118,6 +141,14 @@ pub struct CreatePostRequest {
     pub body_md: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub board: Option<String>,
+    #[serde(default)]
+    pub interview_date: Option<String>,
+    #[serde(default)]
+    pub company: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
     pub problem_id: Option<i32>,
     #[serde(default)]
     pub is_anonymous: bool,
@@ -129,6 +160,12 @@ pub struct UpdatePostRequest {
     pub body_md: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub interview_date: Option<String>,
+    #[serde(default)]
+    pub company: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
     pub problem_id: Option<i32>,
 }
 
@@ -157,8 +194,13 @@ pub struct CreateReportRequest {
 #[derive(Debug, Clone, Serialize)]
 pub struct ForumPostSummary {
     pub id: i64,
+    pub board: String,
     pub title: String,
     pub excerpt: String,
+    pub interview_date: Option<String>,
+    pub company: Option<String>,
+    pub role: Option<String>,
+    pub view_count: i32,
     pub tags: Vec<String>,
     pub author: PublicAuthor,
     pub problem: Option<ProblemBrief>,
@@ -192,6 +234,12 @@ pub struct ForumPostListResponse {
     pub page: u32,
     pub size: u32,
     pub posts: Vec<ForumPostSummary>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ForumInterviewFacets {
+    pub companies: Vec<String>,
+    pub roles: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -299,6 +347,7 @@ pub struct AdminForumPostListQuery {
     pub page: Option<u32>,
     pub size: Option<u32>,
     pub status: Option<String>,
+    pub board: Option<String>,
     pub q: Option<String>,
     pub author: Option<String>,
 }
@@ -344,8 +393,13 @@ pub struct AdminActionListQuery {
 #[derive(Debug, Clone, Serialize)]
 pub struct AdminForumPostSummary {
     pub id: i64,
+    pub board: String,
     pub title: String,
     pub excerpt: String,
+    pub interview_date: Option<String>,
+    pub company: Option<String>,
+    pub role: Option<String>,
+    pub view_count: i32,
     pub tags: Vec<String>,
     pub author: AdminAuthor,
     pub is_anonymous: bool,
@@ -476,9 +530,15 @@ pub struct ForumPostRow {
     pub id: i64,
     pub author_id: i32,
     pub author_username: String,
+    pub author_is_plus: bool,
+    pub board: String,
     pub title: String,
     pub body_md: String,
     pub tags: Vec<String>,
+    pub interview_date: Option<String>,
+    pub company: Option<String>,
+    pub role: Option<String>,
+    pub view_count: i32,
     pub problem_id: Option<i32>,
     pub problem_title: Option<String>,
     pub problem_difficulty: Option<String>,
@@ -510,13 +570,19 @@ impl ForumPostRow {
         };
         ForumPostSummary {
             id: self.id,
+            board: self.board,
             title: self.title,
             excerpt,
+            interview_date: self.interview_date,
+            company: self.company,
+            role: self.role,
+            view_count: self.view_count,
             tags: self.tags,
             author: PublicAuthor::new(
                 self.author_id,
                 &self.author_username,
                 self.is_anonymous,
+                self.author_is_plus,
                 viewer_id,
             ),
             problem,
@@ -542,9 +608,14 @@ pub struct AdminForumPostRow {
     pub author_username: String,
     pub author_email: String,
     pub author_role: String,
+    pub board: String,
     pub title: String,
     pub body_md: String,
     pub tags: Vec<String>,
+    pub interview_date: Option<String>,
+    pub company: Option<String>,
+    pub role: Option<String>,
+    pub view_count: i32,
     pub problem_id: Option<i32>,
     pub problem_title: Option<String>,
     pub problem_difficulty: Option<String>,
@@ -577,8 +648,13 @@ impl AdminForumPostRow {
         };
         AdminForumPostSummary {
             id: self.id,
+            board: self.board,
             title: self.title,
             excerpt,
+            interview_date: self.interview_date,
+            company: self.company,
+            role: self.role,
+            view_count: self.view_count,
             tags: self.tags,
             author: AdminAuthor::new(
                 self.author_id,
@@ -609,6 +685,7 @@ pub struct ForumCommentRow {
     pub post_id: i64,
     pub author_id: i32,
     pub author_username: String,
+    pub author_is_plus: bool,
     pub parent_id: Option<i64>,
     pub reply_to_comment_id: Option<i64>,
     pub reply_to_username: Option<String>,
@@ -656,6 +733,7 @@ impl ForumCommentRow {
                 self.author_id,
                 &self.author_username,
                 self.is_anonymous,
+                self.author_is_plus,
                 viewer_id,
             ),
             is_tombstone: false,
@@ -695,6 +773,7 @@ impl ForumCommentRow {
                     self.author_id,
                     &self.author_username,
                     self.is_anonymous,
+                    self.author_is_plus,
                     viewer_id,
                 )
             },

@@ -189,6 +189,7 @@ pub async fn list_comment_favorites(
         body_md: String,
         author_id: i32,
         author_username: String,
+        author_is_plus: bool,
         is_anonymous: bool,
         created_at: DateTime<Utc>,
         favorited_at: DateTime<Utc>,
@@ -196,7 +197,10 @@ pub async fn list_comment_favorites(
 
     let rows: Vec<FavoriteRow> = sqlx::query_as(
         "SELECT c.id AS comment_id, c.post_id, fp.title AS post_title, c.parent_id, c.body_md, \
-         c.author_id, u.username AS author_username, c.is_anonymous, c.created_at, \
+         c.author_id, u.username AS author_username, \
+         EXISTS (SELECT 1 FROM plus_memberships pm WHERE pm.user_id = c.author_id \
+         AND pm.expires_at > CURRENT_TIMESTAMP) AS author_is_plus, \
+         c.is_anonymous, c.created_at, \
          f.created_at AS favorited_at \
          FROM forum_comment_favorites f \
          JOIN forum_comments c ON c.id = f.comment_id \
@@ -229,6 +233,7 @@ pub async fn list_comment_favorites(
                     row.author_id,
                     &row.author_username,
                     row.is_anonymous,
+                    row.author_is_plus,
                     Some(user_id),
                 ),
                 created_at: row.created_at,

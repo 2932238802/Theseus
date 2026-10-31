@@ -13,17 +13,19 @@ use crate::{
         AdminAuthor, AdminForumCommentRow, AdminForumPostDetail, AdminForumPostListQuery,
         AdminForumPostListResponse, AdminForumPostRow, AdminMuteRequest, AdminPinRequest,
         AdminReportDecisionRequest, AdminReportListQuery, AdminReportListResponse, AdminReportRow,
-        AdminReportTargetPreview, AdminStatusRequest, CreateCommentRequest, CreatePostRequest,
-        CreateReportRequest, FavoriteResponse, ForumCommentCreated, ForumCommentListQuery,
-        ForumCommentRow, ForumCommentsResponse, ForumMutationResponse, ForumPostCreated,
-        ForumPostDetail, ForumPostListQuery, ForumPostListResponse, ForumPostRow,
-        ForumRepliesResponse, ForumReplyListQuery, ForumReplyView, ForumReportResponse,
-        LikeResponse, MAX_COMMENT_BODY_CHARS, MAX_EMBEDDED_REPLIES, MAX_POST_BODY_CHARS,
+        AdminReportTargetPreview, AdminStatusRequest, BOARD_GENERAL, BOARD_INTERVIEW,
+        CreateCommentRequest, CreatePostRequest, CreateReportRequest, FavoriteResponse,
+        ForumCommentCreated, ForumCommentListQuery, ForumCommentRow, ForumCommentsResponse,
+        ForumInterviewFacets, ForumMutationResponse, ForumPostCreated, ForumPostDetail,
+        ForumPostListQuery, ForumPostListResponse, ForumPostRow, ForumRepliesResponse,
+        ForumReplyListQuery, ForumReplyView, ForumReportResponse, LikeResponse,
+        MAX_COMMENT_BODY_CHARS, MAX_EMBEDDED_REPLIES, MAX_INTERVIEW_DATE_CHARS,
+        MAX_INTERVIEW_META_CHARS, MAX_INTERVIEW_TAG_CHARS, MAX_INTERVIEW_TAGS, MAX_POST_BODY_CHARS,
         MAX_REASON_CHARS, MAX_REPORT_DETAIL_CHARS, MAX_SEARCH_CHARS, MAX_TITLE_CHARS, MuteResponse,
         PinResponse, PublicAuthor, ReplyTo, ReportDecisionResponse, UpdateCommentRequest,
-        UpdatePostRequest, is_known_report_reason, is_known_tag,
+        UpdatePostRequest, is_known_board, is_known_report_reason, is_known_tag,
     },
-    services::notification_service,
+    services::{notification_service, plus_service},
 };
 
 const DEFAULT_PAGE: u32 = 1;
@@ -129,18 +131,26 @@ fn char_count(value: &str) -> usize {
     value.chars().count()
 }
 
-fn normalize_tags(tags: &[String], is_admin: bool) -> Result<Vec<String>, AppError> {
+fn normalize_tags(tags: &[String], is_admin: bool, board: &str) -> Result<Vec<String>, AppError> {
     let mut normalized: Vec<String> = Vec::new();
     for tag in tags {
         let tag = tag.trim();
         if tag.is_empty() {
             return Err(AppError::BadRequest("标签不能为空".to_owned()));
         }
-        if !is_known_tag(tag) {
-            return Err(AppError::BadRequest(format!("未知的标签：{tag}")));
-        }
-        if tag == "announcement" && !is_admin {
-            return Err(AppError::BadRequest("只有管理员可以发布公告".to_owned()));
+        if board == BOARD_INTERVIEW {
+            if char_count(tag) > MAX_INTERVIEW_TAG_CHARS {
+                return Err(AppError::BadRequest(format!(
+                    "单个标签不能超过 {MAX_INTERVIEW_TAG_CHARS} 字"
+                )));
+            }
+        } else {
+            if !is_known_tag(tag) {
+                return Err(AppError::BadRequest(format!("未知的标签：{tag}")));
+            }
+            if tag == "announcement" && !is_admin {
+                return Err(AppError::BadRequest("只有管理员可以发布公告".to_owned()));
+            }
         }
         if !normalized.iter().any(|value| value.as_str() == tag) {
             normalized.push(tag.to_owned());
@@ -149,10 +159,88 @@ fn normalize_tags(tags: &[String], is_admin: bool) -> Result<Vec<String>, AppErr
     if normalized.is_empty() {
         return Err(AppError::BadRequest("请至少选择一个标签".to_owned()));
     }
-    if normalized.len() > 3 {
-        return Err(AppError::BadRequest("每帖最多选择 3 个标签".to_owned()));
+    let max_tags = if board == BOARD_INTERVIEW {
+        MAX_INTERVIEW_TAGS
+    } else {
+        3
+    };
+    if normalized.len() > max_tags {
+        return Err(AppError::BadRequest(format!(
+            "每帖最多选择 {max_tags} 个标签"
+        )));
     }
     Ok(normalized)
+}
+
+fn normalize_board(value: Option<&str>) -> Result<&'static str, AppError> {
+    let board = value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(BOARD_GENERAL);
+    if !is_known_board(board) {
+        return Err(AppError::BadRequest("未知的板块".to_owned()));
+    }
+    if board == BOARD_INTERVIEW {
+        Ok(BOARD_INTERVIEW)
+    } else {
+        Ok(BOARD_GENERAL)
+    }
+}
+
+fn normalize_interview_meta(value: Option<&str>, label: &str) -> Result<Option<String>, AppError> {
+    let value = value.map(str::trim).unwrap_or_default();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if char_count(value) > MAX_INTERVIEW_META_CHARS {
+        return Err(AppError::BadRequest(format!(
+            "{label}不能超过 {MAX_INTERVIEW_META_CHARS} 个字符"
+        )));
+    }
+    Ok(Some(value.to_owned()))
+}
+
+fn normalize_interview_date(value: Option<&str>) -> Result<Option<String>, AppError> {
+    let value = value.map(str::trim).unwrap_or_default();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let bytes = value.as_bytes();
+    let valid = bytes.len() == MAX_INTERVIEW_DATE_CHARS
+        && bytes[4] == b'-'
+        && bytes[..4].iter().all(|byte| byte.is_ascii_digit())
+        && bytes[5..].iter().all(|byte| byte.is_ascii_digit())
+        && {
+            let month = (bytes[5] - b'0') * 10 + (bytes[6] - b'0');
+            (1..=12).contains(&month)
+        };
+    if !valid {
+        return Err(AppError::BadRequest("面试时间格式应为 YYYY-MM".to_owned()));
+    }
+    Ok(Some(value.to_owned()))
+}
+
+async fn ensure_board_access(
+    pool: &PgPool,
+    user: Option<&AuthUser>,
+    board: &str,
+    author_id: Option<i32>,
+) -> Result<(), AppError> {
+    if board != BOARD_INTERVIEW {
+        return Ok(());
+    }
+    let Some(user) = user else {
+        return Err(AppError::Unauthorized);
+    };
+    if user.is_admin() || author_id == Some(user.id) {
+        return Ok(());
+    }
+    if plus_service::is_plus(pool, user.id).await? {
+        return Ok(());
+    }
+    Err(AppError::ForbiddenWith(
+        "需要开通 Plus Theseus 才能查看面经".to_owned(),
+    ))
 }
 
 fn normalized_post(
@@ -160,6 +248,7 @@ fn normalized_post(
     body: &str,
     tags: &[String],
     is_admin: bool,
+    board: &str,
 ) -> Result<(String, String, Vec<String>), AppError> {
     let title = title.trim();
     let body = body.trim();
@@ -182,7 +271,7 @@ fn normalized_post(
     Ok((
         title.to_owned(),
         body.to_owned(),
-        normalize_tags(tags, is_admin)?,
+        normalize_tags(tags, is_admin, board)?,
     ))
 }
 
@@ -370,8 +459,12 @@ async fn ensure_report_limit(
 /// twice (for `liked` and `favorited`) before appending `FROM ...`.
 fn push_public_post_select(builder: &mut QueryBuilder<'_, Postgres>, viewer_id: Option<i32>) {
     builder.push(
-        "SELECT fp.id, fp.author_id, u.username AS author_username, fp.title, fp.body_md, \
-         fp.tags, fp.problem_id, p.title AS problem_title, p.difficulty AS problem_difficulty, \
+        "SELECT fp.id, fp.author_id, u.username AS author_username, \
+         EXISTS (SELECT 1 FROM plus_memberships pm WHERE pm.user_id = fp.author_id \
+         AND pm.expires_at > CURRENT_TIMESTAMP) AS author_is_plus, fp.board, fp.title, \
+         fp.body_md, fp.tags, fp.interview_date, fp.company, fp.role, fp.view_count, \
+         fp.problem_id, p.title AS problem_title, \
+         p.difficulty AS problem_difficulty, \
          fp.is_anonymous, fp.status, fp.hidden_reason, fp.is_pinned, fp.like_count, \
          fp.favorite_count, fp.comment_count, fp.created_at, fp.updated_at, fp.edited_at, \
          EXISTS (SELECT 1 FROM forum_post_likes l WHERE l.post_id = fp.id AND l.user_id = ",
@@ -408,16 +501,38 @@ pub async fn list_posts(
     } else {
         None
     };
+    let board = normalize_board(query.board.as_deref())?;
+    if board == BOARD_INTERVIEW {
+        let Some(user) = viewer else {
+            return Err(AppError::Unauthorized);
+        };
+        if !user.is_admin()
+            && mine_user != Some(user.id)
+            && !plus_service::is_plus(pool, user.id).await?
+        {
+            return Err(AppError::ForbiddenWith(
+                "需要开通 Plus Theseus 才能查看面经".to_owned(),
+            ));
+        }
+    }
     let tag = query
         .tag
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    if let Some(tag) = tag
-        && !is_known_tag(tag)
-    {
-        return Err(AppError::BadRequest(format!("未知的标签：{tag}")));
+    if let Some(tag) = tag {
+        if board == BOARD_INTERVIEW {
+            if char_count(tag) > MAX_INTERVIEW_TAG_CHARS {
+                return Err(AppError::BadRequest(format!(
+                    "标签不能超过 {MAX_INTERVIEW_TAG_CHARS} 字"
+                )));
+            }
+        } else if !is_known_tag(tag) {
+            return Err(AppError::BadRequest(format!("未知的标签：{tag}")));
+        }
     }
+    let company = normalize_interview_meta(query.company.as_deref(), "公司")?;
+    let role = normalize_interview_meta(query.role.as_deref(), "岗位")?;
     let search = query
         .q
         .as_deref()
@@ -433,18 +548,26 @@ pub async fn list_posts(
 
     let mut builder = QueryBuilder::<Postgres>::new("");
     push_public_post_select(&mut builder, viewer_id);
-    builder.push(" WHERE ");
+    builder.push(" WHERE fp.board = ").push_bind(board);
     if let Some(user_id) = mine_user {
         builder
-            .push("fp.author_id = ")
+            .push(" AND fp.author_id = ")
             .push_bind(user_id)
             .push(" AND fp.status <> 'deleted'");
     } else {
-        builder.push("fp.status = 'published'");
+        builder.push(" AND fp.status = 'published'");
     }
     if let Some(tag) = tag {
         builder.push(" AND ").push_bind(tag.to_owned());
         builder.push(" = ANY(fp.tags)");
+    }
+    if let Some(company) = &company {
+        builder
+            .push(" AND fp.company = ")
+            .push_bind(company.clone());
+    }
+    if let Some(role) = &role {
+        builder.push(" AND fp.role = ").push_bind(role.clone());
     }
     if let Some(search) = search {
         let pattern = like_pattern(search);
@@ -476,18 +599,29 @@ pub async fn list_posts(
         .await
         .map_err(AppError::Database)?;
     let mut count_builder =
-        QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM forum_posts fp WHERE ");
+        QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM forum_posts fp WHERE fp.board = ");
+    count_builder.push_bind(board);
     if let Some(user_id) = mine_user {
         count_builder
-            .push("fp.author_id = ")
+            .push(" AND fp.author_id = ")
             .push_bind(user_id)
             .push(" AND fp.status <> 'deleted'");
     } else {
-        count_builder.push("fp.status = 'published'");
+        count_builder.push(" AND fp.status = 'published'");
     }
     if let Some(tag) = tag {
         count_builder.push(" AND ").push_bind(tag.to_owned());
         count_builder.push(" = ANY(fp.tags)");
+    }
+    if let Some(company) = &company {
+        count_builder
+            .push(" AND fp.company = ")
+            .push_bind(company.clone());
+    }
+    if let Some(role) = &role {
+        count_builder
+            .push(" AND fp.role = ")
+            .push_bind(role.clone());
     }
     if let Some(search) = search {
         let pattern = like_pattern(search);
@@ -534,15 +668,24 @@ pub async fn get_post(
         .fetch_optional(pool)
         .await
         .map_err(AppError::Database)?;
-    let row = row.ok_or_else(|| AppError::NotFound("帖子不存在或已被删除".to_owned()))?;
+    let mut row = row.ok_or_else(|| AppError::NotFound("帖子不存在或已被删除".to_owned()))?;
     if row.status == "deleted" {
         return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
     }
+    ensure_board_access(pool, viewer, &row.board, Some(row.author_id)).await?;
     let is_author = viewer_id == Some(row.author_id);
     if row.status == "hidden" && !is_author {
         return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
     }
     let published = row.status == "published";
+    if published {
+        sqlx::query("UPDATE forum_posts SET view_count = view_count + 1 WHERE id = $1")
+            .bind(post_id)
+            .execute(pool)
+            .await
+            .map_err(AppError::Database)?;
+        row.view_count = row.view_count.saturating_add(1);
+    }
     let body_md = row.body_md.clone();
     let hidden_reason = row.hidden_reason.clone();
     Ok(ForumPostDetail {
@@ -555,6 +698,39 @@ pub async fn get_post(
     })
 }
 
+pub async fn interview_facets(
+    pool: &PgPool,
+    config: &Config,
+    viewer: Option<&AuthUser>,
+) -> Result<ForumInterviewFacets, AppError> {
+    ensure_enabled(config)?;
+    let Some(user) = viewer else {
+        return Err(AppError::Unauthorized);
+    };
+    if !user.is_admin() && !plus_service::is_plus(pool, user.id).await? {
+        return Err(AppError::ForbiddenWith(
+            "需要开通 Plus Theseus 才能查看面经".to_owned(),
+        ));
+    }
+    let companies: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT company FROM forum_posts \
+         WHERE board = 'interview' AND status = 'published' AND company IS NOT NULL \
+         ORDER BY company",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+    let roles: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT role FROM forum_posts \
+         WHERE board = 'interview' AND status = 'published' AND role IS NOT NULL \
+         ORDER BY role",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(ForumInterviewFacets { companies, roles })
+}
+
 pub async fn create_post(
     pool: &PgPool,
     config: &Config,
@@ -562,12 +738,24 @@ pub async fn create_post(
     request: &CreatePostRequest,
 ) -> Result<ForumPostCreated, AppError> {
     ensure_enabled(config)?;
+    let board = normalize_board(request.board.as_deref())?;
+    ensure_board_access(pool, Some(user), board, None).await?;
     let (title, body, tags) = normalized_post(
         &request.title,
         &request.body_md,
         &request.tags,
         user.is_admin(),
+        board,
     )?;
+    let (interview_date, company, role) = if board == BOARD_INTERVIEW {
+        (
+            normalize_interview_date(request.interview_date.as_deref())?,
+            normalize_interview_meta(request.company.as_deref(), "公司")?,
+            normalize_interview_meta(request.role.as_deref(), "岗位")?,
+        )
+    } else {
+        (None, None, None)
+    };
     validate_problem_reference(pool, request.problem_id).await?;
     let username = username_of(pool, user.id).await?;
     let actor_display = if request.is_anonymous {
@@ -581,13 +769,19 @@ pub async fn create_post(
     ensure_not_muted(&mut tx, user.id).await?;
     ensure_post_limits(&mut tx, config, user.id).await?;
     let (post_id, status): (i64, String) = sqlx::query_as(
-        "INSERT INTO forum_posts (author_id, title, body_md, tags, problem_id, is_anonymous) \
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, status",
+        "INSERT INTO forum_posts \
+         (author_id, board, title, body_md, tags, interview_date, company, role, \
+          problem_id, is_anonymous) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, status",
     )
     .bind(user.id)
+    .bind(board)
     .bind(&title)
     .bind(&body)
     .bind(&tags)
+    .bind(&interview_date)
+    .bind(&company)
+    .bind(&role)
     .bind(request.problem_id)
     .bind(request.is_anonymous)
     .fetch_one(&mut *tx)
@@ -627,12 +821,32 @@ pub async fn update_post(
     request: &UpdatePostRequest,
 ) -> Result<ForumMutationResponse, AppError> {
     ensure_enabled(config)?;
+    let owned: Option<(i32, String)> =
+        sqlx::query_as("SELECT author_id, board FROM forum_posts WHERE id = $1")
+            .bind(post_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::Database)?;
+    let (author_id, board) =
+        owned.ok_or_else(|| AppError::NotFound("帖子不存在或已被删除".to_owned()))?;
+    let board = normalize_board(Some(&board))?;
+    ensure_board_access(pool, Some(user), board, Some(author_id)).await?;
     let (title, body, tags) = normalized_post(
         &request.title,
         &request.body_md,
         &request.tags,
         user.is_admin(),
+        board,
     )?;
+    let (interview_date, company, role) = if board == BOARD_INTERVIEW {
+        (
+            normalize_interview_date(request.interview_date.as_deref())?,
+            normalize_interview_meta(request.company.as_deref(), "公司")?,
+            normalize_interview_meta(request.role.as_deref(), "岗位")?,
+        )
+    } else {
+        (None, None, None)
+    };
     validate_problem_reference(pool, request.problem_id).await?;
 
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
@@ -655,13 +869,17 @@ pub async fn update_post(
         return Err(AppError::ForbiddenWith("帖子已被隐藏，无法编辑".to_owned()));
     }
     sqlx::query(
-        "UPDATE forum_posts SET title = $2, body_md = $3, tags = $4, problem_id = $5, \
-         edited_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        "UPDATE forum_posts SET title = $2, body_md = $3, tags = $4, interview_date = $5, \
+         company = $6, role = $7, problem_id = $8, edited_at = CURRENT_TIMESTAMP, \
+         updated_at = CURRENT_TIMESTAMP WHERE id = $1",
     )
     .bind(post_id)
     .bind(&title)
     .bind(&body)
     .bind(&tags)
+    .bind(&interview_date)
+    .bind(&company)
+    .bind(&role)
     .bind(request.problem_id)
     .execute(&mut *tx)
     .await
@@ -747,15 +965,19 @@ pub async fn like_post(
 ) -> Result<LikeResponse, AppError> {
     ensure_enabled(config)?;
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
-    let status: Option<String> =
-        sqlx::query_scalar("SELECT status FROM forum_posts WHERE id = $1 FOR UPDATE")
+    let row: Option<(String, String, i32)> =
+        sqlx::query_as("SELECT status, board, author_id FROM forum_posts WHERE id = $1 FOR UPDATE")
             .bind(post_id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(AppError::Database)?;
-    if status.as_deref() != Some("published") {
+    let Some((status, board, author_id)) = row else {
+        return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
+    };
+    if status != "published" {
         return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
     }
+    ensure_board_access(pool, Some(user), &board, Some(author_id)).await?;
     let changed = if liked {
         sqlx::query(
             "INSERT INTO forum_post_likes (post_id, user_id) VALUES ($1, $2) \
@@ -811,15 +1033,19 @@ pub async fn favorite_post(
 ) -> Result<FavoriteResponse, AppError> {
     ensure_enabled(config)?;
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
-    let status: Option<String> =
-        sqlx::query_scalar("SELECT status FROM forum_posts WHERE id = $1 FOR UPDATE")
+    let row: Option<(String, String, i32)> =
+        sqlx::query_as("SELECT status, board, author_id FROM forum_posts WHERE id = $1 FOR UPDATE")
             .bind(post_id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(AppError::Database)?;
-    if status.as_deref() != Some("published") {
+    let Some((status, board, author_id)) = row else {
+        return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
+    };
+    if status != "published" {
         return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
     }
+    ensure_board_access(pool, Some(user), &board, Some(author_id)).await?;
     let changed = if favorited {
         sqlx::query(
             "INSERT INTO forum_post_favorites (post_id, user_id) VALUES ($1, $2) \
@@ -874,6 +1100,7 @@ struct VisiblePost {
     author_id: i32,
     #[allow(dead_code)]
     status: String,
+    board: String,
 }
 
 async fn load_visible_post(
@@ -881,23 +1108,29 @@ async fn load_visible_post(
     post_id: i64,
     viewer_id: Option<i32>,
 ) -> Result<VisiblePost, AppError> {
-    let row: Option<(i32, String)> =
-        sqlx::query_as("SELECT author_id, status FROM forum_posts WHERE id = $1")
+    let row: Option<(i32, String, String)> =
+        sqlx::query_as("SELECT author_id, status, board FROM forum_posts WHERE id = $1")
             .bind(post_id)
             .fetch_optional(pool)
             .await
             .map_err(AppError::Database)?;
-    let (author_id, status) =
+    let (author_id, status, board) =
         row.ok_or_else(|| AppError::NotFound("帖子不存在或已被删除".to_owned()))?;
     if status == "deleted" || (status == "hidden" && viewer_id != Some(author_id)) {
         return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
     }
-    Ok(VisiblePost { author_id, status })
+    Ok(VisiblePost {
+        author_id,
+        status,
+        board,
+    })
 }
 
 fn push_public_comment_select(builder: &mut QueryBuilder<'_, Postgres>, viewer_id: Option<i32>) {
     builder.push(
-        "SELECT c.id, c.post_id, c.author_id, u.username AS author_username, c.parent_id, \
+        "SELECT c.id, c.post_id, c.author_id, u.username AS author_username, \
+         EXISTS (SELECT 1 FROM plus_memberships pm WHERE pm.user_id = c.author_id \
+         AND pm.expires_at > CURRENT_TIMESTAMP) AS author_is_plus, c.parent_id, \
          c.reply_to_comment_id, ru.username AS reply_to_username, \
          rc.is_anonymous AS reply_to_is_anonymous, rc.status AS reply_to_status, \
          c.body_md, c.is_anonymous, c.status, \
@@ -927,10 +1160,13 @@ pub async fn list_comments(
     let viewer_id = viewer.map(|user| user.id);
     let is_admin = viewer.is_some_and(AuthUser::is_admin);
     let (page, size) = page_and_size(query.page, query.size, MAX_PUBLIC_PAGE_SIZE);
-    load_visible_post(pool, post_id, viewer_id).await?;
+    let post = load_visible_post(pool, post_id, viewer_id).await?;
+    ensure_board_access(pool, viewer, &post.board, Some(post.author_id)).await?;
 
     let mut builder = QueryBuilder::<Postgres>::new(
-        "SELECT c.id, c.post_id, c.author_id, u.username AS author_username, c.parent_id, \
+        "SELECT c.id, c.post_id, c.author_id, u.username AS author_username, \
+         EXISTS (SELECT 1 FROM plus_memberships pm WHERE pm.user_id = c.author_id \
+         AND pm.expires_at > CURRENT_TIMESTAMP) AS author_is_plus, c.parent_id, \
          c.reply_to_comment_id, ru.username AS reply_to_username, \
          rc.is_anonymous AS reply_to_is_anonymous, rc.status AS reply_to_status, \
          c.body_md, c.is_anonymous, c.status, \
@@ -976,12 +1212,14 @@ pub async fn list_comments(
     let mut replies_by_root: HashMap<i64, Vec<ForumCommentRow>> = HashMap::new();
     if !root_ids.is_empty() {
         let mut reply_builder = QueryBuilder::<Postgres>::new(
-            "SELECT id, post_id, author_id, author_username, parent_id, \
+            "SELECT id, post_id, author_id, author_username, author_is_plus, parent_id, \
              reply_to_comment_id, reply_to_username, reply_to_is_anonymous, reply_to_status, \
              body_md, is_anonymous, status, created_at, edited_at, reply_total, total, \
              reply_rank, favorited \
              FROM ( \
-             SELECT c.id, c.post_id, c.author_id, u.username AS author_username, c.parent_id, \
+             SELECT c.id, c.post_id, c.author_id, u.username AS author_username, \
+         EXISTS (SELECT 1 FROM plus_memberships pm WHERE pm.user_id = c.author_id \
+         AND pm.expires_at > CURRENT_TIMESTAMP) AS author_is_plus, c.parent_id, \
              c.reply_to_comment_id, ru.username AS reply_to_username, \
              rc.is_anonymous AS reply_to_is_anonymous, rc.status AS reply_to_status, \
              c.body_md, c.is_anonymous, c.status, c.created_at, c.edited_at, \
@@ -1058,7 +1296,8 @@ pub async fn list_replies(
     if parent_id.is_some() {
         return Err(AppError::NotFound("评论不存在或已被删除".to_owned()));
     }
-    load_visible_post(pool, post_id, viewer_id).await?;
+    let post = load_visible_post(pool, post_id, viewer_id).await?;
+    ensure_board_access(pool, viewer, &post.board, Some(post.author_id)).await?;
 
     let mut builder = QueryBuilder::<Postgres>::new("");
     push_public_comment_select(&mut builder, viewer_id);
@@ -1110,6 +1349,7 @@ pub async fn create_comment(
     ensure_enabled(config)?;
     let body = normalized_comment_body(&request.body_md)?;
     let username = username_of(pool, user.id).await?;
+    let is_plus = plus_service::is_plus(pool, user.id).await?;
     let actor_display = if request.is_anonymous {
         "匿名同学".to_owned()
     } else {
@@ -1120,18 +1360,19 @@ pub async fn create_comment(
     acquire_user_lock(&mut tx, 2, user.id).await?;
     ensure_not_muted(&mut tx, user.id).await?;
     ensure_comment_limits(&mut tx, config, user.id).await?;
-    let post: Option<(i32, String)> =
-        sqlx::query_as("SELECT author_id, status FROM forum_posts WHERE id = $1 FOR UPDATE")
+    let post: Option<(i32, String, String)> =
+        sqlx::query_as("SELECT author_id, status, board FROM forum_posts WHERE id = $1 FOR UPDATE")
             .bind(post_id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(AppError::Database)?;
-    let Some((post_author, post_status)) = post else {
+    let Some((post_author, post_status, post_board)) = post else {
         return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
     };
     if post_status != "published" {
         return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
     }
+    ensure_board_access(pool, Some(user), &post_board, Some(post_author)).await?;
 
     let target = if let Some(target_id) = request.reply_to_comment_id {
         let row: Option<ReplyTarget> = sqlx::query_as::<_, (i64, i32, String, bool, Option<i64>, i64, String)>(
@@ -1238,7 +1479,13 @@ pub async fn create_comment(
         parent_id: target.as_ref().map(|(_, root_id)| *root_id),
         reply_to,
         body_md: body,
-        author: PublicAuthor::new(user.id, &username, request.is_anonymous, Some(user.id)),
+        author: PublicAuthor::new(
+            user.id,
+            &username,
+            request.is_anonymous,
+            is_plus,
+            Some(user.id),
+        ),
         created_at,
     })
 }
@@ -1254,13 +1501,14 @@ pub async fn update_comment(
     let body = normalized_comment_body(&request.body_md)?;
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
     ensure_not_muted(&mut tx, user.id).await?;
-    let row: Option<(i32, String)> =
-        sqlx::query_as("SELECT author_id, status FROM forum_comments WHERE id = $1 FOR UPDATE")
-            .bind(comment_id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(AppError::Database)?;
-    let (author_id, status) =
+    let row: Option<(i32, String, i64)> = sqlx::query_as(
+        "SELECT author_id, status, post_id FROM forum_comments WHERE id = $1 FOR UPDATE",
+    )
+    .bind(comment_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(AppError::Database)?;
+    let (author_id, status, post_id) =
         row.ok_or_else(|| AppError::NotFound("评论不存在或已被删除".to_owned()))?;
     if status == "deleted" {
         return Err(AppError::NotFound("评论不存在或已被删除".to_owned()));
@@ -1271,6 +1519,16 @@ pub async fn update_comment(
     if status != "published" {
         return Err(AppError::ForbiddenWith("评论已被隐藏，无法编辑".to_owned()));
     }
+    let post: Option<(i32, String)> =
+        sqlx::query_as("SELECT author_id, board FROM forum_posts WHERE id = $1")
+            .bind(post_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+    let Some((post_author, post_board)) = post else {
+        return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
+    };
+    ensure_board_access(pool, Some(user), &post_board, Some(post_author)).await?;
     let updated = sqlx::query(
         "UPDATE forum_comments SET body_md = $2, edited_at = CURRENT_TIMESTAMP, \
          updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'published'",
@@ -1307,11 +1565,16 @@ pub async fn delete_comment(
             .await
             .map_err(AppError::Database)?;
     let post_id = post_id.ok_or_else(|| AppError::NotFound("评论不存在或已被删除".to_owned()))?;
-    sqlx::query("SELECT id FROM forum_posts WHERE id = $1 FOR UPDATE")
-        .bind(post_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(AppError::Database)?;
+    let post: Option<(i32, String)> =
+        sqlx::query_as("SELECT author_id, board FROM forum_posts WHERE id = $1 FOR UPDATE")
+            .bind(post_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+    let Some((post_author, post_board)) = post else {
+        return Err(AppError::NotFound("帖子不存在或已被删除".to_owned()));
+    };
+    ensure_board_access(pool, Some(user), &post_board, Some(post_author)).await?;
     let row: Option<(i32, i64, String, String)> = sqlx::query_as(
         "SELECT author_id, post_id, status, body_md FROM forum_comments \
          WHERE id = $1 FOR UPDATE",
@@ -1378,6 +1641,8 @@ struct LockedContent {
     hidden_reason: Option<String>,
     excerpt: String,
     link: String,
+    post_author_id: i32,
+    board: String,
 }
 
 async fn lock_content(
@@ -1388,7 +1653,7 @@ async fn lock_content(
     match target_type {
         "post" => {
             let row: Option<(i32, String, Option<String>, String, String)> = sqlx::query_as(
-                "SELECT author_id, status, hidden_reason, title, body_md FROM forum_posts \
+                "SELECT author_id, status, hidden_reason, body_md, board FROM forum_posts \
                  WHERE id = $1 FOR UPDATE",
             )
             .bind(target_id)
@@ -1396,12 +1661,14 @@ async fn lock_content(
             .await
             .map_err(AppError::Database)?;
             Ok(row.map(
-                |(author_id, status, hidden_reason, _title, body_md)| LockedContent {
+                |(author_id, status, hidden_reason, body_md, board)| LockedContent {
                     author_id,
                     status,
                     hidden_reason,
                     excerpt: make_excerpt(&body_md, 120),
                     link: format!("/forum/{target_id}"),
+                    post_author_id: author_id,
+                    board,
                 },
             ))
         }
@@ -1420,8 +1687,10 @@ async fn lock_content(
                 .fetch_optional(&mut **tx)
                 .await
                 .map_err(AppError::Database)?;
-            let row: Option<(i32, String, Option<String>, String, i64, String)> = sqlx::query_as(
-                "SELECT c.author_id, c.status, c.hidden_reason, c.body_md, c.post_id, p.title \
+            type CommentLock = (i32, String, Option<String>, String, i64, i32, String);
+            let row: Option<CommentLock> = sqlx::query_as(
+                "SELECT c.author_id, c.status, c.hidden_reason, c.body_md, c.post_id, \
+                        p.author_id, p.board \
                  FROM forum_comments c JOIN forum_posts p ON p.id = c.post_id \
                  WHERE c.id = $1 FOR UPDATE OF c",
             )
@@ -1430,12 +1699,16 @@ async fn lock_content(
             .await
             .map_err(AppError::Database)?;
             Ok(row.map(
-                |(author_id, status, hidden_reason, body_md, post_id, _title)| LockedContent {
-                    author_id,
-                    status,
-                    hidden_reason,
-                    excerpt: make_excerpt(&body_md, 120),
-                    link: format!("/forum/{post_id}#comment-{target_id}"),
+                |(author_id, status, hidden_reason, body_md, post_id, post_author_id, board)| {
+                    LockedContent {
+                        author_id,
+                        status,
+                        hidden_reason,
+                        excerpt: make_excerpt(&body_md, 120),
+                        link: format!("/forum/{post_id}#comment-{target_id}"),
+                        post_author_id,
+                        board,
+                    }
                 },
             ))
         }
@@ -1485,6 +1758,7 @@ pub async fn create_report(
     if target.status != "published" {
         return Err(AppError::ConflictWith("该内容已被隐藏或删除".to_owned()));
     }
+    ensure_board_access(pool, Some(user), &target.board, Some(target.post_author_id)).await?;
     let insert: Result<i64, sqlx::Error> = sqlx::query_scalar(
         "INSERT INTO forum_reports (target_type, target_id, reporter_id, reason, detail) \
          VALUES ($1, $2, $3, $4, $5) RETURNING id",
@@ -1610,7 +1884,8 @@ pub async fn create_report(
 fn push_admin_post_select(builder: &mut QueryBuilder<'_, Postgres>) {
     builder.push(
         "SELECT fp.id, fp.author_id, u.username AS author_username, u.email AS author_email, \
-         u.role AS author_role, fp.title, fp.body_md, fp.tags, fp.problem_id, \
+         u.role AS author_role, fp.board, fp.title, fp.body_md, fp.tags, fp.interview_date, \
+         fp.company, fp.role, fp.view_count, fp.problem_id, \
          p.title AS problem_title, p.difficulty AS problem_difficulty, fp.is_anonymous, \
          fp.status, fp.hidden_reason, fp.hidden_by, fp.hidden_at, fp.is_pinned, fp.like_count, \
          fp.favorite_count, fp.comment_count, fp.pending_report_count, fp.created_at, \
@@ -1652,12 +1927,25 @@ pub async fn admin_list_posts(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
+    let board = query
+        .board
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(board) = board
+        && !is_known_board(board)
+    {
+        return Err(AppError::BadRequest("未知的板块".to_owned()));
+    }
 
     let mut builder = QueryBuilder::<Postgres>::new("");
     push_admin_post_select(&mut builder);
     builder.push(" WHERE TRUE");
     if let Some(status) = status {
         builder.push(" AND fp.status = ").push_bind(status);
+    }
+    if let Some(board) = board {
+        builder.push(" AND fp.board = ").push_bind(board.to_owned());
     }
     if let Some(search) = search {
         let pattern = like_pattern(search);
@@ -1689,6 +1977,11 @@ pub async fn admin_list_posts(
     );
     if let Some(status) = status {
         count_builder.push(" AND fp.status = ").push_bind(status);
+    }
+    if let Some(board) = board {
+        count_builder
+            .push(" AND fp.board = ")
+            .push_bind(board.to_owned());
     }
     if let Some(search) = search {
         let pattern = like_pattern(search);
@@ -2933,12 +3226,19 @@ pub async fn list_favorites(
     let (page, size) = page_and_size(query.page, query.size, MAX_PUBLIC_PAGE_SIZE);
     let offset = i64::from(page - 1) * i64::from(size);
 
-    let total: i64 =
-        sqlx::query_scalar("SELECT COUNT(*)::bigint FROM forum_post_favorites WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::Database)?;
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM forum_post_favorites f \
+         JOIN forum_posts fp ON fp.id = f.post_id \
+         WHERE f.user_id = $1 AND (fp.board = 'general' \
+           OR fp.author_id = $1 \
+           OR EXISTS (SELECT 1 FROM plus_memberships pm \
+                      WHERE pm.user_id = $1 AND pm.expires_at > CURRENT_TIMESTAMP) \
+           OR EXISTS (SELECT 1 FROM users u WHERE u.id = $1 AND u.role = 'admin'))",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::Database)?;
 
     #[derive(FromRow)]
     struct FavoriteRow {
@@ -2958,7 +3258,11 @@ pub async fn list_favorites(
          FROM forum_post_favorites f
          JOIN forum_posts fp ON fp.id = f.post_id
          JOIN users u ON u.id = fp.author_id
-         WHERE f.user_id = $1
+         WHERE f.user_id = $1 AND (fp.board = 'general'
+           OR fp.author_id = $1
+           OR EXISTS (SELECT 1 FROM plus_memberships pm
+                      WHERE pm.user_id = $1 AND pm.expires_at > CURRENT_TIMESTAMP)
+           OR EXISTS (SELECT 1 FROM users u2 WHERE u2.id = $1 AND u2.role = 'admin'))
          ORDER BY f.created_at DESC, fp.id DESC
          LIMIT $2 OFFSET $3",
     )
@@ -2995,7 +3299,10 @@ pub async fn list_favorites(
 mod tests {
     use chrono::{TimeDelta, Utc};
 
-    use super::{escape_like, make_excerpt, mute_ends_at, normalize_tags};
+    use super::{
+        BOARD_GENERAL, BOARD_INTERVIEW, escape_like, make_excerpt, mute_ends_at, normalize_board,
+        normalize_interview_date, normalize_interview_meta, normalize_tags,
+    };
 
     #[test]
     fn escapes_like_wildcards() {
@@ -3022,20 +3329,32 @@ mod tests {
     fn normalizes_and_deduplicates_tags() {
         let tags = vec![" help ".to_owned(), "help".to_owned(), "general".to_owned()];
         assert_eq!(
-            normalize_tags(&tags, false).unwrap(),
+            normalize_tags(&tags, false, BOARD_GENERAL).unwrap(),
             vec!["help", "general"]
         );
     }
 
     #[test]
+    fn interview_tags_are_free_form() {
+        let tags = vec!["后端".to_owned(), "场景题".to_owned()];
+        assert_eq!(
+            normalize_tags(&tags, false, BOARD_INTERVIEW).unwrap(),
+            vec!["后端", "场景题"]
+        );
+        assert!(normalize_tags(&["超".repeat(21)], false, BOARD_INTERVIEW).is_err());
+        let too_many: Vec<String> = (0..9).map(|index| format!("标签{index}")).collect();
+        assert!(normalize_tags(&too_many, false, BOARD_INTERVIEW).is_err());
+    }
+
+    #[test]
     fn rejects_announcement_for_normal_users() {
-        assert!(normalize_tags(&["announcement".to_owned()], false).is_err());
-        assert!(normalize_tags(&["announcement".to_owned()], true).is_ok());
+        assert!(normalize_tags(&["announcement".to_owned()], false, BOARD_GENERAL).is_err());
+        assert!(normalize_tags(&["announcement".to_owned()], true, BOARD_GENERAL).is_ok());
     }
 
     #[test]
     fn rejects_invalid_tag_counts() {
-        assert!(normalize_tags(&[], false).is_err());
+        assert!(normalize_tags(&[], false, BOARD_GENERAL).is_err());
         assert!(
             normalize_tags(
                 &[
@@ -3044,10 +3363,41 @@ mod tests {
                     "solution".to_owned(),
                     "discussion".to_owned(),
                 ],
-                false
+                false,
+                BOARD_GENERAL
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn validates_boards_and_interview_dates() {
+        assert_eq!(normalize_board(None).unwrap(), BOARD_GENERAL);
+        assert_eq!(normalize_board(Some("")).unwrap(), BOARD_GENERAL);
+        assert_eq!(normalize_board(Some("interview")).unwrap(), BOARD_INTERVIEW);
+        assert!(normalize_board(Some("unknown")).is_err());
+
+        assert_eq!(normalize_interview_date(None).unwrap(), None);
+        assert_eq!(
+            normalize_interview_date(Some(" 2026-10 ")).unwrap(),
+            Some("2026-10".to_owned())
+        );
+        for value in [
+            "2026-1", "2026-13", "2026-00", "26-10", "2026/10", "abcd-ef",
+        ] {
+            assert!(normalize_interview_date(Some(value)).is_err(), "{value}");
+        }
+    }
+
+    #[test]
+    fn normalizes_interview_company_and_role() {
+        assert_eq!(normalize_interview_meta(None, "公司").unwrap(), None);
+        assert_eq!(normalize_interview_meta(Some("   "), "公司").unwrap(), None);
+        assert_eq!(
+            normalize_interview_meta(Some(" 百度 "), "公司").unwrap(),
+            Some("百度".to_owned())
+        );
+        assert!(normalize_interview_meta(Some(&"字".repeat(41)), "岗位").is_err());
     }
 
     #[test]

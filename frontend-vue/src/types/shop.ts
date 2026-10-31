@@ -1,5 +1,11 @@
 export type PlusApplicationStatus = 'pending' | 'approved' | 'rejected'
 
+export interface PlusMembership {
+  started_at: string
+  expires_at: string
+  days_left: number
+}
+
 export interface PlusApplication {
   id: number
   user_id: number
@@ -9,11 +15,13 @@ export interface PlusApplication {
   review_note: string | null
   reviewed_by: string | null
   reviewed_at: string | null
+  membership_expires_at: string | null
   created_at: string
 }
 
 export interface MyPlusState {
   is_plus: boolean
+  membership?: PlusMembership
   application?: PlusApplication
 }
 
@@ -27,4 +35,5 @@ export interface PlusApplicationList {
 export interface PlusApplicationResolveResult {
   status: PlusApplicationStatus
   message: string
+  expires_at?: string
 }
