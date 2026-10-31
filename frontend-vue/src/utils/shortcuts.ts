@@ -1,7 +1,7 @@
 import type { Monaco } from '@monaco-editor/loader'
 
 export type ShortcutScope = 'editor' | 'oj'
-export type ShortcutGroup = 'run' | 'search' | 'edit' | 'view' | 'system'
+export type ShortcutGroup = 'run' | 'save' | 'search' | 'edit' | 'view' | 'system'
 
 export interface ShortcutAction {
   id: string
@@ -28,13 +28,21 @@ export interface CapturedShortcut {
 
 export const SHORTCUT_GROUP_LABELS: Record<ShortcutGroup, string> = {
   run: '运行与提交',
+  save: '保存',
   search: '查找与替换',
   edit: '编辑',
   view: '视图',
   system: '系统键',
 }
 
-export const SHORTCUT_GROUP_ORDER: ShortcutGroup[] = ['run', 'search', 'edit', 'view', 'system']
+export const SHORTCUT_GROUP_ORDER: ShortcutGroup[] = [
+  'run',
+  'save',
+  'search',
+  'edit',
+  'view',
+  'system',
+]
 
 export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   {
@@ -53,6 +61,15 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     scope: 'oj',
     defaultKey: 'Mod+Shift+Enter',
     customizable: true,
+  },
+  {
+    id: 'oj.save-draft',
+    label: '保存草稿',
+    group: 'save',
+    scope: 'oj',
+    defaultKey: 'Mod+S',
+    customizable: true,
+    note: '保存到云端，换设备后可继续编辑',
   },
   {
     id: 'oj.toggle-output',

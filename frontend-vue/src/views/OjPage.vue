@@ -295,12 +295,14 @@ const pushDraftToServer = async (
   targetProblemId: number | undefined,
   targetLanguage: Language,
   content: string,
-): Promise<void> => {
-  if (!targetProblemId || contestId.value || !authStore.isAuthenticated) return
+): Promise<boolean> => {
+  if (!targetProblemId || contestId.value || !authStore.isAuthenticated) return false
   try {
     await saveProblemDraft(targetProblemId, targetLanguage, content)
+    return true
   } catch {
     // 同步失败不影响答题，下次编辑时会重试
+    return false
   }
 }
 
@@ -363,6 +365,38 @@ const hydrateDraftFromServer = async (): Promise<void> => {
       scheduleDraftSync()
     }
   }
+}
+
+// Ctrl+S 立即保存：本地落盘后直接同步云端，不再等待防抖
+const saveStatus = ref<'idle' | 'saved' | 'local' | 'failed'>('idle')
+let saveStatusTimer: ReturnType<typeof setTimeout> | null = null
+const flashSaveStatus = (status: 'saved' | 'local' | 'failed'): void => {
+  saveStatus.value = status
+  if (saveStatusTimer !== null) clearTimeout(saveStatusTimer)
+  saveStatusTimer = setTimeout(() => {
+    saveStatusTimer = null
+    saveStatus.value = 'idle'
+  }, 2000)
+}
+const saveStatusLabel = computed(() => {
+  if (saveStatus.value === 'saved') return '已保存到云端'
+  if (saveStatus.value === 'local') return '已保存到本地'
+  if (saveStatus.value === 'failed') return '保存失败'
+  return ''
+})
+const saveDraftNow = async (): Promise<void> => {
+  saveDraft()
+  const problem = problemStore.currentProblem
+  if (!problem) return
+  cancelDraftSync()
+  pendingDraftSync = false
+  if (!authStore.isAuthenticated || contestId.value) {
+    flashSaveStatus('local')
+    return
+  }
+  const payload = code.value === templateFor(language.value) ? '' : code.value
+  const saved = await pushDraftToServer(problem.id, language.value, payload)
+  flashSaveStatus(saved ? 'saved' : 'failed')
 }
 const loadAssignmentContext = async (): Promise<void> => {
   assignment.value = null
@@ -686,6 +720,9 @@ const handleShortcut = (actionId: string): void => {
     case 'oj.submit':
       void submitCode()
       break
+    case 'oj.save-draft':
+      void saveDraftNow()
+      break
     case 'oj.toggle-output':
       isOutputOpen.value = !isOutputOpen.value
       break
@@ -708,18 +745,25 @@ const isTypingTarget = (target: EventTarget | null): boolean => {
 
 const onShortcutKeydown = (event: KeyboardEvent): void => {
   if (event.defaultPrevented || event.isComposing || event.repeat) return
-  if (isRunDialogOpen.value || isShortcutDialogOpen.value) return
-  if (isTypingTarget(event.target)) return
-  if (event.target instanceof HTMLElement && event.target.closest('.monaco-editor')) return
+  const inEditor =
+    event.target instanceof HTMLElement && Boolean(event.target.closest('.monaco-editor'))
   for (const action of SHORTCUT_ACTIONS) {
     if (action.scope !== 'oj') continue
     const binding =
       action.id in shortcutStore.resolved ? shortcutStore.resolved[action.id] : action.defaultKey
-    if (binding && matchesShortcut(event, binding)) {
+    if (!binding || !matchesShortcut(event, binding)) continue
+    if (action.id === 'oj.save-draft') {
+      // 保存草稿始终拦截浏览器「保存网页」；编辑器内由 Monaco 快捷键触发保存
       event.preventDefault()
+      if (inEditor || isShortcutDialogOpen.value) return
       handleShortcut(action.id)
       return
     }
+    if (isRunDialogOpen.value || isShortcutDialogOpen.value) return
+    if (isTypingTarget(event.target) || inEditor) return
+    event.preventDefault()
+    handleShortcut(action.id)
+    return
   }
 }
 
@@ -970,6 +1014,10 @@ onBeforeUnmount(() => {
   runStore.stopPolling()
   // 把延迟写盘中的最后一次编辑立即落盘
   saveDraft()
+  if (saveStatusTimer !== null) {
+    clearTimeout(saveStatusTimer)
+    saveStatusTimer = null
+  }
   if (draftSyncTimer !== null || pendingDraftSync) {
     // 离开页面时立即把最后一次编辑同步到云端
     cancelDraftSync()
@@ -1057,7 +1105,7 @@ onBeforeUnmount(() => {
         @keydown.right.prevent="nudgeSplit(24)"
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
-        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
+        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
         <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :theme="editorThemeName" :lsp-enabled="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" @lsp-status="lspStatus = $event" />
         <div
           ref="outputResizerRef"

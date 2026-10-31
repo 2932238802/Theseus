@@ -277,6 +277,16 @@ body.is-resizing-rows {
   color: var(--color-danger);
 }
 
+.editor-tools .save-status {
+  color: var(--color-success);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.editor-tools .save-status.is-error {
+  color: var(--color-danger);
+}
+
 .code-editor-shell {
   position: relative;
   min-width: 0;
