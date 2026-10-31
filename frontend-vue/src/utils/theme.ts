@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import type { ThemeMode } from '../types/profile'
 
 const STORAGE_KEY = 'theseus-theme'
@@ -11,9 +12,14 @@ export const getThemeMode = (): ThemeMode => {
 const resolvedMode = (mode: ThemeMode): 'light' | 'dark' =>
   mode === 'system' ? (media.matches ? 'dark' : 'light') : mode
 
+// 全局当前生效的深浅色，编辑器等非挂载期读取的组件用它保持同步
+export const currentTheme = ref<'light' | 'dark'>(resolvedMode(getThemeMode()))
+
 export const applyTheme = (mode: ThemeMode): void => {
   localStorage.setItem(STORAGE_KEY, mode)
-  document.documentElement.dataset.theme = resolvedMode(mode)
+  const resolved = resolvedMode(mode)
+  document.documentElement.dataset.theme = resolved
+  currentTheme.value = resolved
 }
 
 export const initTheme = (): void => {
@@ -29,5 +35,4 @@ export const toggleTheme = (): 'light' | 'dark' => {
   return next
 }
 
-export const isDarkTheme = (): boolean =>
-  document.documentElement.dataset.theme === 'dark'
+export const isDarkTheme = (): boolean => currentTheme.value === 'dark'

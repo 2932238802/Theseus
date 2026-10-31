@@ -10,6 +10,7 @@ import type { editor } from 'monaco-editor'
 import { LANGUAGE_OPTIONS } from '../utils/constants'
 import type { Language } from '../types/oj'
 import { SHORTCUT_ACTIONS, resolveBinding, toMonacoKeybinding } from '../utils/shortcuts'
+import { monacoThemeName, registerMonacoThemes } from '../utils/monacoTheme'
 
 const props = defineProps<{
   modelValue: string
@@ -24,14 +25,21 @@ const emit = defineEmits<{
   pasteText: [text: string]
 }>()
 
+// 编辑器静态资源随前端一起部署，不再依赖公网 CDN
+loader.config({ paths: { vs: `${import.meta.env.BASE_URL}monaco/vs` } })
+
 const container = ref<HTMLElement | null>(null)
+const status = ref<'loading' | 'ready' | 'error'>('loading')
 let monacoEditor: editor.IStandaloneCodeEditor | undefined
 let monacoApi: Monaco | undefined
-let resizeObserver: ResizeObserver | undefined
 let shortcutRuleDisposable: { dispose: () => void } | undefined
 let commandDisposables: Array<{ dispose: () => void }> = []
 let commandPrefix = ''
+let disposed = false
+
 const monacoLanguage = computed(() => LANGUAGE_OPTIONS.find((item) => item.value === props.language)?.monaco ?? 'javascript')
+// Python 惯例 4 空格，其余语言保持 2 空格
+const tabSize = computed(() => (props.language === 'python' ? 4 : 2))
 
 const commandId = (actionId: string): string => `${commandPrefix}${actionId}`
 
@@ -97,57 +105,85 @@ const onPaste = (event: ClipboardEvent): void => {
   if (text) emit('pasteText', text)
 }
 
-onMounted(async () => {
+const initialize = async (): Promise<void> => {
   await nextTick()
+  if (disposed || !container.value) return
+  try {
+    const monaco = await loader.init()
+    // 加载期间组件可能已经卸载，此时不能再创建编辑器
+    if (disposed || !container.value) return
+    monacoApi = monaco
+    registerMonacoThemes(monaco)
+    const instance = monaco.editor.create(container.value, {
+      value: props.modelValue,
+      language: monacoLanguage.value,
+      theme: monacoThemeName(props.dark),
+      fontSize: props.fontSize,
+      fontFamily: "'JetBrains Mono', Consolas, monospace",
+      ariaLabel: '代码编辑器',
+      minimap: { enabled: false },
+      automaticLayout: true,
+      padding: { top: 16, bottom: 16 },
+      scrollBeyondLastLine: false,
+      lineNumbersMinChars: 3,
+      tabSize: tabSize.value,
+      insertSpaces: true,
+      renderLineHighlight: 'line',
+      cursorBlinking: 'smooth',
+      smoothScrolling: true,
+      scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+    })
+    monacoEditor = instance
+    registerShortcutCommands(monaco)
+    applyShortcutRules()
+    instance.onDidChangeModelContent(() => emit('update:modelValue', instance.getValue()))
+    status.value = 'ready'
+  } catch (error: unknown) {
+    if (disposed) return
+    status.value = 'error'
+    console.error('编辑器加载失败', error)
+  }
+}
+
+onMounted(() => {
   if (!container.value) return
   container.value.addEventListener('paste', onPaste)
-  const monaco = await loader.init()
-  monacoApi = monaco
-  const instance = monaco.editor.create(container.value, {
-    value: props.modelValue,
-    language: monacoLanguage.value,
-    theme: props.dark ? 'vs-dark' : 'vs',
-    fontSize: props.fontSize,
-    fontFamily: 'JetBrains Mono, Consolas, monospace',
-    minimap: { enabled: false },
-    automaticLayout: true,
-    padding: { top: 16, bottom: 16 },
-    scrollBeyondLastLine: false,
-    lineNumbersMinChars: 3,
-    tabSize: 2,
-  })
-  monacoEditor = instance
-  registerShortcutCommands(monaco)
-  applyShortcutRules()
-  instance.onDidChangeModelContent(() => emit('update:modelValue', instance.getValue()))
-  resizeObserver = new ResizeObserver(() => instance.layout())
-  resizeObserver.observe(container.value)
+  void initialize()
 })
 
+// 外部整体替换代码时保留撤销栈和光标位置（重置、载入历史提交、切换草稿）
 watch(() => props.modelValue, (value) => {
-  if (monacoEditor && monacoEditor.getValue() !== value) monacoEditor.setValue(value)
+  const instance = monacoEditor
+  const model = instance?.getModel()
+  if (!instance || !model || model.getValue() === value) return
+  const position = instance.getPosition()
+  instance.pushUndoStop()
+  instance.executeEdits('theseus-replace-value', [
+    { range: model.getFullModelRange(), text: value, forceMoveMarkers: true },
+  ])
+  instance.pushUndoStop()
+  if (position) instance.setPosition(position)
 })
 watch(monacoLanguage, (language) => {
   const model = monacoEditor?.getModel()
-  if (model && monacoApi) monacoApi.editor.setModelLanguage(model, language)
+  if (!model || !monacoApi) return
+  monacoApi.editor.setModelLanguage(model, language)
+  model.updateOptions({ tabSize: tabSize.value, insertSpaces: true })
 })
 watch(() => props.fontSize, (fontSize) => monacoEditor?.updateOptions({ fontSize }))
 watch(() => props.dark, (dark) => {
-  if (monacoApi) {
-    monacoApi.editor.setTheme(dark ? 'vs-dark' : 'vs')
-    return
-  }
-  void loader.init().then((monaco) => monaco.editor.setTheme(dark ? 'vs-dark' : 'vs'))
+  monacoApi?.editor.setTheme(monacoThemeName(dark))
 })
 watch(() => props.shortcutBindings, applyShortcutRules, { deep: true })
 
 const focus = (): void => monacoEditor?.focus()
+const reload = (): void => window.location.reload()
 
 defineExpose({ focus })
 
 onBeforeUnmount(() => {
+  disposed = true
   container.value?.removeEventListener('paste', onPaste)
-  resizeObserver?.disconnect()
   shortcutRuleDisposable?.dispose()
   shortcutRuleDisposable = undefined
   for (const disposable of commandDisposables) disposable.dispose()
@@ -159,5 +195,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="container" class="code-editor" aria-label="代码编辑器"></div>
+  <div class="code-editor-shell" :aria-busy="status === 'loading'">
+    <div ref="container" class="code-editor"></div>
+    <p v-if="status === 'loading'" class="code-editor-status">正在加载编辑器</p>
+    <div v-else-if="status === 'error'" class="code-editor-status is-error" role="alert">
+      <span>编辑器加载失败</span>
+      <button type="button" @click="reload">刷新页面</button>
+    </div>
+  </div>
 </template>

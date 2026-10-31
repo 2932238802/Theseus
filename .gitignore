@@ -78,6 +78,8 @@ frontend-vue/node_modules/
 frontend-vue/dist/
 frontend-vue/.env
 frontend-vue/.env.local
+# 由 vite 配置从 node_modules/monaco-editor 同步生成
+frontend-vue/public/monaco/
 
 # Local dev logs (dev.sh)
 .dev-logs/

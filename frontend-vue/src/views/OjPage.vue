@@ -32,6 +32,7 @@ import { useContestEvents } from '../utils/contestEvents'
 import { inspectPaste } from '../utils/pasteInspection'
 import { clearDraftMeta, saveDraftMeta } from '../utils/problemDrafts'
 import { buildLineDiff, type DiffRow } from '../utils/lineDiff'
+import { currentTheme } from '../utils/theme'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,6 +43,9 @@ const submissionStore = useSubmissionStore()
 const runStore = useRunStore()
 const problemId = computed(() => Number(route.params.id))
 const PREFERRED_LANGUAGE_KEY = 'theseus-preferred-language'
+const EDITOR_FONT_SIZE_KEY = 'theseus-editor-font-size'
+const MIN_FONT_SIZE = 12
+const MAX_FONT_SIZE = 20
 const isLanguage = (value: unknown): value is Language =>
   typeof value === 'string' && LANGUAGE_OPTIONS.some((option) => option.value === value)
 const initialLanguage = (): Language => {
@@ -53,9 +57,14 @@ const initialLanguage = (): Language => {
 const language = ref<Language>(initialLanguage())
 const code = ref('')
 const editorRef = ref<{ focus: () => void } | null>(null)
-const fontSize = ref(14)
+const storedFontSize = Number(localStorage.getItem(EDITOR_FONT_SIZE_KEY))
+const fontSize = ref(
+  Number.isInteger(storedFontSize) && storedFontSize >= MIN_FONT_SIZE && storedFontSize <= MAX_FONT_SIZE
+    ? storedFontSize
+    : 14,
+)
 const isOutputOpen = ref(true)
-const isDark = ref(document.documentElement.dataset.theme === 'dark')
+const isDark = computed(() => currentTheme.value === 'dark')
 const draftKey = computed(() => `theseus-draft-${problemId.value}-${language.value}`)
 const isAccepted = computed(() => submissionStore.latest?.status === 'Accepted')
 const latestFailedCase = computed(() => submissionStore.latest?.failedCase ?? null)
@@ -197,7 +206,16 @@ const hasOtherLanguageDraft = (): boolean =>
     const stored = localStorage.getItem(`theseus-draft-${problemId.value}-${option.value}`)
     return Boolean(stored && stored !== templateFor(option.value))
   })
+// 本地草稿延迟写盘：避免每次按键都同步读写 localStorage
+let localDraftTimer: ReturnType<typeof setTimeout> | null = null
+const cancelLocalDraftSave = (): void => {
+  if (localDraftTimer !== null) {
+    clearTimeout(localDraftTimer)
+    localDraftTimer = null
+  }
+}
 const saveDraft = (): void => {
+  cancelLocalDraftSave()
   if (code.value) localStorage.setItem(draftKey.value, code.value)
   const problem = problemStore.currentProblem
   if (!problem) return
@@ -212,6 +230,13 @@ const saveDraft = (): void => {
     // 当前语言没有编辑内容时，只有其他语言也没有草稿才清除首页的继续学习记录
     clearDraftMeta(problem.id)
   }
+}
+const scheduleLocalDraftSave = (): void => {
+  cancelLocalDraftSave()
+  localDraftTimer = setTimeout(() => {
+    localDraftTimer = null
+    saveDraft()
+  }, 400)
 }
 const resetCode = (): void => {
   code.value = templateFor(language.value)
@@ -852,6 +877,7 @@ onMounted(() => {
   measurePaneHeight()
   applyOutputHeight()
   window.addEventListener('resize', onWindowResize)
+  window.addEventListener('beforeunload', saveDraft)
   window.addEventListener('keydown', onShortcutKeydown, true)
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', stopResize)
@@ -868,6 +894,8 @@ onMounted(() => {
   }
 })
 watch(language, (_next, previous) => {
+  // 先取消尚未落盘的延迟写入，避免它用新语言覆盖旧语言的草稿
+  cancelLocalDraftSave()
   localStorage.setItem(PREFERRED_LANGUAGE_KEY, language.value)
   // 先把上一种语言的当前代码落盘，再恢复新语言的草稿，避免切换时丢失编辑
   if (previous) {
@@ -878,8 +906,11 @@ watch(language, (_next, previous) => {
   isRunDialogOpen.value = false
   void hydrateDraftFromServer()
 })
+watch(fontSize, (value) => {
+  localStorage.setItem(EDITOR_FONT_SIZE_KEY, String(value))
+})
 watch(code, () => {
-  saveDraft()
+  scheduleLocalDraftSave()
   if (!adoptingRemoteDraft) scheduleDraftSync()
 })
 watch(
@@ -898,6 +929,8 @@ watch(assignmentId, () => { void loadAssignmentContext() })
 onBeforeUnmount(() => {
   submissionStore.stopPolling()
   runStore.stopPolling()
+  // 把延迟写盘中的最后一次编辑立即落盘
+  saveDraft()
   if (draftSyncTimer !== null || pendingDraftSync) {
     // 离开页面时立即把最后一次编辑同步到云端
     cancelDraftSync()
@@ -906,6 +939,7 @@ onBeforeUnmount(() => {
     void pushDraftToServer(problemStore.currentProblem?.id, language.value, payload)
   }
   window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('beforeunload', saveDraft)
   window.removeEventListener('keydown', onShortcutKeydown, true)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', stopResize)
@@ -984,7 +1018,7 @@ onBeforeUnmount(() => {
         @keydown.right.prevent="nudgeSplit(24)"
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
-        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(12, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(20, fontSize + 1)">A+</button><button type="button" aria-label="切换编辑器主题" title="切换编辑器主题" @click="isDark = !isDark">◐</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
+        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
         <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :dark="isDark" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" />
         <div
           ref="outputResizerRef"

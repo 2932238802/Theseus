@@ -1,0 +1,158 @@
+import type { Monaco } from '@monaco-editor/loader'
+import type { editor } from 'monaco-editor'
+
+export const EDITOR_THEME_LIGHT = 'theseus-light'
+export const EDITOR_THEME_DARK = 'theseus-dark'
+
+type ThemeData = editor.IStandaloneThemeData
+
+// 配色参照力扣编辑器：浅色接近 VS Light+，深色接近 VS Dark+，背景与本站主题对齐
+const LIGHT_THEME: ThemeData = {
+  base: 'vs',
+  inherit: true,
+  rules: [
+    { token: 'comment', foreground: '008000' },
+    { token: 'comment.doc', foreground: '008000', fontStyle: 'italic' },
+    { token: 'keyword', foreground: '0000ff' },
+    { token: 'keyword.control', foreground: 'af00db' },
+    { token: 'keyword.operator', foreground: '0000ff' },
+    { token: 'string', foreground: 'a31515' },
+    { token: 'string.escape', foreground: 'a31515' },
+    { token: 'number', foreground: '098658' },
+    { token: 'number.hex', foreground: '098658' },
+    { token: 'number.binary', foreground: '098658' },
+    { token: 'number.float', foreground: '098658' },
+    { token: 'type', foreground: '267f99' },
+    { token: 'type.identifier', foreground: '267f99' },
+    { token: 'entity.name.type', foreground: '267f99' },
+    { token: 'entity.name.class', foreground: '267f99' },
+    { token: 'entity.name.namespace', foreground: '267f99' },
+    { token: 'entity.name.function', foreground: '795e26' },
+    { token: 'function', foreground: '795e26' },
+    { token: 'variable', foreground: '001080' },
+    { token: 'variable.parameter', foreground: '001080' },
+    { token: 'variable.predefined', foreground: '001080' },
+    { token: 'constant', foreground: '0070c1' },
+    { token: 'constant.language', foreground: '0070c1' },
+    { token: 'annotation', foreground: '808080' },
+    { token: 'operator', foreground: '24242c' },
+    { token: 'delimiter', foreground: '24242c' },
+    { token: 'tag', foreground: '800000' },
+    { token: 'attribute.name', foreground: 'e50000' },
+    { token: 'attribute.value', foreground: '0451a5' },
+    { token: 'regexp', foreground: '811f3f' },
+    { token: 'invalid', foreground: 'cd3131' },
+  ],
+  colors: {
+    'editor.background': '#ffffff',
+    'editor.foreground': '#24242c',
+    'editorGutter.background': '#ffffff',
+    'editorLineNumber.foreground': '#9a9aa5',
+    'editorLineNumber.activeForeground': '#24242c',
+    'editor.lineHighlightBackground': '#f3f3f6',
+    'editor.selectionBackground': '#add6ff',
+    'editor.inactiveSelectionBackground': '#e5ebf1',
+    'editor.selectionHighlightBackground': '#add6ff80',
+    'editorCursor.foreground': '#24242c',
+    'editorIndentGuide.background1': '#e3e3e8',
+    'editorIndentGuide.activeBackground1': '#b8b8c2',
+    'editorWhitespace.foreground': '#d0d0d8',
+    'editorBracketMatch.background': '#e5ebf1',
+    'editorBracketMatch.border': '#b8b8c2',
+    'editorWidget.background': '#f7f7f9',
+    'editorWidget.border': '#d8d8df',
+    'editorSuggestWidget.background': '#f7f7f9',
+    'editorSuggestWidget.selectedBackground': '#e2e2e8',
+    'editorHoverWidget.background': '#f7f7f9',
+    'editorHoverWidget.border': '#d8d8df',
+    'editorError.foreground': '#cd3131',
+    'editorWarning.foreground': '#bf8803',
+    'editor.findMatchBackground': '#a8ac9459',
+    'editor.findMatchHighlightBackground': '#ea5c0055',
+    'editorOverviewRuler.border': '#00000000',
+    'scrollbarSlider.background': '#c3c4cc66',
+    'scrollbarSlider.hoverBackground': '#83848f80',
+    'scrollbarSlider.activeBackground': '#83848faa',
+  },
+}
+
+const DARK_THEME: ThemeData = {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [
+    { token: 'comment', foreground: '6a9955' },
+    { token: 'comment.doc', foreground: '6a9955', fontStyle: 'italic' },
+    { token: 'keyword', foreground: '569cd6' },
+    { token: 'keyword.control', foreground: 'c586c0' },
+    { token: 'keyword.operator', foreground: 'd4d4d4' },
+    { token: 'string', foreground: 'ce9178' },
+    { token: 'string.escape', foreground: 'd7ba7d' },
+    { token: 'number', foreground: 'b5cea8' },
+    { token: 'number.hex', foreground: 'b5cea8' },
+    { token: 'number.binary', foreground: 'b5cea8' },
+    { token: 'number.float', foreground: 'b5cea8' },
+    { token: 'type', foreground: '4ec9b0' },
+    { token: 'type.identifier', foreground: '4ec9b0' },
+    { token: 'entity.name.type', foreground: '4ec9b0' },
+    { token: 'entity.name.class', foreground: '4ec9b0' },
+    { token: 'entity.name.namespace', foreground: '4ec9b0' },
+    { token: 'entity.name.function', foreground: 'dcdcaa' },
+    { token: 'function', foreground: 'dcdcaa' },
+    { token: 'variable', foreground: '9cdcfe' },
+    { token: 'variable.parameter', foreground: '9cdcfe' },
+    { token: 'variable.predefined', foreground: '4fc1ff' },
+    { token: 'constant', foreground: '4fc1ff' },
+    { token: 'constant.language', foreground: '4fc1ff' },
+    { token: 'annotation', foreground: 'dcdcaa' },
+    { token: 'operator', foreground: 'd4d4d4' },
+    { token: 'delimiter', foreground: 'd4d4d4' },
+    { token: 'tag', foreground: '569cd6' },
+    { token: 'attribute.name', foreground: '9cdcfe' },
+    { token: 'attribute.value', foreground: 'ce9178' },
+    { token: 'regexp', foreground: 'd16969' },
+    { token: 'invalid', foreground: 'f44747' },
+  ],
+  colors: {
+    'editor.background': '#1e1e1e',
+    'editor.foreground': '#d4d4d4',
+    'editorGutter.background': '#1e1e1e',
+    'editorLineNumber.foreground': '#858585',
+    'editorLineNumber.activeForeground': '#c6c6c6',
+    'editor.lineHighlightBackground': '#2a2d2e',
+    'editor.selectionBackground': '#264f78',
+    'editor.inactiveSelectionBackground': '#3a3d41',
+    'editor.selectionHighlightBackground': '#add6ff26',
+    'editorCursor.foreground': '#aeafad',
+    'editorIndentGuide.background1': '#404040',
+    'editorIndentGuide.activeBackground1': '#707070',
+    'editorWhitespace.foreground': '#3b3b3b',
+    'editorBracketMatch.background': '#0064001a',
+    'editorBracketMatch.border': '#888888',
+    'editorWidget.background': '#252526',
+    'editorWidget.border': '#454545',
+    'editorSuggestWidget.background': '#252526',
+    'editorSuggestWidget.selectedBackground': '#04395e',
+    'editorHoverWidget.background': '#252526',
+    'editorHoverWidget.border': '#454545',
+    'editorError.foreground': '#f48771',
+    'editorWarning.foreground': '#cca700',
+    'editor.findMatchBackground': '#515c6a',
+    'editor.findMatchHighlightBackground': '#ea5c0055',
+    'editorOverviewRuler.border': '#00000000',
+    'scrollbarSlider.background': '#79797966',
+    'scrollbarSlider.hoverBackground': '#646464b3',
+    'scrollbarSlider.activeBackground': '#bfbfbf66',
+  },
+}
+
+let registered = false
+
+export const registerMonacoThemes = (monaco: Monaco): void => {
+  if (registered) return
+  registered = true
+  monaco.editor.defineTheme(EDITOR_THEME_LIGHT, LIGHT_THEME)
+  monaco.editor.defineTheme(EDITOR_THEME_DARK, DARK_THEME)
+}
+
+export const monacoThemeName = (dark: boolean): string =>
+  dark ? EDITOR_THEME_DARK : EDITOR_THEME_LIGHT

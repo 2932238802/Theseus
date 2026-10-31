@@ -9,14 +9,14 @@ import { uploadAvatar } from '../api/profile'
 import { fetchMyPlusState } from '../api/shop'
 import { useAuthStore } from '../store/auth'
 import { useClassStore } from '../store/classes'
-import { isDarkTheme, toggleTheme as applyThemeToggle } from '../utils/theme'
+import { currentTheme, toggleTheme as applyThemeToggle } from '../utils/theme'
 
 const authStore = useAuthStore()
 const classStore = useClassStore()
 const router = useRouter()
 const route = useRoute()
 const isMenuOpen = ref(false)
-const isDark = ref(isDarkTheme())
+const isDark = computed(() => currentTheme.value === 'dark')
 const avatarInput = ref<HTMLInputElement | null>(null)
 const avatarBusy = ref(false)
 const avatarError = ref('')
@@ -118,7 +118,7 @@ const onWindowKeydown = (event: KeyboardEvent): void => {
 }
 
 const toggleTheme = (): void => {
-  isDark.value = applyThemeToggle() === 'dark'
+  applyThemeToggle()
 }
 
 watch(
