@@ -3,8 +3,9 @@ use std::time::Duration;
 use backend_rust::{
     AppState, config::Config, db, db::pool::create_pool, judge::queue, routes,
     services::contest_service, services::email_service, services::notification_service,
-    services::plus_service,
+    services::plus_service, services::submission_service,
 };
+use futures_util::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -46,6 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(contest_settlement_loop(state.clone()));
     tokio::spawn(plus_reminder_loop(state.clone()));
     tokio::spawn(realtime_fanout_loop(state.clone()));
+    tokio::spawn(submission_result_relay(state.clone()));
     if state.config.run_code_enabled || state.config.submit_judge_enabled {
         tokio::spawn(reaper_loop(state.clone()));
     }
@@ -165,6 +167,51 @@ async fn realtime_fanout_loop(state: AppState) {
             Err(error) => tracing::error!(error = %error, "failed to fan out notifications"),
         }
     }
+}
+
+/// 判题结果实时推送：订阅 Worker 发布到 Redis 的事件，转发给用户已建立的 WebSocket。
+///
+/// 订阅断开时每 3 秒重连；空窗期内前端的状态轮询仍然能拿到结果。
+async fn submission_result_relay(state: AppState) {
+    if state.redis.is_none() {
+        return;
+    }
+    loop {
+        match relay_submission_results(&state).await {
+            Ok(()) => tracing::warn!("submission result relay ended; reconnecting"),
+            Err(error) => tracing::error!(error = %error, "submission result relay failed"),
+        }
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+}
+
+async fn relay_submission_results(state: &AppState) -> Result<(), redis::RedisError> {
+    let client = redis::Client::open(state.config.redis_url.as_str())?;
+    let mut pubsub = client.get_async_pubsub().await?;
+    pubsub
+        .subscribe(submission_service::SUBMISSION_RESULT_CHANNEL)
+        .await?;
+    tracing::info!("submission result relay subscribed");
+    let mut messages = pubsub.on_message();
+    while let Some(message) = messages.next().await {
+        let Ok(payload) = message.get_payload::<String>() else {
+            continue;
+        };
+        match serde_json::from_str::<submission_service::SubmissionResultEvent>(&payload) {
+            Ok(event) => state.realtime.publish(
+                event.user_id,
+                "submission.result",
+                serde_json::json!({
+                    "submission_id": event.submission_id,
+                    "status": event.status,
+                }),
+            ),
+            Err(error) => {
+                tracing::warn!(error = %error, "invalid submission result event");
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Settles ranked contests once their deadline (plus a short judging grace

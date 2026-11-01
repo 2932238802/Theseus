@@ -3,13 +3,11 @@ import { ref } from 'vue'
 import { toErrorMessage } from '../api/client'
 import { isTerminalStatus, submissionStatusLabel, submissionStatusMessage } from '../api/adapters'
 import { createSubmission, fetchSubmission, fetchSubmissionStatus, fetchSubmissions } from '../api/submissions'
+import { onRealtime } from '../utils/realtime'
 import type { Language, Submission } from '../types/oj'
 
 const POLL_INTERVAL = 800
 const POLL_TIMEOUT = 240_000
-
-const wait = (milliseconds: number): Promise<void> =>
-  new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
 export const useSubmissionStore = defineStore('submissions', () => {
   const submissions = ref<Submission[]>([])
@@ -23,12 +21,42 @@ export const useSubmissionStore = defineStore('submissions', () => {
 
   let pollToken = 0
   let listRequestSequence = 0
+  // 服务端推送到达时提前结束等待，不必等满一个轮询间隔
+  let wakePoll: (() => void) | null = null
+  let realtimeUnsubscribe: (() => void) | null = null
 
   const stopPolling = (): void => {
     pollToken += 1
+    wakePoll?.()
+    wakePoll = null
+  }
+
+  const waitForWake = (milliseconds: number): Promise<void> =>
+    new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        wakePoll = null
+        resolve()
+      }, milliseconds)
+      wakePoll = () => {
+        window.clearTimeout(timer)
+        wakePoll = null
+        resolve()
+      }
+    })
+
+  // 只订阅当前这次提交的结果；推送丢失或连接未建立时，轮询照常兜底
+  const ensureRealtime = (): void => {
+    if (realtimeUnsubscribe) return
+    realtimeUnsubscribe = onRealtime('submission.result', (data) => {
+      const id = Number(data.submission_id)
+      if (!Number.isFinite(id)) return
+      if (latest.value?.id !== id) return
+      wakePoll?.()
+    })
   }
 
   const pollSubmission = async (id: number): Promise<Submission | null> => {
+    ensureRealtime()
     const token = ++pollToken
     const deadline = Date.now() + POLL_TIMEOUT
     let current: Submission | null = null
@@ -51,7 +79,7 @@ export const useSubmissionStore = defineStore('submissions', () => {
         latest.value = current
         return current
       }
-      await wait(POLL_INTERVAL)
+      await waitForWake(POLL_INTERVAL)
     }
     if (token !== pollToken) return current
     throw new Error('评测超时 请稍后在个人中心查看结果')
@@ -125,6 +153,8 @@ export const useSubmissionStore = defineStore('submissions', () => {
 
   const reset = (): void => {
     stopPolling()
+    realtimeUnsubscribe?.()
+    realtimeUnsubscribe = null
     submissions.value = []
     total.value = 0
     page.value = 1

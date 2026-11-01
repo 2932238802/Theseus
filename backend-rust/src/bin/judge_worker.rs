@@ -37,10 +37,11 @@ use backend_rust::{
             release_user_lock, write_status_cache,
         },
         submission_service::{
-            CachedSubmissionStatus, SubmissionTerminalUpdate, claim_submission,
-            fetch_submission_row, finish_submission,
+            CachedSubmissionStatus, SubmissionResultEvent, SubmissionTerminalUpdate,
+            claim_submission, fetch_submission_row, finish_submission,
             increment_attempt as increment_submission_attempt, judge_cases,
             mark_internal_error as mark_submission_internal_error, parse_snapshots,
+            publish_result as publish_submission_result,
             release_user_lock as release_submission_lock, validate_judge_set,
             write_status_cache as write_submission_status_cache,
         },
@@ -1186,6 +1187,18 @@ async fn cache_submission_status(
             error = ?error,
             "failed to cache submission status"
         );
+    }
+    // 终态才推送；`judging` 之类的中间状态由前端轮询观察即可
+    if is_terminal_submission_status(status) {
+        publish_submission_result(
+            redis,
+            &SubmissionResultEvent {
+                user_id: row.user_id,
+                submission_id: row.id,
+                status: status.to_owned(),
+            },
+        )
+        .await;
     }
 }
 

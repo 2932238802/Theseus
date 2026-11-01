@@ -130,7 +130,7 @@ onMounted(() => {
       <div class="settings-row">
         <div class="settings-label">
           <strong>字号</strong>
-          <small>12 到 20</small>
+          <small>10 到 32</small>
         </div>
         <div class="settings-stepper">
           <button

@@ -46,7 +46,7 @@ const DEFAULT_VALUES: Record<string, unknown> = {
   [PREFERENCE_KEYS.shortcutBindings]: {},
 }
 
-const FONT_SIZES: [number, number] = [12, 20]
+const FONT_SIZES: [number, number] = [10, 32]
 const PAGE_SIZES = [20, 50, 100]
 const TAB_SIZES = [2, 4, 8]
 

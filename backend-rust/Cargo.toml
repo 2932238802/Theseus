@@ -9,6 +9,7 @@ async-trait = "0.1"
 axum = { version = "0.8", features = ["multipart", "ws"] }
 chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 jsonwebtoken = "9"
 rand = "0.8"
 regex = "1"

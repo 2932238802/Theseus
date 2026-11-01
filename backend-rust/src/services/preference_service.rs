@@ -75,7 +75,7 @@ fn validate_value(key: &str, value: &Value) -> bool {
         "editor.theme" => string_in(value, EDITOR_THEMES),
         "editor.font_size" => value
             .as_i64()
-            .is_some_and(|number| (12..=20).contains(&number)),
+            .is_some_and(|number| (10..=32).contains(&number)),
         "editor.tab_size" => value.as_str() == Some("auto") || int_in(value, EDITOR_TAB_SIZES),
         "editor.completion" => value.is_boolean(),
         "problems.language" => string_in(value, LANGUAGES),

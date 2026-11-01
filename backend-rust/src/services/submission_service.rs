@@ -36,6 +36,40 @@ const LOCK_TTL_BUFFER_SECONDS: u64 = 30;
 const PENDING_TIMEOUT_MESSAGE: &str = "排队超时：评测服务不可用";
 const STALE_TIMEOUT_MESSAGE: &str = "评测超时：Worker 可能已离线";
 
+/// 判题结果事件频道：Worker 写入终态后发布，API 进程订阅后转成 WebSocket 推送。
+pub const SUBMISSION_RESULT_CHANNEL: &str = "theseus:realtime:submission";
+
+/// Worker 与 API 共享的判题结果事件负载。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmissionResultEvent {
+    pub user_id: i32,
+    pub submission_id: i32,
+    pub status: String,
+}
+
+/// 发布判题结果。失败只记日志：前端的状态轮询仍是兜底路径。
+pub async fn publish_result(redis: &mut ConnectionManager, event: &SubmissionResultEvent) {
+    let payload = match serde_json::to_string(event) {
+        Ok(payload) => payload,
+        Err(error) => {
+            tracing::error!(error = %error, "failed to serialize submission result");
+            return;
+        }
+    };
+    let result: Result<i64, _> = cmd("PUBLISH")
+        .arg(SUBMISSION_RESULT_CHANNEL)
+        .arg(payload)
+        .query_async(redis)
+        .await;
+    if let Err(error) = result {
+        tracing::warn!(
+            submission_id = event.submission_id,
+            error = %error,
+            "failed to publish submission result"
+        );
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct AssignmentContext {
     assignment_id: i32,
@@ -487,6 +521,15 @@ impl SubmissionService {
             if let Err(error) = write_status_cache(&mut redis, cached).await {
                 tracing::warn!(submission_id, error = ?error, "failed to cache expired submission");
             }
+            publish_result(
+                &mut redis,
+                &SubmissionResultEvent {
+                    user_id,
+                    submission_id,
+                    status: SUBMISSION_STATUS_INTERNAL_ERROR.to_owned(),
+                },
+            )
+            .await;
             release_user_lock(&mut redis, user_id, i64::from(submission_id)).await;
             expired += 1;
         }

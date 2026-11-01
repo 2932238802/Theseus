@@ -199,6 +199,7 @@ body.is-resizing-rows {
 }
 
 .editor-toolbar {
+  position: relative;
   display: flex;
   min-height: 52px;
   flex-wrap: wrap;
@@ -267,24 +268,44 @@ body.is-resizing-rows {
   opacity: 0.45;
 }
 
-.editor-tools .lsp-status {
+/* 保存与连接状态用浮层提示，不再挤占工具栏按钮的位置 */
+.editor-status-float {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: var(--space-md);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  animation: nav-menu-in 160ms ease-out;
+  pointer-events: none;
+}
+
+.editor-status-float .lsp-status,
+.editor-status-float .save-status {
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
   color: var(--color-text-secondary);
   font-size: 12px;
   white-space: nowrap;
 }
 
-.editor-tools .lsp-status.is-error {
-  color: var(--color-danger);
-}
-
-.editor-tools .save-status {
+.editor-status-float .save-status {
   color: var(--color-success);
-  font-size: 12px;
-  white-space: nowrap;
 }
 
-.editor-tools .save-status.is-error {
+.editor-status-float .is-error {
   color: var(--color-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-status-float {
+    animation: none;
+  }
 }
 
 .code-editor-shell {
