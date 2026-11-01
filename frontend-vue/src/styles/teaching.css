@@ -1308,3 +1308,53 @@
     justify-content: space-between;
   }
 }
+
+/* 成绩申诉：状态徽标与教师处理列表 */
+.teaching-badge.pending {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.teaching-badge.accepted {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.teaching-badge.rejected {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.teaching-appeal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.teaching-appeal-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.teaching-appeal-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.teaching-appeal-header time {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.teaching-appeal-reason {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}

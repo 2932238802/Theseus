@@ -329,6 +329,8 @@ export type NotificationType =
   | 'forum_accepted'
   | 'assignment_published'
   | 'assignment_grades_published'
+  | 'grade_appeal_created'
+  | 'grade_appeal_resolved'
   | 'problem_review'
   | 'knowledge_review'
   | 'class_invite'

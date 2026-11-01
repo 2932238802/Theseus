@@ -37,7 +37,7 @@ const analyticsLoading = ref(true)
 const analyticsError = ref('')
 const badges = ref<ProfileBadge[]>([])
 const earnedBadges = computed(() => badges.value.filter((badge) => badge.earned))
-const showSettings = ref(false)
+const showSettings = ref(route.query.settings === 'account')
 
 const roleLabel = computed(() => {
   if (authStore.isTeacher) return '教师'

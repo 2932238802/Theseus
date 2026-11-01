@@ -22,9 +22,9 @@ use crate::{
         admin_forum_handler, admin_user_handler, anticheat_handler, assignment_handler,
         audit_handler, auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
         favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
-        lsp_handler, metrics_handler, note_handler, notification_handler, plus_handler,
-        preference_handler, problem_handler, profile_handler, ranking_handler, run_handler,
-        submission_handler, wrong_problem_handler, ws_handler,
+        lsp_handler, metrics_handler, note_handler, notification_handler, oauth_handler,
+        plus_handler, preference_handler, problem_handler, profile_handler, ranking_handler,
+        run_handler, submission_handler, wrong_problem_handler, ws_handler,
     },
 };
 
@@ -40,6 +40,18 @@ pub fn router(state: AppState) -> Router {
         .route("/api/lsp/ticket", post(lsp_handler::issue_ticket))
         .route("/api/auth/register", post(auth_handler::register))
         .route("/api/auth/login", post(auth_handler::login))
+        .route("/api/auth/oauth/providers", get(oauth_handler::providers))
+        .route("/api/auth/oauth/bindings", get(oauth_handler::bindings))
+        .route("/api/auth/oauth/exchange", post(oauth_handler::exchange))
+        .route(
+            "/api/auth/oauth/{provider}/start",
+            post(oauth_handler::start),
+        )
+        .route(
+            "/api/auth/oauth/{provider}/callback",
+            get(oauth_handler::callback),
+        )
+        .route("/api/auth/oauth/{provider}", delete(oauth_handler::unbind))
         .route("/api/auth/me", get(auth_handler::me))
         .route("/api/auth/logout-all", post(profile_handler::logout_all))
         .route(
@@ -206,6 +218,22 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/assignments/{id}/statistics",
             get(assignment_handler::statistics),
+        )
+        .route(
+            "/api/assignments/{id}/statistics/export",
+            get(assignment_handler::export_statistics),
+        )
+        .route(
+            "/api/assignments/{id}/grade-appeals",
+            get(assignment_handler::grade_appeals).post(assignment_handler::submit_grade_appeal),
+        )
+        .route(
+            "/api/assignments/{id}/grade-appeals/mine",
+            get(assignment_handler::my_grade_appeal),
+        )
+        .route(
+            "/api/assignments/{id}/grade-appeals/{appeal_id}/resolve",
+            post(assignment_handler::resolve_grade_appeal),
         )
         .route(
             "/api/assignments/{id}/problems/{problem_id}/peer-submissions",

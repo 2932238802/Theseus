@@ -20,6 +20,9 @@ const RESEND_COOLDOWN_SECS: u64 = 60;
 const EMAIL_VERIFY_PURPOSE: &str = "email_verify";
 const EMAIL_CHANGE_PURPOSE: &str = "email_change";
 const PASSWORD_RESET_PURPOSE: &str = "password_reset";
+pub(crate) const OAUTH_LOGIN_PURPOSE: &str = "oauth_login";
+/// 第三方登录一次性票据的有效期；票据只用于换 JWT。
+const OAUTH_LOGIN_TICKET_TTL_SECS: i64 = 120;
 
 pub async fn register(
     pool: &PgPool,
@@ -578,6 +581,34 @@ async fn issue_token(
     .await
     .map_err(AppError::Database)?;
     Ok(raw_token)
+}
+
+/// 第三方登录成功后签发一次性票据，由前端换取 JWT。
+pub(crate) async fn issue_oauth_login_ticket(
+    pool: &PgPool,
+    user_id: i32,
+) -> Result<String, AppError> {
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let token = issue_token(
+        &mut transaction,
+        user_id,
+        OAUTH_LOGIN_PURPOSE,
+        OAUTH_LOGIN_TICKET_TTL_SECS,
+    )
+    .await?;
+    transaction.commit().await.map_err(AppError::Database)?;
+    Ok(token)
+}
+
+/// 消费一次性票据并返回用户 ID；已使用或过期返回 400。
+pub(crate) async fn consume_oauth_login_ticket(
+    pool: &PgPool,
+    raw_token: &str,
+) -> Result<i32, AppError> {
+    let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let user_id = consume_token(&mut transaction, raw_token, OAUTH_LOGIN_PURPOSE).await?;
+    transaction.commit().await.map_err(AppError::Database)?;
+    Ok(user_id)
 }
 
 async fn consume_token(

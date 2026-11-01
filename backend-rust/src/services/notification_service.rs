@@ -311,7 +311,9 @@ fn category_for_type(notification_type: &str) -> Option<&'static str> {
         | "cheat_report_confirmed"
         | "cheat_report_dismissed"
         | "cheat_appeal_created"
-        | "cheat_appeal_resolved" => Some("assignment"),
+        | "cheat_appeal_resolved"
+        | "grade_appeal_created"
+        | "grade_appeal_resolved" => Some("assignment"),
         "forum_reply" | "forum_comment" | "forum_mention" | "forum_accepted" => Some("forum"),
         "forum_moderation" | "forum_mute" | "reputation_notice" | "problem_review" => {
             Some("account")

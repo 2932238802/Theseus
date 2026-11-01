@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../store/auth'
 import IndexPage from '../views/IndexPage.vue'
 import LoginAndRegisterPage from '../views/LoginAndRegisterPage.vue'
+const OAuthCallbackPage = () => import('../views/OAuthCallbackPage.vue')
 
 // 页面按路由拆包：首屏只加载首页与登录页，其余页面在跳转时才下载
 const AdminAuditPage = () => import('../views/AdminAuditPage.vue')
@@ -53,6 +54,7 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: IndexPage },
     { path: '/login', name: 'login', component: LoginAndRegisterPage, meta: { guestOnly: true } },
+    { path: '/oauth/callback', name: 'oauth-callback', component: OAuthCallbackPage },
     { path: '/verify-email', name: 'verify-email', component: VerifyEmailPage },
     { path: '/forgot-password', name: 'forgot-password', component: ForgotPasswordPage },
     { path: '/reset-password', name: 'reset-password', component: ResetPasswordPage },

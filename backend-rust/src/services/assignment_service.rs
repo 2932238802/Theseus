@@ -13,8 +13,8 @@ use crate::{
             AssignmentDetail, AssignmentListResponse, AssignmentMutationResponse,
             AssignmentProblemInput, AssignmentProblemView, AssignmentProblemsRequest,
             AssignmentStatsProblem, AssignmentStatsResponse, AssignmentSubmissionListQuery,
-            AssignmentSummary, CreateAssignmentRequest, OverrideItem, OverrideListResponse,
-            PeerSubmissionItem, PeerSubmissionListResponse, PolicyAuditItem,
+            AssignmentSummary, CreateAssignmentRequest, GradebookResponse, OverrideItem,
+            OverrideListResponse, PeerSubmissionItem, PeerSubmissionListResponse, PolicyAuditItem,
             PolicyAuditListResponse, PublishSolutionsResponse, UpdateAssignmentRequest,
             UpdateOverrideRequest,
         },
@@ -1802,12 +1802,28 @@ pub async fn statistics(
         }
     });
 
-    let problems: Vec<AssignmentStatsProblem> = gradebook
+    let problems = problem_stats(&gradebook);
+
+    Ok(AssignmentStatsResponse {
+        student_count,
+        submitted_student_count,
+        average_score: round1(average_score),
+        my_total_score,
+        my_position_bucket,
+        problems,
+    })
+}
+
+/// 按作业题维度汇总的统计，供统计接口与 CSV 导出共用。
+fn problem_stats(gradebook: &GradebookResponse) -> Vec<AssignmentStatsProblem> {
+    let student_count = gradebook.students.len() as i64;
+    gradebook
         .problems
         .iter()
         .map(|problem| {
             let mut accepted = 0;
             let mut exempt = 0;
+            let mut not_submitted = 0;
             let mut score_sum = 0;
             let mut score_count = 0;
             for student in &gradebook.students {
@@ -1821,6 +1837,8 @@ pub async fn statistics(
                     }
                     if cell.exempt {
                         exempt += 1;
+                    } else if cell.attempts == 0 {
+                        not_submitted += 1;
                     }
                     if cell.included_in_total {
                         score_sum += cell.final_score;
@@ -1835,33 +1853,101 @@ pub async fn statistics(
                 pass_rate: if student_count == 0 {
                     0.0
                 } else {
-                    accepted as f64 / student_count as f64
+                    round1(accepted as f64 / student_count as f64)
                 },
                 average_score: if score_count == 0 {
                     0.0
                 } else {
-                    score_sum as f64 / score_count as f64
+                    round1(score_sum as f64 / score_count as f64)
                 },
                 exempt_count: exempt,
+                not_submitted_count: not_submitted,
             }
         })
-        .collect();
+        .collect()
+}
 
-    Ok(AssignmentStatsResponse {
-        student_count,
-        submitted_student_count,
-        average_score: round1(average_score),
-        my_total_score,
-        my_position_bucket,
-        problems: problems
-            .into_iter()
-            .map(|problem| AssignmentStatsProblem {
-                average_score: round1(problem.average_score),
-                pass_rate: round1(problem.pass_rate),
-                ..problem
-            })
-            .collect(),
-    })
+/// 导出作业统计报表（UTF-8 BOM），包含概况、逐题统计与未提交名单。
+pub async fn export_statistics(
+    pool: &PgPool,
+    user: &AuthUser,
+    id: i32,
+) -> Result<String, AppError> {
+    let assignment = access_owned_assignment(pool, user, id).await?;
+    let gradebook = grade_service::compute_gradebook(pool, id, false).await?;
+    Ok(statistics_csv(&assignment.title, &gradebook))
+}
+
+fn statistics_csv(title: &str, gradebook: &GradebookResponse) -> String {
+    let student_count = gradebook.students.len() as i64;
+    let submitted = gradebook
+        .students
+        .iter()
+        .filter(|student| student.problems.iter().any(|cell| cell.attempts > 0))
+        .count() as i64;
+    let submitted_totals: Vec<i32> = gradebook
+        .students
+        .iter()
+        .filter(|student| student.problems.iter().any(|cell| cell.attempts > 0))
+        .map(|student| student.total_score)
+        .collect();
+    let average = if submitted_totals.is_empty() {
+        0.0
+    } else {
+        submitted_totals.iter().sum::<i32>() as f64 / submitted_totals.len() as f64
+    };
+
+    let mut lines = vec![
+        csv_row(&["作业统计", title]),
+        csv_row(&["学生数", &student_count.to_string()]),
+        csv_row(&["已提交学生数", &submitted.to_string()]),
+        csv_row(&["未提交学生数", &(student_count - submitted).to_string()]),
+        csv_row(&["平均分", &round1(average).to_string()]),
+        String::new(),
+        csv_row(&[
+            "题目 ID",
+            "题目",
+            "分值",
+            "通过人数",
+            "通过率",
+            "平均分",
+            "免修人数",
+            "未提交人数",
+        ]),
+    ];
+    let stats = problem_stats(gradebook);
+    for (problem, stat) in gradebook.problems.iter().zip(stats) {
+        lines.push(csv_row(&[
+            &problem.problem_id.to_string(),
+            &problem.title,
+            &problem.points.to_string(),
+            &stat.accepted_student_count.to_string(),
+            &format!("{}%", (stat.pass_rate * 100.0).round()),
+            &stat.average_score.to_string(),
+            &stat.exempt_count.to_string(),
+            &stat.not_submitted_count.to_string(),
+        ]));
+    }
+
+    lines.push(String::new());
+    lines.push(csv_row(&["未提交名单"]));
+    lines.push(csv_row(&["用户名", "邮箱"]));
+    for student in &gradebook.students {
+        if student.problems.iter().any(|cell| cell.attempts > 0) {
+            continue;
+        }
+        lines.push(csv_row(&[&student.username, &student.email]));
+    }
+
+    format!("\u{feff}{}\n", lines.join("\n"))
+}
+
+fn csv_row(values: &[&str]) -> String {
+    values
+        .iter()
+        .map(|value| grade_service::csv_field(value))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 pub async fn peer_submissions(
@@ -1967,8 +2053,11 @@ fn round1(value: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_problem_inputs;
-    use crate::models::teaching::AssignmentProblemInput;
+    use super::{statistics_csv, validate_problem_inputs};
+    use crate::models::teaching::{
+        AssignmentProblemInput, GradebookAssignment, GradebookCell, GradebookProblem,
+        GradebookResponse, GradebookStudent,
+    };
 
     #[test]
     fn rejects_duplicate_problem_ids() {
@@ -1997,5 +2086,82 @@ mod tests {
             }];
             assert!(validate_problem_inputs(&problems).is_err());
         }
+    }
+
+    fn sample_cell(attempts: i64, accepted: bool) -> GradebookCell {
+        GradebookCell {
+            problem_id: 7,
+            attempts,
+            attempts_limit: None,
+            accepted,
+            is_late: false,
+            late_days: 0,
+            late_deduction: 0,
+            exempt: false,
+            exemption_mode: None,
+            included_in_total: attempts > 0,
+            auto_score: if accepted { 80 } else { 0 },
+            manual_score: None,
+            final_score: if accepted { 80 } else { 0 },
+            feedback: None,
+            last_submission_id: None,
+            last_status: None,
+        }
+    }
+
+    #[test]
+    fn statistics_csv_lists_problem_stats_and_non_submitters() {
+        let gradebook = GradebookResponse {
+            assignment: GradebookAssignment {
+                id: 1,
+                title: "作业 1".to_owned(),
+                due_at: None,
+                grades_published_at: None,
+                late_policy: "none".to_owned(),
+                scoring_policy: "highest".to_owned(),
+            },
+            problems: vec![GradebookProblem {
+                problem_id: 7,
+                title: "两数之和".to_owned(),
+                points: 100,
+            }],
+            students: vec![
+                GradebookStudent {
+                    user_id: 2,
+                    username: "alice".to_owned(),
+                    email: "alice@example.test".to_owned(),
+                    status: "active".to_owned(),
+                    overall_feedback: None,
+                    total_score: 80,
+                    problems: vec![sample_cell(1, true)],
+                },
+                GradebookStudent {
+                    user_id: 3,
+                    username: "bob".to_owned(),
+                    email: "bob@example.test".to_owned(),
+                    status: "active".to_owned(),
+                    overall_feedback: None,
+                    total_score: 0,
+                    problems: vec![sample_cell(0, false)],
+                },
+            ],
+        };
+        let csv = statistics_csv("作业 1", &gradebook);
+        assert!(csv.starts_with('\u{feff}'));
+        let lines: Vec<&str> = csv.trim_start_matches('\u{feff}').lines().collect();
+        assert_eq!(lines[0], "作业统计,作业 1");
+        assert_eq!(lines[1], "学生数,2");
+        assert_eq!(lines[2], "已提交学生数,1");
+        assert_eq!(lines[3], "未提交学生数,1");
+        assert_eq!(lines[4], "平均分,80");
+        assert_eq!(
+            lines[6],
+            "题目 ID,题目,分值,通过人数,通过率,平均分,免修人数,未提交人数"
+        );
+        assert_eq!(lines[7], "7,两数之和,100,1,50%,80,0,1");
+        assert_eq!(lines[9], "未提交名单");
+        assert_eq!(lines[10], "用户名,邮箱");
+        assert_eq!(lines[11], "bob,bob@example.test");
+        assert_eq!(lines.len(), 12);
     }
 }

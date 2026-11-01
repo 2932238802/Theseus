@@ -11,6 +11,9 @@ const PAGE_SIZE = 20
 
 const ACTION_LABELS: Record<string, string> = {
   'auth.login': '登录',
+  'auth.oauth_login': '第三方登录',
+  'auth.oauth_bind': '绑定第三方账号',
+  'auth.oauth_unbind': '解绑第三方账号',
   'user.role_change': '变更角色',
   'user.status_change': '变更状态',
   'user.reputation_restore': '恢复信誉分',
@@ -23,6 +26,8 @@ const ACTION_LABELS: Record<string, string> = {
   'grade.problem_update': '修改单题批改',
   'grade.overall_update': '修改整体评语',
   'grade.publish': '发布成绩',
+  'grade.appeal_submit': '提交成绩申诉',
+  'grade.appeal_resolve': '处理成绩申诉',
   'notification.send': '发送通知',
   'forum.post_status': '帖子状态',
   'forum.comment_status': '评论状态',

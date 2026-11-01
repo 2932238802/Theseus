@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { toErrorMessage } from '../api/client'
 import { toast } from '../store/toast'
 import {
@@ -14,6 +14,12 @@ import {
   updateUsername,
 } from '../api/profile'
 import {
+  fetchOAuthBindings,
+  fetchOAuthProviders,
+  startOAuth,
+  unbindOAuth,
+} from '../api/oauth'
+import {
   fetchNotificationPreferences,
   updateNotificationPreferences,
   type NotificationPreference,
@@ -21,8 +27,10 @@ import {
 } from '../api/notifications'
 import { useAuthStore } from '../store/auth'
 import type { ProfileBadge } from '../types/profile'
+import type { OAuthBinding, OAuthProvider } from '../types/oauth'
 
 const emit = defineEmits<{ close: [] }>()
+const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
@@ -40,26 +48,41 @@ const badges = ref<ProfileBadge[]>([])
 const badgesLoading = ref(true)
 const notificationPrefs = ref<NotificationPreferences | null>(null)
 const notificationPrefsLoading = ref(true)
+const oauthBindings = ref<OAuthBinding[]>([])
+const oauthProviders = ref<OAuthProvider[]>([])
+const oauthLoading = ref(true)
+const oauthPassword = ref('')
+const initialSection: 'oauth' | 'username' =
+  route.query.oauth === 'bound' || route.query.oauth === 'taken' ? 'oauth' : 'username'
 const activeSection = ref<
   | 'username'
   | 'grade'
   | 'email'
   | 'password'
+  | 'oauth'
   | 'notifications'
   | 'sessions'
   | 'badges'
   | 'danger'
->('username')
+>(initialSection)
 const sections = [
   { key: 'username', label: '用户名' },
   { key: 'grade', label: '年级' },
   { key: 'email', label: '邮箱' },
   { key: 'password', label: '密码' },
+  { key: 'oauth', label: '第三方账号' },
   { key: 'notifications', label: '通知偏好' },
   { key: 'sessions', label: '设备会话' },
   { key: 'badges', label: '徽章展示' },
   { key: 'danger', label: '注销账号' },
 ] as const
+
+const githubBinding = computed(
+  () => oauthBindings.value.find((binding) => binding.provider === 'github') ?? null,
+)
+const githubEnabled = computed(
+  () => oauthProviders.value.some((provider) => provider.provider === 'github' && provider.enabled),
+)
 
 const NOTIFICATION_CATEGORY_INFO: Record<string, { label: string; description: string }> = {
   class: { label: '组织', description: '组织邀请与邀请处理结果' },
@@ -193,9 +216,54 @@ const toggleNotificationPreference = async (
   }
 }
 
+const loadOAuth = async (): Promise<void> => {
+  oauthLoading.value = true
+  try {
+    const [bindings, providers] = await Promise.all([
+      fetchOAuthBindings(),
+      fetchOAuthProviders(),
+    ])
+    oauthBindings.value = bindings
+    oauthProviders.value = providers
+  } catch (exception: unknown) {
+    error.value = toErrorMessage(exception)
+  } finally {
+    oauthLoading.value = false
+  }
+}
+
+const bindGithub = (): void => {
+  void run('oauth-bind', async () => {
+    window.location.assign(await startOAuth('github', 'bind'))
+  })
+}
+
+const disconnectGithub = (): void => {
+  if (!oauthPassword.value) {
+    error.value = '请输入当前密码'
+    return
+  }
+  if (!window.confirm('解绑后将无法使用 GitHub 快捷登录，确定继续吗？')) return
+  void run('oauth-unbind', async () => {
+    const message = await unbindOAuth('github', oauthPassword.value)
+    oauthPassword.value = ''
+    await loadOAuth()
+    toast.success(message)
+  })
+}
+
 onMounted(() => {
   void loadBadges()
   void loadNotificationPrefs()
+  void loadOAuth()
+  if (route.query.oauth === 'bound') {
+    toast.success('GitHub 账号已绑定')
+  } else if (route.query.oauth === 'taken') {
+    error.value = '该 GitHub 账号已绑定其他 Theseus 账号'
+  }
+  if (route.query.oauth) {
+    void router.replace({ query: route.query.tab ? { tab: route.query.tab } : {} })
+  }
 })
 
 const logoutEverywhere = (): void => {
@@ -326,6 +394,48 @@ const removeAccount = (): void => {
             </button>
           </div>
         </form>
+
+        <section v-show="activeSection === 'oauth'" class="teaching-grade-form">
+          <h3>第三方账号</h3>
+          <p class="teaching-subtle">
+            绑定后可以使用 GitHub 快捷登录 不会通过 GitHub 自动创建账号
+          </p>
+          <p v-if="oauthLoading" class="teaching-subtle">加载中</p>
+          <p v-else-if="!githubEnabled" class="teaching-subtle">管理员尚未配置 GitHub 登录</p>
+          <div v-else-if="githubBinding" class="oauth-binding">
+            <div class="oauth-binding-info">
+              <strong>GitHub</strong>
+              <small>
+                @{{ githubBinding.loginName }}
+                <template v-if="githubBinding.displayName"> · {{ githubBinding.displayName }}</template>
+              </small>
+              <small>
+                绑定于 {{ new Date(githubBinding.createdAt).toLocaleDateString('zh-CN') }}
+                <template v-if="githubBinding.lastLoginAt"> · 最近登录 {{ new Date(githubBinding.lastLoginAt).toLocaleString('zh-CN') }}</template>
+              </small>
+            </div>
+            <label>
+              <span>当前密码</span>
+              <input v-model="oauthPassword" type="password" autocomplete="current-password" placeholder="解绑前确认密码" />
+            </label>
+            <div class="teaching-form-actions">
+              <button class="teaching-secondary-button" type="button" :disabled="busy === 'oauth-unbind'" @click="disconnectGithub">
+                {{ busy === 'oauth-unbind' ? '解绑中' : '解除绑定' }}
+              </button>
+            </div>
+          </div>
+          <div v-else class="oauth-binding">
+            <div class="oauth-binding-info">
+              <strong>GitHub</strong>
+              <small>未绑定</small>
+            </div>
+            <div class="teaching-form-actions">
+              <button class="primary-button" type="button" :disabled="busy === 'oauth-bind'" @click="bindGithub">
+                {{ busy === 'oauth-bind' ? '跳转中' : '绑定 GitHub' }}
+              </button>
+            </div>
+          </div>
+        </section>
 
         <section v-show="activeSection === 'notifications'" class="teaching-grade-form">
           <h3>通知偏好</h3>

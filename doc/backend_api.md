@@ -48,6 +48,12 @@ cargo run
 | GET | `/metrics` | 无 | Prometheus 文本格式指标，含 HTTP、连接池、判题队列与 Worker 心跳 |
 | POST | `/api/auth/register` | 否 | 注册，返回 `{message}` |
 | POST | `/api/auth/login` | 否 | 登录，`username` 字段可传用户名或邮箱，返回 `{token,user}` |
+| GET | `/api/auth/oauth/providers` | 否 | 第三方登录平台列表，`enabled` 表示是否已配置 |
+| POST | `/api/auth/oauth/{provider}/start` | 绑定需登录 | 生成授权地址，`mode` 为 `login` 或 `bind` |
+| GET | `/api/auth/oauth/{provider}/callback` | 否 | 第三方回调，校验后重定向前端 |
+| POST | `/api/auth/oauth/exchange` | 否 | 用一次性票据换取 `{token,user}` |
+| GET | `/api/auth/oauth/bindings` | 用户 | 当前账号的第三方绑定列表 |
+| DELETE | `/api/auth/oauth/{provider}` | 用户 | 解除绑定，需提交 `{password}` |
 | GET | `/api/home/overview` | 用户 | 首页学习工作台：继续学习、统计、最近活动、今日签到与信誉分 |
 | POST | `/api/home/check-in` | 用户 | 每日签到，信誉分 +0.1（上限 100） |
 | GET | `/api/problems` | 可选 | 分页题库，见下方查询参数 |
@@ -142,9 +148,14 @@ cargo run
 | GET | `/api/assignments/{id}/overrides` | 教师 | 查询学生补交/免修例外 |
 | PUT | `/api/assignments/{id}/overrides/{user_id}/problems/{problem_id}` | 教师 | 设置补交/免修 |
 | DELETE | `/api/assignments/{id}/overrides/{user_id}/problems/{problem_id}` | 教师 | 撤销补交/免修 |
-| GET | `/api/assignments/{id}/statistics` | 学生/教师 | 匿名组织统计；学生需作业开启统计 |
+| GET | `/api/assignments/{id}/statistics` | 学生/教师 | 匿名组织统计；学生需作业开启统计；逐题含 `not_submitted_count` |
+| GET | `/api/assignments/{id}/statistics/export` | 教师 | 导出统计 CSV（UTF-8 BOM）：概况、逐题统计与未提交名单 |
 | GET | `/api/assignments/{id}/gradebook` | 教师 | 批改台，`include_removed=1` 包含已移除成员 |
 | GET | `/api/assignments/{id}/gradebook/export` | 教师 | 导出成绩 CSV（UTF-8 BOM），参数同批改台 |
+| POST | `/api/assignments/{id}/grade-appeals` | 学生 | 提交成绩申诉 `{reason}`；每份作业一次 |
+| GET | `/api/assignments/{id}/grade-appeals/mine` | 学生 | 返回本人申诉或 `null` |
+| GET | `/api/assignments/{id}/grade-appeals` | 教师 | 申诉列表，可选 `status=pending\|accepted\|rejected` |
+| POST | `/api/assignments/{id}/grade-appeals/{appeal_id}/resolve` | 教师 | 处理 `{decision,note}`，`decision` 为 `accepted`/`rejected` |
 | POST | `/api/classes/{id}/import` | 教师 | CSV 批量导入学生，逐行返回 `added/skipped` 结果 |
 | GET | `/api/assignments/{id}/policy-audits` | 教师 | 策略、例外和解析发布审计 |
 | GET | `/api/assignments/{id}/problems/{problem_id}/peer-submissions` | 学生/教师 | 同学 AC 代码；需作业开启开关 |
@@ -203,6 +214,10 @@ cargo run
 | `POST /api/auth/verify-email` | 客户端 IP | 30 次 / 10 分钟 |
 | `POST /api/auth/verify-email/resend` | 用户 | 3 次 / 小时（另有 60 秒数据库冷却） |
 | `POST /api/auth/reset-password` | 客户端 IP | 20 次 / 10 分钟 |
+| `POST /api/auth/oauth/{provider}/start` | 客户端 IP | 30 次 / 10 分钟 |
+| `GET /api/auth/oauth/{provider}/callback` | 客户端 IP | 60 次 / 10 分钟 |
+| `POST /api/auth/oauth/exchange` | 客户端 IP | 30 次 / 10 分钟 |
+| `DELETE /api/auth/oauth/{provider}` | 用户 | 10 次 / 小时 |
 
 - 只有 `401 用户名或密码错误` 计入失败次数；登录成功会清零该账号的失败记录。
 - 锁定时返回 429，文案为 `登录失败次数过多，请 N 分钟后再试`。
@@ -210,6 +225,26 @@ cargo run
 - 客户端 IP 优先取反向代理写入的 `X-Real-IP`，其次取 `X-Forwarded-For` 第一段；两者都缺失时统一按 `unknown` 计数。
 
 跨域由 `CORS_ALLOWED_ORIGINS` 控制，逗号分隔站点列表，不接受 `*`；留空表示只允许同源。开发环境的 Vite 代理与生产环境的 Nginx 反代都是同源访问，通常无需配置。
+
+### 第三方账号（GitHub）
+
+v1 只支持 GitHub，且只允许绑定已有 Theseus 账号，不通过 GitHub 自动建号。未配置 `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` 时 `providers` 返回 `enabled:false`，前端隐藏入口，`start` 返回 403。
+
+- `GET /api/auth/oauth/providers` 返回 `{providers:[{provider:"github",enabled}]}`。
+- `POST /api/auth/oauth/github/start` 请求 `{mode:"login"|"bind",redirect?}`，返回 `{authorize_url}`；`bind` 需要登录，`redirect` 只接受同源绝对路径。
+- 授权回调地址为 `{OAUTH_CALLBACK_BASE}/api/auth/oauth/github/callback`，`OAUTH_CALLBACK_BASE` 默认等于 `FRONTEND_BASE_URL`。
+- 回调成功后重定向前端：
+  - 绑定成功 `/profile?settings=account&oauth=bound`
+  - 第三方账号已绑定其他用户 `/profile?settings=account&oauth=taken`
+  - 未绑定 `/login?oauth=unbound`
+  - 账号不可登录 `/login?oauth=disabled`
+  - 用户拒绝授权 `/login?oauth=denied`
+  - 其它失败 `/login?oauth=error`
+- 登录成功后回调不直接传 JWT，而是签发 2 分钟有效的一次性票据，前端跳转 `/oauth/callback?code=...` 后调用 `POST /api/auth/oauth/exchange` 换取 `{token,user}`。
+- `GET /api/auth/oauth/bindings` 返回 `{bindings:[{provider,login_name,display_name,email,created_at,last_login_at}]}`。
+- `DELETE /api/auth/oauth/github` 请求 `{password}`，密码正确才解绑；未绑定返回 404。
+- `state` 使用 `JWT_SECRET` 签名的 HS256 JWT，10 分钟过期，包含操作模式与绑定用户 id，回调不信任任何客户端传入的 `user_id`。
+- 绑定写 `auth.oauth_bind`，解绑写 `auth.oauth_unbind`，第三方登录写 `auth.oauth_login` 审计。
 
 ## 作业策略接口
 
@@ -335,6 +370,35 @@ Authorization: Bearer <teacher>
 - `include_removed=1` 与批改台一致，包含已移除但仍有提交或成绩的成员。
 
 成绩发布仍走既有通知链路：`POST /api/assignments/{id}/grades/publish` 写入 `assignment_grades_published` 站内信，后台邮件循环按 `assignment` 类别偏好投递邮件。
+
+### 导出统计
+
+```http
+GET /api/assignments/{id}/statistics/export
+Authorization: Bearer <teacher>
+```
+
+- 仅作业所属教师可调用；学生返回 403，非 owner 教师返回 404。
+- 返回 `text/csv; charset=utf-8`，带 UTF-8 BOM，文件名 `assignment-{id}-statistics.csv`。
+- 内容分三段：概况（学生数、已提交、未提交、平均分）、逐题统计（通过人数、通过率、平均分、免修、未提交）、未提交名单（用户名、邮箱）。
+- 口径与 `GET /api/assignments/{id}/statistics` 一致；未提交指整份作业没有任何提交的学生。
+
+### 成绩申诉
+
+```http
+POST /api/assignments/{id}/grade-appeals
+Authorization: Bearer <student>
+Content-Type: application/json
+
+{ "reason": "第三题编译错误提示与判题结果不一致" }
+```
+
+- 要求作业为 `published`、`grades_published_at` 非空且成绩已对学生可见；每份作业每人只能提交一次。
+- 理由去空白后非空，上限 2000 字；重复提交返回 409。
+- 提交后给作业所属教师写 `grade_appeal_created` 站内信。
+- 教师处理：`POST /api/assignments/{id}/grade-appeals/{appeal_id}/resolve`，`{ "decision": "accepted" | "rejected", "note": "..." }`，备注上限 500 字；处理后退回 409。
+- 处理结果给学生写 `grade_appeal_resolved` 站内信。受理不会自动改分，改分仍走批改台。
+- `GET /api/assignments/{id}/grade-appeals/mine` 返回本人申诉或 `appeal: null`；教师列表支持 `status` 筛选。
 
 
 ## 个人中心接口

@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { toErrorMessage } from '../api/client'
+import { fetchOAuthProviders, startOAuth } from '../api/oauth'
 import { useAuthStore } from '../store/auth'
 import { getRememberedUsername } from '../utils/session'
 
@@ -13,8 +15,54 @@ const showConfirmPassword = ref(false)
 const loginForm = ref({ username: getRememberedUsername(), password: '', remember: true })
 const registerForm = ref({ username: '', email: '', password: '', confirmPassword: '' })
 const formError = ref('')
+const oauthProviders = ref<{ provider: string; enabled: boolean }[]>([])
+const oauthBusy = ref('')
 
 const isLogin = computed(() => activeMode.value === 'login')
+
+const OAUTH_LABELS: Record<string, string> = {
+  github: 'GitHub',
+}
+
+const oauthMessage = computed(() => {
+  switch (route.query.oauth) {
+    case 'unbound':
+      return '该 GitHub 账号尚未绑定 Theseus 账号 请先用密码登录后在账号设置中绑定'
+    case 'disabled':
+      return '该账号当前不可登录'
+    case 'denied':
+      return '已取消 GitHub 授权'
+    case 'error':
+      return 'GitHub 登录失败 请稍后再试'
+    default:
+      return ''
+  }
+})
+
+const loadProviders = async (): Promise<void> => {
+  try {
+    oauthProviders.value = (await fetchOAuthProviders()).filter((item) => item.enabled)
+  } catch {
+    oauthProviders.value = []
+  }
+}
+
+const loginWithOAuth = async (provider: string): Promise<void> => {
+  if (oauthBusy.value) return
+  oauthBusy.value = provider
+  formError.value = ''
+  try {
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : undefined
+    window.location.assign(await startOAuth(provider, 'login', redirect))
+  } catch (exception: unknown) {
+    formError.value = toErrorMessage(exception)
+    oauthBusy.value = ''
+  }
+}
+
+onMounted(() => {
+  void loadProviders()
+})
 
 const switchMode = (mode: 'login' | 'register'): void => {
   activeMode.value = mode
@@ -91,6 +139,21 @@ const handleSubmit = async (): Promise<void> => {
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
         <button class="primary-button auth-submit" type="submit" :disabled="authStore.isLoading"><span v-if="authStore.isLoading" class="spinner"></span>{{ authStore.isLoading ? '处理中' : isLogin ? '登录' : '注册并开始' }}</button>
       </form>
+
+      <p v-if="oauthMessage" class="auth-oauth-message" role="status">{{ oauthMessage }}</p>
+      <div v-if="oauthProviders.length" class="auth-oauth">
+        <span class="auth-oauth-divider">或使用第三方账号</span>
+        <button
+          v-for="item in oauthProviders"
+          :key="item.provider"
+          class="auth-oauth-button"
+          type="button"
+          :disabled="Boolean(oauthBusy)"
+          @click="loginWithOAuth(item.provider)"
+        >
+          使用 {{ OAUTH_LABELS[item.provider] ?? item.provider }} 登录
+        </button>
+      </div>
 
       <p class="auth-footnote">继续即代表你同意 Theseus 的服务条款与隐私政策</p>
       <p class="auth-developer">LosAngelous/Theseus</p>

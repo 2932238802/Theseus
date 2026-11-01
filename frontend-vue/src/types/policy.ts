@@ -55,6 +55,7 @@ export interface AssignmentStatsProblem {
   passRate: number
   averageScore: number
   exemptCount: number
+  notSubmittedCount: number
 }
 
 export interface AssignmentStatistics {
@@ -64,6 +65,23 @@ export interface AssignmentStatistics {
   myTotalScore?: number
   myPositionBucket?: 'top10' | 'top25' | 'top50' | 'rest'
   problems: AssignmentStatsProblem[]
+}
+
+export type GradeAppealStatus = 'pending' | 'accepted' | 'rejected'
+
+export interface GradeAppeal {
+  id: number
+  assignmentId: number
+  userId: number
+  username: string
+  email: string
+  reason: string
+  status: GradeAppealStatus
+  handleNote?: string
+  handledBy?: number
+  handlerUsername?: string
+  handledAt?: string
+  createdAt: string
 }
 
 export interface PeerSubmission {

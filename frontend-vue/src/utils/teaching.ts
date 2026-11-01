@@ -1,9 +1,16 @@
 import type { AssignmentStatus } from '../types/teaching'
+import type { GradeAppealStatus } from '../types/policy'
 
 export const ASSIGNMENT_STATUS_LABELS: Record<AssignmentStatus, string> = {
   draft: '草稿',
   published: '已发布',
   archived: '已归档',
+}
+
+export const GRADE_APPEAL_STATUS_LABELS: Record<GradeAppealStatus, string> = {
+  pending: '待处理',
+  accepted: '已受理',
+  rejected: '已驳回',
 }
 
 export const assignmentStatusLabel = (status: AssignmentStatus): string =>

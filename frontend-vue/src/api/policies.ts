@@ -69,6 +69,7 @@ interface BackendStatistics {
     pass_rate: number
     average_score: number
     exempt_count: number
+    not_submitted_count: number
   }>
 }
 
@@ -172,8 +173,16 @@ export const fetchAssignmentStatistics = async (
       passRate: problem.pass_rate,
       averageScore: problem.average_score,
       exemptCount: problem.exempt_count,
+      notSubmittedCount: problem.not_submitted_count,
     })),
   }
+}
+
+export const exportAssignmentStatistics = async (assignmentId: number): Promise<Blob> => {
+  const response = await http.get<Blob>(`/assignments/${assignmentId}/statistics/export`, {
+    responseType: 'blob',
+  })
+  return response.data
 }
 
 export const fetchPeerSubmissions = async (

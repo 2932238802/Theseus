@@ -21,6 +21,7 @@ export interface LspSessionOptions {
 const LSP_LANGUAGES: readonly string[] = ['cpp', 'python']
 const COMPLETION_TIMEOUT_MS = 8_000
 const HOVER_TIMEOUT_MS = 5_000
+const FORMAT_TIMEOUT_MS = 10_000
 const INITIALIZE_TIMEOUT_MS = 30_000
 const READY_TIMEOUT_MS = 15_000
 
@@ -81,6 +82,14 @@ interface LspDiagnostic {
   message: string
   source?: string
   code?: string | number
+}
+
+interface LspInitializeResult {
+  capabilities?: {
+    completionProvider?: { triggerCharacters?: unknown }
+    // 布尔值或格式化选项对象，服务端声明支持时才能注册格式化
+    documentFormattingProvider?: unknown
+  }
 }
 
 const resolveSocketUrl = (path: string, ticket: string): string => {
@@ -159,7 +168,7 @@ class LspSessionImpl implements LspSession {
         'initialize',
         this.initializeParams(),
         INITIALIZE_TIMEOUT_MS,
-      )) as { capabilities?: { completionProvider?: { triggerCharacters?: unknown } } } | null
+      )) as LspInitializeResult | null
       if (this.disposed) return
       this.notify('initialized', {})
       this.notify('textDocument/didOpen', {
@@ -321,9 +330,7 @@ class LspSessionImpl implements LspSession {
     }
   }
 
-  private registerProviders(
-    initResult: { capabilities?: { completionProvider?: { triggerCharacters?: unknown } } } | null,
-  ): void {
+  private registerProviders(initResult: LspInitializeResult | null): void {
     const advertised = initResult?.capabilities?.completionProvider?.triggerCharacters
     const triggers = Array.isArray(advertised)
       ? advertised.filter(
@@ -344,6 +351,16 @@ class LspSessionImpl implements LspSession {
           this.provideHover(model, position),
       }),
     )
+    // clangd 支持 textDocument/formatting，pyright 不支持；
+    // 只有服务端声明能力时才注册，避免格式化动作静默无效
+    if (initResult?.capabilities?.documentFormattingProvider) {
+      this.disposables.push(
+        this.monaco.languages.registerDocumentFormattingEditProvider(this.language, {
+          provideDocumentFormattingEdits: (model: editor.ITextModel) =>
+            this.provideFormattingEdits(model),
+        }),
+      )
+    }
   }
 
   private registerDocumentSync(): void {
@@ -428,6 +445,31 @@ class LspSessionImpl implements LspSession {
       }
     } catch (error: unknown) {
       console.warn('悬停请求失败', error)
+      return null
+    }
+  }
+
+  private async provideFormattingEdits(
+    model: editor.ITextModel,
+  ): Promise<Array<{ range: IRange; text: string }> | null> {
+    if (!this.ready || this.disposed || model !== this.model) return null
+    const options = model.getOptions()
+    try {
+      const result = (await this.request(
+        'textDocument/formatting',
+        {
+          textDocument: { uri: this.documentUri },
+          options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
+        },
+        FORMAT_TIMEOUT_MS,
+      )) as LspTextEdit[] | null
+      if (!Array.isArray(result) || result.length === 0) return null
+      return result.map((edit) => ({
+        range: this.toMonacoRange(edit.range),
+        text: edit.newText,
+      }))
+    } catch (error: unknown) {
+      console.warn('格式化请求失败', error)
       return null
     }
   }

@@ -37,6 +37,27 @@ const emit = defineEmits<{
 // 编辑器静态资源随前端一起部署，不再依赖公网 CDN
 loader.config({ paths: { vs: `${import.meta.env.BASE_URL}monaco/vs` } })
 
+const SHADOW_THEME_STYLE_ID = 'theseus-monaco-shadow-theme'
+
+// Monaco 0.57 的右键菜单渲染在 shadow DOM 里，主题变量只写在
+// .monaco-editor 与 .monaco-component 的规则上，页面样式无法穿透 shadow 边界，
+// 菜单因此拿不到 --vscode-menu-* 等颜色，文字与背景对比度极差。
+// 这里把 Monaco 生成的主题变量复制到 shadow 根节点，让菜单能继承到同一套配色。
+const syncShadowThemeVars = (): void => {
+  const source = document.querySelector<HTMLStyleElement>('style.monaco-colors')
+  const variables = source?.textContent?.match(
+    /\.monaco-editor,\s*\.monaco-diff-editor,\s*\.monaco-component\s*\{([^}]*)\}/,
+  )
+  if (!variables) return
+  let style = document.getElementById(SHADOW_THEME_STYLE_ID)
+  if (!(style instanceof HTMLStyleElement)) {
+    style = document.createElement('style')
+    style.id = SHADOW_THEME_STYLE_ID
+    document.head.appendChild(style)
+  }
+  style.textContent = `.shadow-root-host {\n${variables[1]}\n}`
+}
+
 const container = ref<HTMLElement | null>(null)
 const status = ref<'loading' | 'ready' | 'error'>('loading')
 let monacoEditor: editor.IStandaloneCodeEditor | undefined
@@ -207,6 +228,7 @@ const initialize = async (): Promise<void> => {
       ...completionOptions(props.lspEnabled),
     })
     monacoEditor = instance
+    syncShadowThemeVars()
     registerShortcutCommands(monaco)
     applyShortcutRules()
     applyCompletionKeyRule(monaco, props.lspEnabled)
@@ -252,6 +274,7 @@ watch(effectiveTabSize, (tabSize) => {
 })
 watch(() => props.theme, (theme) => {
   monacoApi?.editor.setTheme(theme)
+  syncShadowThemeVars()
 })
 watch(() => props.lspEnabled, (enabled) => {
   monacoEditor?.updateOptions(completionOptions(enabled))

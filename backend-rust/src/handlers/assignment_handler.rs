@@ -4,6 +4,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, header},
     response::{IntoResponse, Response},
 };
+use serde_json::json;
 
 use crate::{
     AppState,
@@ -11,16 +12,17 @@ use crate::{
         error::AppError,
         response::{created, ok},
     },
-    middleware::auth::{authenticate, require_teacher},
+    middleware::auth::{authenticate, require_student, require_teacher},
     models::teaching::{
         AssignmentProblemsRequest, AssignmentSubmissionListQuery, CreateAssignmentRequest,
-        GradebookQuery, OverallGradeRequest, ProblemGradeRequest, UpdateAssignmentRequest,
+        GradeAppealQuery, GradebookQuery, OverallGradeRequest, ProblemGradeRequest,
+        ResolveGradeAppealRequest, SubmitGradeAppealRequest, UpdateAssignmentRequest,
         UpdateOverrideRequest,
     },
     services::{
         assignment_service,
         audit_service::{self, AuditContext, AuditRecord},
-        grade_service,
+        grade_appeal_service, grade_service,
     },
 };
 
@@ -227,6 +229,99 @@ pub async fn publish_grades(
             Some(i64::from(id)),
             format!("发布作业 #{id} 的成绩"),
         ),
+    )
+    .await;
+    Ok(ok(data))
+}
+
+pub async fn export_statistics(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<Response, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let csv = assignment_service::export_statistics(&state.pool, &user, id).await?;
+    let disposition = HeaderValue::from_str(&format!(
+        "attachment; filename=\"assignment-{id}-statistics.csv\""
+    ))
+    .map_err(|error| AppError::Internal(format!("导出文件名无效: {error}")))?;
+    let mut response = csv.into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/csv; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CONTENT_DISPOSITION, disposition);
+    Ok(response)
+}
+
+pub async fn grade_appeals(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+    Query(query): Query<GradeAppealQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let data = grade_appeal_service::list(&state.pool, &user, id, &query).await?;
+    Ok(ok(data))
+}
+
+pub async fn my_grade_appeal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let data = grade_appeal_service::mine(&state.pool, &user, id).await?;
+    Ok(ok(data))
+}
+
+pub async fn submit_grade_appeal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+    Json(request): Json<SubmitGradeAppealRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_student(&state.pool, &headers, &state.config).await?;
+    let data = grade_appeal_service::submit(&state.pool, &user, id, &request).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &user,
+        &context,
+        AuditRecord::new(
+            "grade.appeal_submit",
+            "assignment",
+            Some(i64::from(id)),
+            format!("提交作业 #{id} 的成绩申诉"),
+        )
+        .after(json!({ "appeal_id": data.id, "status": data.status })),
+    )
+    .await;
+    Ok(created(data))
+}
+
+pub async fn resolve_grade_appeal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((id, appeal_id)): Path<(i32, i64)>,
+    Json(request): Json<ResolveGradeAppealRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = require_teacher(&state.pool, &headers, &state.config).await?;
+    let data = grade_appeal_service::resolve(&state.pool, &user, id, appeal_id, &request).await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &user,
+        &context,
+        AuditRecord::new(
+            "grade.appeal_resolve",
+            "assignment",
+            Some(i64::from(id)),
+            format!("处理作业 #{id} 的成绩申诉 #{appeal_id}"),
+        )
+        .after(json!({ "appeal_id": data.id, "status": data.status })),
     )
     .await;
     Ok(ok(data))

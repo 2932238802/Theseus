@@ -6,6 +6,8 @@ import type {
   Gradebook,
 } from '../types/teaching'
 import type {
+  GradeAppeal,
+  GradeAppealStatus,
   LatePolicy,
   ScoreVisibility,
   ScoringPolicy,
@@ -240,4 +242,90 @@ export const publishGrades = async (id: number): Promise<{ gradesPublishedAt: st
     ),
   )
   return { gradesPublishedAt: data.grades_published_at }
+}
+
+interface BackendGradeAppeal {
+  id: number
+  assignment_id: number
+  user_id: number
+  username: string
+  email: string
+  reason: string
+  status: GradeAppealStatus
+  handle_note: string | null
+  handled_by: number | null
+  handler_username: string | null
+  handled_at: string | null
+  created_at: string
+}
+
+const optionalText = (value: string | null): string | undefined => value ?? undefined
+
+const mapGradeAppeal = (row: BackendGradeAppeal): GradeAppeal => ({
+  id: row.id,
+  assignmentId: row.assignment_id,
+  userId: row.user_id,
+  username: row.username,
+  email: row.email,
+  reason: row.reason,
+  status: row.status,
+  handleNote: optionalText(row.handle_note),
+  handledBy: row.handled_by ?? undefined,
+  handlerUsername: optionalText(row.handler_username),
+  handledAt: optionalText(row.handled_at),
+  createdAt: row.created_at,
+})
+
+export const fetchGradeAppeals = async (
+  assignmentId: number,
+  status?: GradeAppealStatus,
+): Promise<GradeAppeal[]> => {
+  const params: Record<string, string> = {}
+  if (status) params.status = status
+  const data = await unwrap(
+    http.get<ApiEnvelope<{ appeals: BackendGradeAppeal[] }>>(
+      `/assignments/${assignmentId}/grade-appeals`,
+      { params },
+    ),
+  )
+  return data.appeals.map(mapGradeAppeal)
+}
+
+export const fetchMyGradeAppeal = async (assignmentId: number): Promise<GradeAppeal | null> => {
+  const data = await unwrap(
+    http.get<ApiEnvelope<{ appeal: BackendGradeAppeal | null }>>(
+      `/assignments/${assignmentId}/grade-appeals/mine`,
+    ),
+  )
+  return data.appeal ? mapGradeAppeal(data.appeal) : null
+}
+
+export const submitGradeAppeal = async (
+  assignmentId: number,
+  reason: string,
+): Promise<{ id: number; status: GradeAppealStatus }> => {
+  const data = await unwrap(
+    http.post<ApiEnvelope<{ id: number; status: GradeAppealStatus; message: string }>>(
+      `/assignments/${assignmentId}/grade-appeals`,
+      { reason },
+    ),
+  )
+  return { id: data.id, status: data.status }
+}
+
+export const resolveGradeAppeal = async (
+  assignmentId: number,
+  appealId: number,
+  decision: 'accepted' | 'rejected',
+  note?: string,
+): Promise<{ id: number; status: GradeAppealStatus }> => {
+  const data = await unwrap(
+    http.post<
+      ApiEnvelope<{ id: number; status: GradeAppealStatus; message: string }>
+    >(`/assignments/${assignmentId}/grade-appeals/${appealId}/resolve`, {
+      decision,
+      note,
+    }),
+  )
+  return { id: data.id, status: data.status }
 }

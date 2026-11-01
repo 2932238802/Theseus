@@ -7,7 +7,9 @@ import { toast } from '../store/toast'
 import {
   exportGradebook,
   fetchAssignmentSubmissions,
+  fetchGradeAppeals,
   publishGrades,
+  resolveGradeAppeal,
   updateOverallGrade,
   updateProblemGrade,
 } from '../api/assignments'
@@ -22,8 +24,19 @@ import {
 import { useAssignmentStore } from '../store/assignments'
 import type { Submission } from '../types/oj'
 import type { GradebookCell, GradebookStudent } from '../types/teaching'
-import type { ExemptionMode, OverrideItem, PolicyAudit } from '../types/policy'
-import { formatDateTime, isPast, toIsoString } from '../utils/teaching'
+import type {
+  ExemptionMode,
+  GradeAppeal,
+  GradeAppealStatus,
+  OverrideItem,
+  PolicyAudit,
+} from '../types/policy'
+import {
+  GRADE_APPEAL_STATUS_LABELS,
+  formatDateTime,
+  isPast,
+  toIsoString,
+} from '../utils/teaching'
 
 const route = useRoute()
 const assignmentStore = useAssignmentStore()
@@ -43,6 +56,12 @@ const isSavingOverride = ref(false)
 const audits = ref<PolicyAudit[]>([])
 const showAudits = ref(false)
 const auditsLoading = ref(false)
+const appeals = ref<GradeAppeal[]>([])
+const showAppeals = ref(false)
+const appealsLoading = ref(false)
+const appealFilter = ref<'pending' | 'all'>('pending')
+const appealNotes = ref<Record<number, string>>({})
+const resolvingAppealId = ref<number | null>(null)
 
 const cellTarget = ref<{ student: GradebookStudent; cell: GradebookCell } | null>(null)
 const cellSubmissions = ref<Submission[]>([])
@@ -311,6 +330,60 @@ const openAudits = async (): Promise<void> => {
   }
 }
 
+const loadAppeals = async (): Promise<void> => {
+  appealsLoading.value = true
+  try {
+    appeals.value = await fetchGradeAppeals(
+      assignmentId.value,
+      appealFilter.value === 'pending' ? 'pending' : undefined,
+    )
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    appealsLoading.value = false
+  }
+}
+
+const openAppeals = async (): Promise<void> => {
+  showAppeals.value = true
+  await loadAppeals()
+}
+
+const setAppealFilter = async (filter: 'pending' | 'all'): Promise<void> => {
+  if (appealFilter.value === filter) return
+  appealFilter.value = filter
+  await loadAppeals()
+}
+
+const resolveAppeal = async (
+  appeal: GradeAppeal,
+  decision: 'accepted' | 'rejected',
+): Promise<void> => {
+  if (resolvingAppealId.value !== null) return
+  if (
+    decision === 'rejected' &&
+    !window.confirm(`确定驳回 ${appeal.username} 的成绩申诉吗？`)
+  ) {
+    return
+  }
+  actionError.value = ''
+  resolvingAppealId.value = appeal.id
+  try {
+    const note = appealNotes.value[appeal.id]?.trim() || undefined
+    await resolveGradeAppeal(assignmentId.value, appeal.id, decision, note)
+    delete appealNotes.value[appeal.id]
+    toast.success(decision === 'accepted' ? '申诉已受理' : '申诉已驳回')
+    await loadAppeals()
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    resolvingAppealId.value = null
+  }
+}
+
+const appealStatusLabel = (status: GradeAppealStatus): string =>
+  GRADE_APPEAL_STATUS_LABELS[status]
+
 onMounted(load)
 watch(includeRemoved, load)
 </script>
@@ -346,6 +419,9 @@ watch(includeRemoved, load)
           </button>
           <button class="teaching-secondary-button" type="button" @click="openAudits">
             策略审计
+          </button>
+          <button class="teaching-secondary-button" type="button" @click="openAppeals">
+            成绩申诉
           </button>
           <button
             class="primary-button"
@@ -526,6 +602,84 @@ watch(includeRemoved, load)
           <p v-if="audit.reason" class="teaching-subtle">{{ audit.reason }}</p>
           <pre class="teaching-code-block">{{ JSON.stringify(audit.afterData, null, 2) }}</pre>
         </article>
+      </div>
+    </section>
+  </div>
+
+  <div v-if="showAppeals" class="modal-backdrop" @click.self="showAppeals = false">
+    <section class="run-dialog gradebook-dialog" role="dialog" aria-modal="true" aria-labelledby="grade-appeals-title">
+      <header>
+        <div>
+          <h2 id="grade-appeals-title">成绩申诉</h2>
+          <p>受理后请在批改台按需调整分数 改分仍写入审计</p>
+        </div>
+        <button type="button" aria-label="关闭" @click="showAppeals = false">×</button>
+      </header>
+      <div class="run-dialog-body">
+        <div class="teaching-form-actions">
+          <button
+            class="teaching-secondary-button"
+            :disabled="appealFilter === 'pending'"
+            type="button"
+            @click="setAppealFilter('pending')"
+          >
+            待处理
+          </button>
+          <button
+            class="teaching-secondary-button"
+            :disabled="appealFilter === 'all'"
+            type="button"
+            @click="setAppealFilter('all')"
+          >
+            全部
+          </button>
+        </div>
+        <p v-if="appealsLoading" class="teaching-subtle">加载中</p>
+        <p v-else-if="!appeals.length" class="teaching-subtle">
+          {{ appealFilter === 'pending' ? '没有待处理的申诉' : '还没有申诉' }}
+        </p>
+        <div v-else class="teaching-appeal-list">
+          <article v-for="appeal in appeals" :key="appeal.id" class="teaching-appeal-card">
+            <div class="teaching-appeal-header">
+              <strong>{{ appeal.username }}</strong>
+              <span :class="['teaching-badge', appeal.status]">
+                {{ appealStatusLabel(appeal.status) }}
+              </span>
+              <time>{{ formatDateTime(appeal.createdAt) }}</time>
+            </div>
+            <p class="teaching-appeal-reason">{{ appeal.reason }}</p>
+            <p v-if="appeal.handledAt" class="teaching-subtle">
+              {{ appeal.handlerUsername || '老师' }} · {{ formatDateTime(appeal.handledAt) }}
+              <template v-if="appeal.handleNote"> · {{ appeal.handleNote }}</template>
+            </p>
+            <template v-if="appeal.status === 'pending'">
+              <div class="teaching-grade-form">
+                <label>
+                  <span>处理说明（可选）</span>
+                  <textarea v-model="appealNotes[appeal.id]" rows="2" maxlength="500"></textarea>
+                </label>
+              </div>
+              <div class="teaching-form-actions">
+                <button
+                  class="teaching-secondary-button"
+                  type="button"
+                  :disabled="resolvingAppealId !== null"
+                  @click="resolveAppeal(appeal, 'rejected')"
+                >
+                  驳回
+                </button>
+                <button
+                  class="primary-button"
+                  type="button"
+                  :disabled="resolvingAppealId !== null"
+                  @click="resolveAppeal(appeal, 'accepted')"
+                >
+                  受理
+                </button>
+              </div>
+            </template>
+          </article>
+        </div>
       </div>
     </section>
   </div>

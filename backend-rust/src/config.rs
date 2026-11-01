@@ -74,9 +74,31 @@ pub struct Config {
     pub lsp_enabled: bool,
     /// 允许跨域访问的站点，空表示只允许同源请求。
     pub cors_allowed_origins: Vec<String>,
+    /// 第三方登录回调的公开地址，默认与前端同源。
+    pub oauth_callback_base: String,
+    pub oauth_github_client_id: Option<String>,
+    pub oauth_github_client_secret: Option<String>,
 }
 
 impl Config {
+    /// GitHub OAuth 是否已配置完整。
+    pub fn github_oauth_enabled(&self) -> bool {
+        self.oauth_github_client_id.is_some() && self.oauth_github_client_secret.is_some()
+    }
+
+    /// 回跳前端的地址，统一去掉末尾斜杠。
+    pub fn frontend_url(&self, path: &str) -> String {
+        format!(
+            "{}{}",
+            self.frontend_base_url.trim_end_matches('/'),
+            if path.starts_with('/') {
+                path.to_owned()
+            } else {
+                format!("/{path}")
+            }
+        )
+    }
+
     pub fn from_env() -> Result<Self, AppError> {
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| AppError::Internal("缺少 DATABASE_URL 配置".to_owned()))?;
@@ -340,6 +362,30 @@ impl Config {
         let lsp_enabled = env_bool("LSP_ENABLED", true)?;
         let cors_allowed_origins =
             parse_cors_origins(env::var("CORS_ALLOWED_ORIGINS").ok().as_deref())?;
+        let oauth_callback_base = env::var("OAUTH_CALLBACK_BASE")
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_owned())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| frontend_base_url.clone());
+        if !oauth_callback_base.starts_with("http://")
+            && !oauth_callback_base.starts_with("https://")
+        {
+            return Err(AppError::Internal(
+                "OAUTH_CALLBACK_BASE 必须以 http:// 或 https:// 开头".to_owned(),
+            ));
+        }
+        if oauth_callback_base.contains(char::is_whitespace) {
+            return Err(AppError::Internal(
+                "OAUTH_CALLBACK_BASE 不能包含空白字符".to_owned(),
+            ));
+        }
+        let oauth_github_client_id = optional_env("OAUTH_GITHUB_CLIENT_ID");
+        let oauth_github_client_secret = optional_env("OAUTH_GITHUB_CLIENT_SECRET");
+        if oauth_github_client_id.is_some() != oauth_github_client_secret.is_some() {
+            return Err(AppError::Internal(
+                "OAUTH_GITHUB_CLIENT_ID 与 OAUTH_GITHUB_CLIENT_SECRET 必须同时配置".to_owned(),
+            ));
+        }
         if run_sandbox_runtime != "runsc" && !run_sandbox_allow_runc {
             return Err(AppError::Internal(
                 "RUN_SANDBOX_RUNTIME 必须为 runsc；本地开发需显式设置 RUN_SANDBOX_ALLOW_RUNC=true"
@@ -416,6 +462,9 @@ impl Config {
             forum_max_pinned,
             lsp_enabled,
             cors_allowed_origins,
+            oauth_callback_base,
+            oauth_github_client_id,
+            oauth_github_client_secret,
         })
     }
 }
@@ -464,6 +513,13 @@ fn env_ratio(key: &str, default: f64) -> Result<f64, AppError> {
         )));
     }
     Ok(value)
+}
+
+fn optional_env(key: &str) -> Option<String> {
+    env::var(key)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
 
 fn env_bool(key: &str, default: bool) -> Result<bool, AppError> {

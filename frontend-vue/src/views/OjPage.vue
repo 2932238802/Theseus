@@ -26,7 +26,7 @@ import {
   RUN_CASE_STATUS_LABELS,
   RUN_STATUS_LABELS,
 } from '../utils/constants'
-import { SHORTCUT_ACTIONS, matchesShortcut } from '../utils/shortcuts'
+import { SHORTCUT_ACTIONS, displayShortcut, matchesShortcut, resolveBinding } from '../utils/shortcuts'
 import type { Language, Submission } from '../types/oj'
 import type { RunMode } from '../types/run'
 import { formatArgs, formatInline } from '../utils/format'
@@ -713,6 +713,12 @@ const quickRun = async (): Promise<void> => {
   await openRunDialog()
 }
 
+const shortcutHint = (actionId: string): string => {
+  const action = SHORTCUT_ACTIONS.find((item) => item.id === actionId)
+  if (!action) return ''
+  return displayShortcut(resolveBinding(action, shortcutStore.resolved))
+}
+
 const handleShortcut = (actionId: string): void => {
   if (!problemStore.currentProblem) return
   switch (actionId) {
@@ -727,6 +733,12 @@ const handleShortcut = (actionId: string): void => {
       break
     case 'oj.toggle-output':
       isOutputOpen.value = !isOutputOpen.value
+      break
+    case 'oj.font-increase':
+      fontSize.value = Math.min(MAX_FONT_SIZE, fontSize.value + 1)
+      break
+    case 'oj.font-decrease':
+      fontSize.value = Math.max(MIN_FONT_SIZE, fontSize.value - 1)
       break
     case 'oj.reset-code':
       resetCode()
@@ -1126,7 +1138,7 @@ onBeforeUnmount(() => {
         @keydown.right.prevent="nudgeSplit(24)"
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
-        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div><div v-if="lspStatusLabel || saveStatusLabel" class="editor-status-float" aria-live="polite"><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span></div></div>
+        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" :title="`减小字号（${shortcutHint('oj.font-decrease')}）`" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" :title="`增大字号（${shortcutHint('oj.font-increase')}）`" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div><div v-if="lspStatusLabel || saveStatusLabel" class="editor-status-float" aria-live="polite"><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span></div></div>
         <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :tab-size="preferenceStore.editorTabSize" :theme="editorThemeName" :lsp-enabled="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" @lsp-status="lspStatus = $event" />
         <div
           ref="outputResizerRef"

@@ -6,12 +6,19 @@ import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
 import { toast } from '../store/toast'
 import { useAssignmentStore } from '../store/assignments'
-import { fetchAssignmentStatistics, fetchPeerSubmissions, publishSolutions } from '../api/policies'
-import type { AssignmentStatistics, PeerSubmission } from '../types/policy'
+import {
+  exportAssignmentStatistics,
+  fetchAssignmentStatistics,
+  fetchPeerSubmissions,
+  publishSolutions,
+} from '../api/policies'
+import { fetchMyGradeAppeal, submitGradeAppeal } from '../api/assignments'
+import type { AssignmentStatistics, GradeAppeal, PeerSubmission } from '../types/policy'
 import {
   DIFFICULTY_LABELS,
 } from '../utils/constants'
 import {
+  GRADE_APPEAL_STATUS_LABELS,
   assignmentStatusLabel,
   formatDateTime,
   gradeSummary,
@@ -32,6 +39,12 @@ const peerProblemId = ref<number | null>(null)
 const peerSubmissions = ref<PeerSubmission[]>([])
 const peerError = ref('')
 const peerLoading = ref(false)
+const isExportingStats = ref(false)
+const myAppeal = ref<GradeAppeal | null>(null)
+const appealFormOpen = ref(false)
+const appealReason = ref('')
+const appealError = ref('')
+const isSubmittingAppeal = ref(false)
 
 const isDraft = computed(() => detail.value?.status === 'draft')
 const isPublished = computed(() => detail.value?.status === 'published')
@@ -40,6 +53,9 @@ const isClosed = computed(() => isPast(detail.value?.dueAt) || isArchived.value)
 const canShowScores = computed(() => Boolean(detail.value?.isOwner || detail.value?.totalScore !== undefined))
 const canSeeStats = computed(
   () => Boolean(detail.value?.isOwner || (detail.value?.showClassStats && canShowScores.value)),
+)
+const canAppeal = computed(
+  () => Boolean(!detail.value?.isOwner && detail.value?.gradesPublished && canShowScores.value),
 )
 
 const load = async (): Promise<void> => {
@@ -50,6 +66,14 @@ const load = async (): Promise<void> => {
   statsError.value = ''
   peerProblemId.value = null
   peerSubmissions.value = []
+  myAppeal.value = null
+  if (detail.value && !detail.value.isOwner && detail.value.gradesPublished && canShowScores.value) {
+    try {
+      myAppeal.value = await fetchMyGradeAppeal(assignmentId.value)
+    } catch {
+      myAppeal.value = null
+    }
+  }
   if (detail.value && (detail.value.isOwner || (detail.value.showClassStats && canShowScores.value))) {
     try {
       stats.value = await fetchAssignmentStatistics(assignmentId.value)
@@ -107,6 +131,58 @@ const publishSolutionsNow = (): void => {
     await publishSolutions(detail.value!.id)
     await load()
   }, '解析已发布')
+}
+
+const exportStats = async (): Promise<void> => {
+  if (isExportingStats.value || !detail.value) return
+  actionError.value = ''
+  isExportingStats.value = true
+  try {
+    const blob = await exportAssignmentStatistics(detail.value.id)
+    const title = detail.value.title.replace(/[\\/:*?"<>|]/g, '_')
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${title}-统计.csv`
+    anchor.click()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+    toast.success('统计报表已导出')
+  } catch (exception: unknown) {
+    actionError.value = toErrorMessage(exception)
+  } finally {
+    isExportingStats.value = false
+  }
+}
+
+const openAppeal = (): void => {
+  appealReason.value = ''
+  appealError.value = ''
+  appealFormOpen.value = true
+}
+
+const closeAppeal = (): void => {
+  appealFormOpen.value = false
+}
+
+const submitAppeal = async (): Promise<void> => {
+  if (isSubmittingAppeal.value) return
+  const reason = appealReason.value.trim()
+  if (!reason) {
+    appealError.value = '请填写申诉理由'
+    return
+  }
+  appealError.value = ''
+  isSubmittingAppeal.value = true
+  try {
+    await submitGradeAppeal(assignmentId.value, reason)
+    myAppeal.value = await fetchMyGradeAppeal(assignmentId.value)
+    appealFormOpen.value = false
+    toast.success('申诉已提交')
+  } catch (exception: unknown) {
+    appealError.value = toErrorMessage(exception)
+  } finally {
+    isSubmittingAppeal.value = false
+  }
 }
 
 const togglePeerCode = async (problemId: number): Promise<void> => {
@@ -179,6 +255,15 @@ watch(assignmentId, load)
           >
             批改台
           </RouterLink>
+          <button
+            v-if="isPublished"
+            class="teaching-secondary-button"
+            type="button"
+            :disabled="isExportingStats"
+            @click="exportStats"
+          >
+            {{ isExportingStats ? '导出中' : '导出统计报表' }}
+          </button>
           <button
             v-if="isDraft"
             class="primary-button"
@@ -304,6 +389,27 @@ watch(assignmentId, load)
         </div>
       </section>
 
+      <section v-if="!detail.isOwner && canAppeal" class="teaching-panel">
+        <div class="section-heading">
+          <h2>成绩申诉</h2>
+          <button v-if="!myAppeal" class="teaching-secondary-button" type="button" @click="openAppeal">
+            提交申诉
+          </button>
+        </div>
+        <p v-if="!myAppeal" class="teaching-subtle">对成绩有疑问可提交一次申诉 由老师处理</p>
+        <template v-else>
+          <p class="teaching-subtle">
+            <span :class="['teaching-badge', myAppeal.status]">
+              {{ GRADE_APPEAL_STATUS_LABELS[myAppeal.status] }}
+            </span>
+            <span>提交于 {{ formatDateTime(myAppeal.createdAt) }}</span>
+            <span v-if="myAppeal.handledAt">处理于 {{ formatDateTime(myAppeal.handledAt) }}</span>
+          </p>
+          <p class="teaching-appeal-reason">{{ myAppeal.reason }}</p>
+          <p v-if="myAppeal.handleNote" class="teaching-subtle">老师说明：{{ myAppeal.handleNote }}</p>
+        </template>
+      </section>
+
       <section v-if="peerProblemId !== null" class="teaching-panel">
         <div class="section-heading"><h2>同学 AC 代码</h2></div>
         <p v-if="peerLoading" class="teaching-subtle">加载中</p>
@@ -332,6 +438,7 @@ watch(assignmentId, load)
                 <span>通过率 {{ Math.round(problem.passRate * 100) }}%</span>
                 <span>平均 {{ problem.averageScore }} / {{ problem.points }}</span>
                 <span v-if="problem.exemptCount">免修 {{ problem.exemptCount }}</span>
+                <span v-if="problem.notSubmittedCount">未提交 {{ problem.notSubmittedCount }}</span>
               </div>
             </article>
           </div>
@@ -340,4 +447,37 @@ watch(assignmentId, load)
       </section>
     </template>
   </main>
+
+  <div v-if="appealFormOpen" class="modal-backdrop" @click.self="closeAppeal">
+    <section class="run-dialog" role="dialog" aria-modal="true" aria-labelledby="grade-appeal-title">
+      <header>
+        <div>
+          <h2 id="grade-appeal-title">成绩申诉</h2>
+          <p>{{ detail?.title }}</p>
+        </div>
+        <button type="button" aria-label="关闭" @click="closeAppeal">×</button>
+      </header>
+      <div class="run-dialog-body">
+        <form class="teaching-grade-form" @submit.prevent="submitAppeal">
+          <label>
+            <span>申诉理由</span>
+            <textarea
+              v-model="appealReason"
+              rows="5"
+              maxlength="2000"
+              placeholder="说明需要老师复核的题目与原因"
+            ></textarea>
+          </label>
+          <p v-if="appealError" class="form-error" role="alert">{{ appealError }}</p>
+          <p class="teaching-subtle">每份作业只能提交一次申诉</p>
+          <div class="teaching-form-actions">
+            <button class="teaching-secondary-button" type="button" @click="closeAppeal">取消</button>
+            <button class="primary-button" type="submit" :disabled="isSubmittingAppeal">
+              {{ isSubmittingAppeal ? '提交中' : '提交申诉' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
 </template>

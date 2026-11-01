@@ -234,7 +234,7 @@ onMounted(() => {
     <section class="settings-section" aria-labelledby="settings-account">
       <header>
         <h2 id="settings-account">账号</h2>
-        <p>用户名 邮箱 密码与登录设备</p>
+        <p>用户名 邮箱 密码 登录设备与第三方账号</p>
       </header>
       <div class="settings-row">
         <div class="settings-label">

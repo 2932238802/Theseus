@@ -80,6 +80,22 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     customizable: true,
   },
   {
+    id: 'oj.font-increase',
+    label: '增大字号',
+    group: 'view',
+    scope: 'oj',
+    defaultKey: 'Mod+=',
+    customizable: true,
+  },
+  {
+    id: 'oj.font-decrease',
+    label: '减小字号',
+    group: 'view',
+    scope: 'oj',
+    defaultKey: 'Mod+-',
+    customizable: true,
+  },
+  {
     id: 'oj.reset-code',
     label: '重置代码',
     group: 'run',
@@ -130,7 +146,7 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     defaultKey: 'Shift+Alt+F',
     customizable: true,
     monacoCommand: 'editor.action.formatDocument',
-    note: '仅对支持格式化的语言生效',
+    note: '仅 C++ 且需开启语义补全',
   },
   {
     id: 'editor.copy-line-down',

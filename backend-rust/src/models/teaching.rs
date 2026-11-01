@@ -576,6 +576,8 @@ pub struct AssignmentStatsProblem {
     pub pass_rate: f64,
     pub average_score: f64,
     pub exempt_count: i64,
+    /// 未做任何提交且未被免修的学生数
+    pub not_submitted_count: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -601,6 +603,69 @@ pub struct PeerSubmissionItem {
 #[derive(Debug, Serialize)]
 pub struct PeerSubmissionListResponse {
     pub submissions: Vec<PeerSubmissionItem>,
+}
+
+// ---------------------------------------------------------------------------
+// Grade appeals
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Default)]
+pub struct GradeAppealQuery {
+    /// pending / accepted / rejected，留空返回全部
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct GradeAppealItem {
+    pub id: i64,
+    pub assignment_id: i32,
+    pub user_id: i32,
+    pub username: String,
+    pub email: String,
+    pub reason: String,
+    pub status: String,
+    pub handle_note: Option<String>,
+    pub handled_by: Option<i32>,
+    pub handler_username: Option<String>,
+    pub handled_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GradeAppealListResponse {
+    pub appeals: Vec<GradeAppealItem>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SubmitGradeAppealRequest {
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GradeAppealSubmitResponse {
+    pub id: i64,
+    pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResolveGradeAppealRequest {
+    /// accepted / rejected
+    pub decision: String,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GradeAppealResolveResponse {
+    pub id: i64,
+    pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MyGradeAppealResponse {
+    pub appeal: Option<GradeAppealItem>,
 }
 
 // ---------------------------------------------------------------------------

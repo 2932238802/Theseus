@@ -8,6 +8,7 @@ pub mod forum;
 pub mod home;
 pub mod note;
 pub mod notification;
+pub mod oauth;
 pub mod plus;
 pub mod preference;
 pub mod problem;

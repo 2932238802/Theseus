@@ -17,6 +17,7 @@ pub mod lsp_handler;
 pub mod metrics_handler;
 pub mod note_handler;
 pub mod notification_handler;
+pub mod oauth_handler;
 pub mod plus_handler;
 pub mod preference_handler;
 pub mod problem_handler;
