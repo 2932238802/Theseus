@@ -6,7 +6,14 @@ export const http = axios.create({
   timeout: 10_000,
 })
 
-const isAuthRequest = (url: string | undefined): boolean => Boolean(url?.startsWith('/auth/'))
+const isAuthRequest = (url: string | undefined): boolean =>
+  Boolean(url?.startsWith('/auth/') && !url.startsWith('/auth/me'))
+
+const isSessionReplaced = (error: unknown): boolean => {
+  if (!axios.isAxiosError(error)) return false
+  const data = error.response?.data as { error?: unknown } | undefined
+  return typeof data?.error === 'string' && data.error.includes('其他设备登录')
+}
 
 http.interceptors.request.use((config) => {
   const token = getToken()
@@ -21,9 +28,9 @@ http.interceptors.response.use(
     const url = axios.isAxiosError(error) ? error.config?.url : undefined
     if (status === 401 && !isAuthRequest(url)) {
       clearSession()
-      if (window.location.pathname !== '/login') window.location.assign('/login')
-    }
-    if (status === 403) {
+      const target = isSessionReplaced(error) ? '/login?kicked=1' : '/login'
+      if (window.location.pathname !== '/login') window.location.assign(target)
+    } else if (status === 403) {
       window.dispatchEvent(new CustomEvent('theseus:forbidden'))
     }
     return Promise.reject(error)

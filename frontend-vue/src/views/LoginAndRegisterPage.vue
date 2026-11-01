@@ -19,6 +19,7 @@ const oauthProviders = ref<{ provider: string; enabled: boolean }[]>([])
 const oauthBusy = ref('')
 
 const isLogin = computed(() => activeMode.value === 'login')
+const kicked = computed(() => route.query.kicked === '1')
 
 const OAUTH_LABELS: Record<string, string> = {
   github: 'GitHub',
@@ -119,6 +120,12 @@ const handleSubmit = async (): Promise<void> => {
       <div class="auth-tabs" role="tablist" aria-label="登录或注册">
         <button :class="{ active: isLogin }" type="button" role="tab" :aria-selected="isLogin" @click="switchMode('login')">登录</button>
         <button :class="{ active: !isLogin }" type="button" role="tab" :aria-selected="!isLogin" @click="switchMode('register')">注册</button>
+      </div>
+
+      <div v-if="kicked && isLogin" class="auth-session-alert" role="alert">
+        <strong>账号已在其他设备登录</strong>
+        <p>如果不是你本人操作 请立即<RouterLink to="/forgot-password">修改密码</RouterLink></p>
+        <p>重新登录会退出那台设备</p>
       </div>
 
       <form @submit.prevent="handleSubmit">

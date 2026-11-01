@@ -184,9 +184,6 @@ onMounted(() => {
           信誉分 {{ reputationScore.toFixed(1) }}
           <small v-if="reputationHint"> · {{ reputationHint }}</small>
         </span>
-        <RouterLink class="teaching-secondary-button" to="/profile/wrong-problems">
-          错题本
-        </RouterLink>
         <button class="teaching-secondary-button" type="button" @click="showSettings = true">
           账号设置
         </button>

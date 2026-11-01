@@ -33,6 +33,9 @@ const detail = computed(() => classStore.current)
 const isOwner = computed(() => detail.value?.relation === 'owner')
 const isArchived = computed(() => Boolean(detail.value?.archivedAt))
 
+type OwnerTab = 'assignments' | 'members' | 'invites' | 'notify'
+const activeTab = ref<OwnerTab>('assignments')
+
 const actionError = ref('')
 const inviteCode = ref('')
 const removingUserId = ref<number | null>(null)
@@ -284,6 +287,7 @@ const archiveClass = async (): Promise<void> => {
   isArchiving.value = true
   try {
     await classStore.archive(detail.value.id)
+    activeTab.value = 'assignments'
     toast.success('组织已归档')
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
@@ -335,6 +339,7 @@ const load = async (): Promise<void> => {
   if (!Number.isInteger(classId.value) || classId.value <= 0) return
   clearActionState()
   resetInvitationState()
+  activeTab.value = 'assignments'
   await classStore.loadClass(classId.value)
   inviteCode.value = classStore.current?.inviteCode ?? ''
   await loadInvitations()
@@ -404,10 +409,49 @@ watch(classId, load)
       <p v-if="detail.archivedAt" class="teaching-badge archived teaching-archived-note">
         已归档于 {{ formatDateTime(detail.archivedAt) }}
       </p>
-      <p v-if="detail.description" class="teaching-intro">{{ detail.description }}</p>
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
 
-      <section v-if="isOwner" class="teaching-panel">
+      <nav v-if="isOwner" class="teaching-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'assignments'"
+          :class="{ active: activeTab === 'assignments' }"
+          @click="activeTab = 'assignments'"
+        >
+          作业
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'members'"
+          :class="{ active: activeTab === 'members' }"
+          @click="activeTab = 'members'"
+        >
+          成员
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'invites'"
+          :class="{ active: activeTab === 'invites' }"
+          @click="activeTab = 'invites'"
+        >
+          邀请
+        </button>
+        <button
+          v-if="!isArchived"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'notify'"
+          :class="{ active: activeTab === 'notify' }"
+          @click="activeTab = 'notify'"
+        >
+          通知
+        </button>
+      </nav>
+
+      <section v-if="isOwner && activeTab === 'invites'" class="teaching-panel">
         <div class="section-heading"><h2>邀请码</h2></div>
         <div class="teaching-invite">
           <code>{{ inviteCode || '—' }}</code>
@@ -418,7 +462,7 @@ watch(classId, load)
         </div>
       </section>
 
-      <section v-if="isOwner" class="teaching-panel">
+      <section v-if="isOwner && activeTab === 'members'" class="teaching-panel">
         <div class="section-heading"><h2>成员</h2><span class="teaching-subtle">{{ activeMembers.length }} 人</span></div>
         <div v-if="activeMembers.length" class="teaching-member-list">
           <article v-for="member in activeMembers" :key="member.userId">
@@ -458,7 +502,7 @@ watch(classId, load)
         </details>
       </section>
 
-      <section v-if="isOwner && !isArchived" class="teaching-panel">
+      <section v-if="isOwner && !isArchived && activeTab === 'members'" class="teaching-panel">
         <div class="section-heading">
           <h2>批量导入学生</h2>
           <span class="teaching-subtle">CSV 每行一个用户名或邮箱</span>
@@ -509,7 +553,7 @@ watch(classId, load)
         </template>
       </section>
 
-      <section v-if="isOwner && !isArchived" class="teaching-panel">
+      <section v-if="isOwner && !isArchived && activeTab === 'invites'" class="teaching-panel">
         <div class="section-heading">
           <h2>邀请学生</h2>
           <span class="teaching-subtle">学生确认后加入组织</span>
@@ -586,7 +630,7 @@ watch(classId, load)
         </div>
       </section>
 
-      <section v-if="isOwner && !isArchived" class="teaching-panel">
+      <section v-if="isOwner && !isArchived && activeTab === 'notify'" class="teaching-panel">
         <div class="section-heading">
           <h2>给本组织学生发通知</h2>
           <span class="teaching-subtle">支持 Markdown</span>
@@ -662,7 +706,8 @@ watch(classId, load)
         </div>
       </section>
 
-      <section class="teaching-section">
+      <section v-if="!isOwner || activeTab === 'assignments'" class="teaching-section">
+        <p v-if="detail.description" class="teaching-intro">{{ detail.description }}</p>
         <div class="section-heading">
           <h2>作业</h2>
           <span v-if="detail.assignments.length" class="teaching-badge">

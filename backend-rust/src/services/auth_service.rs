@@ -93,14 +93,31 @@ pub async fn login(
     if !verify_password(&request.password, &user.password_hash) {
         return Err(AppError::InvalidCredentials);
     }
-    let token = create_token(
-        user.id,
-        &user.role,
-        user.token_version,
-        secret,
-        expiration_hours,
-    )?;
+    let token = issue_session_token(pool, &user, secret, expiration_hours).await?;
     Ok((user, token))
+}
+
+/// 每次登录都递增 token_version，使该账号此前签发的 JWT 立即失效，
+/// 从而实现同一时间只有一个设备保持登录。
+pub(crate) async fn issue_session_token(
+    pool: &PgPool,
+    user: &User,
+    secret: &str,
+    expiration_hours: i64,
+) -> Result<String, AppError> {
+    let token_version: i32 = sqlx::query_scalar(
+        "UPDATE users
+         SET token_version = token_version + 1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND status = 'active'
+         RETURNING token_version",
+    )
+    .bind(user.id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or(AppError::Unauthorized)?;
+    create_token(user.id, &user.role, token_version, secret, expiration_hours)
 }
 
 pub async fn current_user(pool: &PgPool, id: i32) -> Result<PublicUser, AppError> {

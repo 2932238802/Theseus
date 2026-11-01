@@ -49,8 +49,11 @@ pub async fn authenticate(
     .map_err(AppError::Database)?;
     let (username, role, email_verified, token_version, status) =
         row.ok_or(AppError::Unauthorized)?;
-    if status != "active" || ver != token_version {
+    if status != "active" {
         return Err(AppError::Unauthorized);
+    }
+    if ver != token_version {
+        return Err(AppError::SessionReplaced);
     }
     Ok(AuthUser {
         id: sub,

@@ -14,6 +14,8 @@ pub enum AppError {
     BadRequest(String),
     #[error("请先登录")]
     Unauthorized,
+    #[error("账号已在其他设备登录 如非本人操作请修改密码")]
+    SessionReplaced,
     #[error("用户名或密码错误")]
     InvalidCredentials,
     #[error("没有执行该操作的权限")]
@@ -40,7 +42,9 @@ impl AppError {
     fn status_code(&self) -> StatusCode {
         match self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Self::Unauthorized | Self::InvalidCredentials => StatusCode::UNAUTHORIZED,
+            Self::Unauthorized | Self::InvalidCredentials | Self::SessionReplaced => {
+                StatusCode::UNAUTHORIZED
+            }
             Self::Forbidden | Self::ForbiddenWith(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) | Self::ConflictWith(_) => StatusCode::CONFLICT,

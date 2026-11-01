@@ -21,7 +21,7 @@ use crate::{
         audit_service::{self, AuditContext, AuditRecord},
         auth_service,
     },
-    utils::{jwt::create_token, password::verify_password},
+    utils::password::verify_password,
 };
 
 const GITHUB: &str = "github";
@@ -424,13 +424,13 @@ pub async fn exchange(
     if user.status != "active" {
         return Err(AppError::ForbiddenWith("账号当前不可登录".to_owned()));
     }
-    let token = create_token(
-        user.id,
-        &user.role,
-        user.token_version,
+    let token = auth_service::issue_session_token(
+        pool,
+        &user,
         &config.jwt_secret,
         config.jwt_expiration_hours,
-    )?;
+    )
+    .await?;
     Ok((user, token))
 }
 
