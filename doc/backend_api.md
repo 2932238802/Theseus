@@ -128,6 +128,8 @@ cargo run
 | POST | `/api/ws/ticket` | 用户 | 换取一次性 WebSocket 连接票据 |
 | GET | `/api/ws?ticket=...` | 票据 | WebSocket 升级，见「实时推送」一节 |
 | POST | `/api/lsp/ticket` | 用户 | 换取短期语义补全连接票据 |
+| GET | `/api/ai/status` | 用户 | AI 助手是否开放、是否 Plus、今日用量 |
+| POST | `/api/ai/chat` | Plus | 题目页 AI 助手对话，返回 `{content,daily_limit,used_today}` |
 | GET | `/api/admin/events` | 管理员 | 赛事管理列表 |
 | POST | `/api/admin/events` | 管理员 | 创建赛事 |
 | GET | `/api/admin/events/{id}` | 管理员 | 赛事管理详情 |
@@ -826,6 +828,38 @@ WebSocket 文本帧直接承载 LSP JSON-RPC 消息。连接建立后网关先�
 ```
 
 客户端以 `rootUri` 作为 `initialize` 的工作区，并在其下打开 `main.cpp` / `main.py`。支持补全、悬停与诊断；语言服务退出或 WebSocket 断开后会话结束，前端需重新开启语义补全。
+
+## AI 助手
+
+完整设计见 `doc/2611017_AI助手设计方案.md`。入口位于题目页编辑器工具栏「语义补全」旁，仅 Plus 会员可用；管理员保留访问权限。比赛模式下前后端都禁用。
+
+`GET /api/ai/status` 需要登录，返回：
+
+```json
+{"enabled": true, "is_plus": true, "plus_required": true, "contest_locked": false, "daily_limit": 50, "used_today": 3}
+```
+
+`enabled` 表示服务端已配置 `AI_ENABLED=true` 与 `AI_API_KEY`；`contest_locked` 表示该账号正在参加进行中或结算中的比赛，此时前端按钮置灰且 `/api/ai/chat` 返回 403。
+
+`POST /api/ai/chat` 需要登录且为 Plus 会员，请求体：
+
+```json
+{
+  "problem_id": 12,
+  "language": "cpp",
+  "code": "int main() {}",
+  "messages": [{"role": "user", "content": "这段代码为什么只能过一半"}]
+}
+```
+
+- `messages` 最多 20 条，单条最多 4000 字符，最后一条必须是 `user`；角色只接受 `user` / `assistant`
+- `code` 最多 20000 字符，`language` 取 `cpp|java|python|javascript`
+- 服务端只读取该题已审核题面、公开示例和该用户最近一次提交的文件状态、通过用例数；不读取也不发送隐藏用例
+- 每次请求先占用一次当日额度，调用失败会退回；额度用尽返回 429 与 `Retry-After`
+- 未配置或 `enabled=false` 返回 503 `AI 助手暂未开放`；非 Plus 返回 403
+- 响应 `content` 为 Markdown 文本；系统提示要求 AI 只给提示与思路 不直接输出完整可提交代码
+
+服务端使用 OpenAI 兼容的 `/chat/completions` 接口，配置项为 `AI_ENABLED`、`AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL`、`AI_MAX_TOKENS`、`AI_DAILY_LIMIT`；未配置 Key 时功能关闭。
 
 ## 题目草稿接口
 

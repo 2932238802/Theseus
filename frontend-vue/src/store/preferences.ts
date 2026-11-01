@@ -18,6 +18,7 @@ export const PREFERENCE_KEYS = {
   editorFontSize: 'editor.font_size',
   editorTabSize: 'editor.tab_size',
   editorCompletion: 'editor.completion',
+  editorAiAssistant: 'editor.ai_assistant',
   problemLanguage: 'problems.language',
   problemPageSize: 'problems.page_size',
   shortcutBindings: 'shortcuts.bindings',
@@ -41,6 +42,7 @@ const DEFAULT_VALUES: Record<string, unknown> = {
   [PREFERENCE_KEYS.editorFontSize]: 14,
   [PREFERENCE_KEYS.editorTabSize]: 'auto',
   [PREFERENCE_KEYS.editorCompletion]: false,
+  [PREFERENCE_KEYS.editorAiAssistant]: false,
   [PREFERENCE_KEYS.problemLanguage]: 'cpp',
   [PREFERENCE_KEYS.problemPageSize]: 20,
   [PREFERENCE_KEYS.shortcutBindings]: {},
@@ -84,6 +86,8 @@ const sanitize = (key: string, value: unknown): unknown => {
     case PREFERENCE_KEYS.editorTabSize:
       return isTabSize(value) ? value : undefined
     case PREFERENCE_KEYS.editorCompletion:
+      return typeof value === 'boolean' ? value : undefined
+    case PREFERENCE_KEYS.editorAiAssistant:
       return typeof value === 'boolean' ? value : undefined
     case PREFERENCE_KEYS.problemLanguage:
       return isLanguage(value) ? value : undefined
@@ -180,6 +184,9 @@ export const usePreferenceStore = defineStore('preferences', () => {
   )
   const editorCompletion = computed<boolean>(() =>
     values.value[PREFERENCE_KEYS.editorCompletion] === true,
+  )
+  const editorAiAssistant = computed<boolean>(() =>
+    values.value[PREFERENCE_KEYS.editorAiAssistant] === true,
   )
   const problemLanguage = computed<Language>(() =>
     isLanguage(values.value[PREFERENCE_KEYS.problemLanguage])
@@ -284,6 +291,8 @@ export const usePreferenceStore = defineStore('preferences', () => {
     setValue(PREFERENCE_KEYS.editorTabSize, value)
   const setEditorCompletion = (value: boolean): void =>
     setValue(PREFERENCE_KEYS.editorCompletion, value)
+  const setEditorAiAssistant = (value: boolean): void =>
+    setValue(PREFERENCE_KEYS.editorAiAssistant, value)
   const setProblemLanguage = (value: Language): void =>
     setValue(PREFERENCE_KEYS.problemLanguage, value)
   const setProblemPageSize = (value: number): void =>
@@ -429,6 +438,7 @@ export const usePreferenceStore = defineStore('preferences', () => {
     editorFontSize,
     editorTabSize,
     editorCompletion,
+    editorAiAssistant,
     problemLanguage,
     problemPageSize,
     load,
@@ -440,6 +450,7 @@ export const usePreferenceStore = defineStore('preferences', () => {
     setEditorFontSize,
     setEditorTabSize,
     setEditorCompletion,
+    setEditorAiAssistant,
     setProblemLanguage,
     setProblemPageSize,
     toggleAppearanceTheme,

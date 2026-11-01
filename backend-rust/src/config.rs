@@ -78,12 +78,26 @@ pub struct Config {
     pub oauth_callback_base: String,
     pub oauth_github_client_id: Option<String>,
     pub oauth_github_client_secret: Option<String>,
+    /// AI 助手总开关，未配置 API Key 时即使打开也不可用。
+    pub ai_enabled: bool,
+    /// OpenAI 兼容接口地址，例如 `https://api.deepseek.com/v1`。
+    pub ai_base_url: String,
+    pub ai_api_key: Option<String>,
+    pub ai_model: String,
+    pub ai_max_tokens: u32,
+    /// 单个用户每天可发起的 AI 对话次数。
+    pub ai_daily_limit: i64,
 }
 
 impl Config {
     /// GitHub OAuth 是否已配置完整。
     pub fn github_oauth_enabled(&self) -> bool {
         self.oauth_github_client_id.is_some() && self.oauth_github_client_secret.is_some()
+    }
+
+    /// AI 助手是否可用：总开关打开且配置了 API Key。
+    pub fn ai_ready(&self) -> bool {
+        self.ai_enabled && self.ai_api_key.is_some()
     }
 
     /// 回跳前端的地址，统一去掉末尾斜杠。
@@ -392,6 +406,38 @@ impl Config {
                     .to_owned(),
             ));
         }
+        let ai_enabled = env_bool("AI_ENABLED", false)?;
+        let ai_base_url = env::var("AI_BASE_URL")
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_owned())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "https://api.deepseek.com/v1".to_owned());
+        if !ai_base_url.starts_with("http://") && !ai_base_url.starts_with("https://") {
+            return Err(AppError::Internal(
+                "AI_BASE_URL 必须以 http:// 或 https:// 开头".to_owned(),
+            ));
+        }
+        let ai_api_key = optional_env("AI_API_KEY");
+        if ai_enabled && ai_api_key.is_none() {
+            return Err(AppError::Internal(
+                "AI_ENABLED=true 时必须配置 AI_API_KEY".to_owned(),
+            ));
+        }
+        let ai_model = env::var("AI_MODEL")
+            .ok()
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "deepseek-chat".to_owned());
+        let ai_max_tokens = env::var("AI_MAX_TOKENS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(1200)
+            .clamp(128, 8192);
+        let ai_daily_limit = env::var("AI_DAILY_LIMIT")
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(50)
+            .max(1);
         Ok(Self {
             database_url,
             jwt_secret,
@@ -465,6 +511,12 @@ impl Config {
             oauth_callback_base,
             oauth_github_client_id,
             oauth_github_client_secret,
+            ai_enabled,
+            ai_base_url,
+            ai_api_key,
+            ai_model,
+            ai_max_tokens,
+            ai_daily_limit,
         })
     }
 }

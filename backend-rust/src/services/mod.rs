@@ -1,4 +1,5 @@
 pub mod admin_user_service;
+pub mod ai_service;
 pub mod anticheat_service;
 pub mod assignment_policy;
 pub mod assignment_service;

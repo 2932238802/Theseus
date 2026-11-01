@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod anticheat;
 pub mod audit;
 pub mod badge;

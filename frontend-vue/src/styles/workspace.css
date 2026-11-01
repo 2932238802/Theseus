@@ -245,7 +245,8 @@ body.is-resizing-rows {
   color: var(--color-text);
 }
 
-.editor-tools button.editor-completion-toggle {
+.editor-tools button.editor-completion-toggle,
+.editor-tools button.editor-ai-toggle {
   width: auto;
   padding: 0 8px;
   border: 1px solid var(--color-border);
@@ -253,17 +254,20 @@ body.is-resizing-rows {
   font-size: 12px;
 }
 
-.editor-tools button.editor-completion-toggle:hover:not(:disabled) {
+.editor-tools button.editor-completion-toggle:hover:not(:disabled),
+.editor-tools button.editor-ai-toggle:hover:not(:disabled) {
   border-color: var(--color-border-strong);
 }
 
-.editor-tools button.editor-completion-toggle.active {
+.editor-tools button.editor-completion-toggle.active,
+.editor-tools button.editor-ai-toggle.active {
   border-color: var(--color-accent);
   background: var(--color-bg);
   color: var(--color-text);
 }
 
-.editor-tools button.editor-completion-toggle:disabled {
+.editor-tools button.editor-completion-toggle:disabled,
+.editor-tools button.editor-ai-toggle:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }

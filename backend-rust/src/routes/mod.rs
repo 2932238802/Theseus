@@ -19,7 +19,7 @@ use tower_http::{
 use crate::{
     AppState,
     handlers::{
-        admin_forum_handler, admin_user_handler, anticheat_handler, assignment_handler,
+        admin_forum_handler, admin_user_handler, ai_handler, anticheat_handler, assignment_handler,
         audit_handler, auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
         favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
         lsp_handler, metrics_handler, note_handler, notification_handler, oauth_handler,
@@ -38,6 +38,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ws/ticket", post(ws_handler::issue_ticket))
         .route("/api/ws", get(ws_handler::connect))
         .route("/api/lsp/ticket", post(lsp_handler::issue_ticket))
+        .route("/api/ai/status", get(ai_handler::status))
+        .route("/api/ai/chat", post(ai_handler::chat))
         .route("/api/auth/register", post(auth_handler::register))
         .route("/api/auth/login", post(auth_handler::login))
         .route("/api/auth/oauth/providers", get(oauth_handler::providers))

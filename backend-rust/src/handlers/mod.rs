@@ -1,5 +1,6 @@
 pub mod admin_forum_handler;
 pub mod admin_user_handler;
+pub mod ai_handler;
 pub mod anticheat_handler;
 pub mod assignment_handler;
 pub mod audit_handler;

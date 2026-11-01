@@ -1947,6 +1947,11 @@ async fn active_contest_id(pool: &PgPool, user_id: i32) -> Result<Option<i32>, A
     .map_err(AppError::Database)
 }
 
+/// 比赛进行中（含结算阶段）禁止使用 AI 助手，避免外部模型代做。
+pub async fn ai_locked(pool: &PgPool, user_id: i32) -> Result<bool, AppError> {
+    Ok(active_contest_id(pool, user_id).await?.is_some())
+}
+
 async fn ensure_reputation_for_ranked(pool: &PgPool, user_id: i32) -> Result<(), AppError> {
     let score: Option<f64> =
         sqlx::query_scalar("SELECT reputation_score::float8 FROM users WHERE id = $1")

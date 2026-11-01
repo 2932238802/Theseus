@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
+import AiAssistantPanel from '../components/AiAssistantPanel.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 import ShortcutDialog from '../components/ShortcutDialog.vue'
 import ProblemDiscussionPanel from '../components/ProblemDiscussionPanel.vue'
@@ -17,7 +18,9 @@ import { fetchContestProblem } from '../api/contests'
 import { fetchProblemDraft, saveProblemDraft } from '../api/drafts'
 import { setProblemFavorite } from '../api/favorites'
 import { fetchSubmission, fetchSubmissions } from '../api/submissions'
+import { fetchAiStatus, type AiStatus } from '../api/ai'
 import { toErrorMessage } from '../api/client'
+import { toast } from '../store/toast'
 import { isLspLanguage, type LspStatus } from '../utils/lspClient'
 import type { AssignmentDetail } from '../types/teaching'
 import {
@@ -86,7 +89,7 @@ const isAccepted = computed(() => submissionStore.latest?.status === 'Accepted')
 const latestFailedCase = computed(() => submissionStore.latest?.failedCase ?? null)
 type OutputTab = 'run' | 'submit' | 'history'
 const activeOutputTab = ref<OutputTab>('submit')
-type ProblemTab = 'description' | 'discussion' | 'note'
+type ProblemTab = 'description' | 'discussion' | 'note' | 'ai'
 const problemTab = ref<ProblemTab>('description')
 const HISTORY_PAGE_SIZE = 10
 const historyItems = ref<Submission[]>([])
@@ -137,6 +140,87 @@ const lspStatusLabel = computed(() => {
   if (lspStatus.value === 'error') return '连接失败'
   return ''
 })
+// AI 助手：Plus 会员专属，比赛模式下不可用
+const aiStatus = ref<AiStatus | null>(null)
+const aiStatusLoading = ref(false)
+const aiStatusFailed = ref(false)
+const aiEnabled = ref(preferenceStore.editorAiAssistant)
+const aiAllowed = computed(() => contestId.value === null)
+const aiConfigured = computed(() => aiStatus.value?.enabled === true)
+const aiPlus = computed(() => aiStatus.value?.is_plus === true)
+const aiContestLocked = computed(() => aiStatus.value?.contest_locked === true)
+const aiActive = computed(
+  () =>
+    aiAllowed.value &&
+    !aiContestLocked.value &&
+    aiConfigured.value &&
+    aiPlus.value &&
+    aiEnabled.value,
+)
+const aiButtonDisabled = computed(
+  () =>
+    !aiAllowed.value ||
+    (authStore.isAuthenticated && (aiStatusLoading.value || aiStatusFailed.value)),
+)
+const aiTitle = computed(() => {
+  if (!aiAllowed.value) return '比赛模式下不可使用 AI 助手'
+  if (!authStore.isAuthenticated) return '登录并升级 Plus 后可用'
+  if (aiStatusLoading.value) return '正在检查 AI 助手'
+  if (aiStatusFailed.value) return 'AI 助手状态获取失败 请刷新重试'
+  if (aiContestLocked.value) return '比赛进行中暂时不能使用 AI 助手'
+  if (!aiConfigured.value) return 'AI 助手暂未开放'
+  if (!aiPlus.value) return '升级为 Plus 后可开启 AI 助手'
+  return aiEnabled.value ? '关闭 AI 助手' : '开启 AI 助手'
+})
+const loadAiStatus = async (): Promise<void> => {
+  if (!authStore.isAuthenticated) {
+    aiStatus.value = null
+    aiStatusFailed.value = false
+    return
+  }
+  aiStatusLoading.value = true
+  aiStatusFailed.value = false
+  try {
+    aiStatus.value = await fetchAiStatus()
+  } catch {
+    aiStatus.value = null
+    aiStatusFailed.value = true
+  } finally {
+    aiStatusLoading.value = false
+  }
+}
+const toggleAiAssistant = (): void => {
+  if (!aiAllowed.value) return
+  if (!authStore.isAuthenticated) {
+    void router.push({ name: 'login', query: { redirect: route.fullPath } })
+    return
+  }
+  if (aiStatusLoading.value) return
+  if (aiStatusFailed.value) {
+    toast.error('AI 助手状态获取失败 请刷新重试')
+    return
+  }
+  if (aiContestLocked.value) {
+    toast.info('比赛进行中暂时不能使用 AI 助手')
+    return
+  }
+  if (!aiPlus.value) {
+    toast.info('开启 AI 助手需要先升级为 Plus')
+    void router.push({ name: 'shop', hash: '#plus' })
+    return
+  }
+  if (!aiConfigured.value) {
+    toast.info('AI 助手暂未开放')
+    return
+  }
+  aiEnabled.value = !aiEnabled.value
+  if (aiEnabled.value) problemTab.value = 'ai'
+  else if (problemTab.value === 'ai') problemTab.value = 'description'
+}
+const applyAiUsage = (usage: { daily_limit: number; used_today: number }): void => {
+  if (!aiStatus.value) return
+  aiStatus.value = { ...aiStatus.value, ...usage }
+}
 const toggleProblemFavorite = async (): Promise<void> => {
   if (!authStore.isAuthenticated) {
     void router.push({ name: 'login', query: { redirect: route.fullPath } })
@@ -963,6 +1047,7 @@ let pageObserver: ResizeObserver | null = null
 
 onMounted(() => {
   void loadPage()
+  void loadAiStatus()
   measurePageWidth()
   applyWidth()
   measurePaneHeight()
@@ -1006,6 +1091,19 @@ watch(editorTheme, (value) => {
 watch(completionEnabled, (value) => {
   preferenceStore.setEditorCompletion(value)
 })
+watch(aiEnabled, (value) => {
+  preferenceStore.setEditorAiAssistant(value)
+})
+watch(
+  () => preferenceStore.editorAiAssistant,
+  (value) => {
+    if (value !== aiEnabled.value) aiEnabled.value = value
+  },
+)
+// 失去 Plus 或服务端关闭后，自动退出 AI 面板
+watch(aiActive, (value) => {
+  if (!value && problemTab.value === 'ai') problemTab.value = 'description'
+})
 // 账号偏好加载或其它设备修改后，同步到当前答题页
 watch(
   () => preferenceStore.editorFontSize,
@@ -1041,6 +1139,7 @@ watch(
   },
 )
 watch([() => route.params.id, contestId], () => { void loadPage() })
+watch(() => authStore.isAuthenticated, () => { void loadAiStatus() })
 watch(assignmentId, () => { void loadAssignmentContext() })
 onBeforeUnmount(() => {
   submissionStore.stopPolling()
@@ -1115,11 +1214,22 @@ onBeforeUnmount(() => {
             <button type="button" role="tab" :aria-selected="problemTab === 'description'" :class="{ active: problemTab === 'description' }" @click="problemTab = 'description'">题目描述</button>
             <button type="button" role="tab" :aria-selected="problemTab === 'discussion'" :class="{ active: problemTab === 'discussion' }" @click="problemTab = 'discussion'">题解与讨论</button>
             <button type="button" role="tab" :aria-selected="problemTab === 'note'" :class="{ active: problemTab === 'note' }" @click="problemTab = 'note'">笔记</button>
+            <button v-if="aiActive" type="button" role="tab" :aria-selected="problemTab === 'ai'" :class="{ active: problemTab === 'ai' }" @click="problemTab = 'ai'">AI 助手</button>
           </div>
           <article v-if="contestId || problemTab === 'description'" class="problem-content"><p v-for="paragraph in problemStore.currentProblem.description.split('\n\n')" :key="paragraph">{{ paragraph.replaceAll('**', '').replaceAll('*', '') }}</p><h2>示例</h2><div v-for="(example, index) in problemStore.currentProblem.examples" :key="`${example.input}-${index}`" class="example-block"><span>示例 {{ index + 1 }}</span><pre><b>输入：</b>{{ example.input }}
 <b>输出：</b>{{ example.output }}</pre><p v-if="example.explanation"><b>解释：</b>{{ example.explanation }}</p></div><p v-if="!problemStore.currentProblem.examples.length" class="output-placeholder">暂无示例</p><h2>限制</h2><ul><li>时间限制：{{ problemStore.currentProblem.timeLimit }} ms</li><li>内存限制：{{ problemStore.currentProblem.memoryLimit }} MB</li></ul></article>
           <ProblemDiscussionPanel v-else-if="problemTab === 'discussion'" :problem-id="problemStore.currentProblem.id" />
-          <ProblemNotePanel v-else :problem-id="problemStore.currentProblem.id" />
+          <ProblemNotePanel v-else-if="problemTab === 'note'" :problem-id="problemStore.currentProblem.id" />
+          <AiAssistantPanel
+            v-if="aiActive"
+            v-show="problemTab === 'ai'"
+            :key="problemId"
+            :problem-id="problemStore.currentProblem.id"
+            :language="language"
+            :code="code"
+            :status="aiStatus"
+            @usage="applyAiUsage"
+          />
         </div>
       </section>
       <div
@@ -1138,7 +1248,7 @@ onBeforeUnmount(() => {
         @keydown.right.prevent="nudgeSplit(24)"
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
-        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" :title="`减小字号（${shortcutHint('oj.font-decrease')}）`" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" :title="`增大字号（${shortcutHint('oj.font-increase')}）`" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div><div v-if="lspStatusLabel || saveStatusLabel" class="editor-status-float" aria-live="polite"><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span></div></div>
+        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><button type="button" class="editor-ai-toggle" :class="{ active: aiActive }" :disabled="aiButtonDisabled" :aria-pressed="aiActive" :title="aiTitle" @click="toggleAiAssistant">AI 助手</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" :title="`减小字号（${shortcutHint('oj.font-decrease')}）`" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" :title="`增大字号（${shortcutHint('oj.font-increase')}）`" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div><div v-if="lspStatusLabel || saveStatusLabel" class="editor-status-float" aria-live="polite"><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span></div></div>
         <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :tab-size="preferenceStore.editorTabSize" :theme="editorThemeName" :lsp-enabled="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" @lsp-status="lspStatus = $event" />
         <div
           ref="outputResizerRef"
