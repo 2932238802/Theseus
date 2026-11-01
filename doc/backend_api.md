@@ -90,6 +90,9 @@ cargo run
 | DELETE | `/api/profile/preferences/{key}` | 用户 | 删除单项偏好 |
 | GET | `/api/profile/badges` | 用户 | 当前有效徽章列表 |
 | PUT | `/api/profile/badges/{code}/visibility` | 用户 | 设置徽章是否在公开位置展示 `{hidden}` |
+| GET | `/api/profile/wrong-problems` | 用户 | 错题本列表，支持分页、难度、标签与排序 |
+| DELETE | `/api/profile/wrong-problems/{problem_id}` | 用户 | 把题目移出错题本 |
+| POST | `/api/profile/wrong-problems/{problem_id}` | 用户 | 撤销移出，恢复显示 |
 | GET | `/api/forum/favorites` | 用户 | 当前用户论坛帖子收藏列表 |
 | POST | `/api/forum/comments/{id}/favorite` | 用户 | 收藏论坛评论或回复 |
 | DELETE | `/api/forum/comments/{id}/favorite` | 用户 | 取消收藏论坛评论或回复 |
@@ -185,6 +188,28 @@ cargo run
 `GET /api/admin/audit-logs/export` 使用相同筛选参数导出 CSV，列为时间、操作者、角色、动作、对象类型、对象ID、摘要、变更前、变更后、IP、User-Agent；每次导出本身也会写一条 `audit.export`。
 
 审计日志只追加，后端不提供修改或删除接口。成绩相关动作只记录操作者、作业与学生/题目 id，不写入分数或评语，避免管理员借审计接口读取教学数据。完整动作清单见 `doc/2610303_审计中心设计方案.md`。
+
+## 认证、限流与跨域
+
+认证相关接口在进程内做固定窗口限流，超限返回 429，响应头 `Retry-After` 给出需要等待的秒数，`error` 文案为 `请求过于频繁，请稍后再试`。
+
+| 接口 | 维度 | 配额 |
+|---|---|---|
+| `POST /api/auth/register` | 客户端 IP | 60 次 / 小时 |
+| `POST /api/auth/login` | 客户端 IP | 300 次 / 5 分钟 |
+| `POST /api/auth/login` | 用户名或邮箱（统一小写） | 15 次 / 5 分钟 |
+| `POST /api/auth/login` | 同一账号连续失败 | 8 次 / 15 分钟后锁定 15 分钟 |
+| `POST /api/auth/forgot-password` | 客户端 IP / 邮箱 | 20 次 / 小时、3 次 / 小时 |
+| `POST /api/auth/verify-email` | 客户端 IP | 30 次 / 10 分钟 |
+| `POST /api/auth/verify-email/resend` | 用户 | 3 次 / 小时（另有 60 秒数据库冷却） |
+| `POST /api/auth/reset-password` | 客户端 IP | 20 次 / 10 分钟 |
+
+- 只有 `401 用户名或密码错误` 计入失败次数；登录成功会清零该账号的失败记录。
+- 锁定时返回 429，文案为 `登录失败次数过多，请 N 分钟后再试`。
+- 计数保存在 API 进程内存，重启清零；当前为单实例部署，多实例时需要改为 Redis 计数。
+- 客户端 IP 优先取反向代理写入的 `X-Real-IP`，其次取 `X-Forwarded-For` 第一段；两者都缺失时统一按 `unknown` 计数。
+
+跨域由 `CORS_ALLOWED_ORIGINS` 控制，逗号分隔站点列表，不接受 `*`；留空表示只允许同源。开发环境的 Vite 代理与生产环境的 Nginx 反代都是同源访问，通常无需配置。
 
 ## 作业策略接口
 
@@ -327,6 +352,11 @@ Authorization: Bearer <teacher>
 - `GET /api/forum/favorites?page=&size=` 返回当前用户收藏的帖子；面经收藏只对 Plus 用户、管理员与面经作者返回。
 - `GET /api/profile/notes?page=&size=` 返回当前用户的题目笔记摘要 `{total,page,size,notes:[{problem_id,title,difficulty,excerpt,updated_at}]}`，只包含已审核题目，摘要截取前 160 字
 - 题目笔记仅本人可见，题目必须已审核，正文最长 32KB；空内容保存会删除笔记（`0037`）
+- `GET /api/profile/wrong-problems?page=&size=&difficulty=&tag=&sort=` 返回 `{total,page,size,problems:[{problem_id,title,difficulty,tags,acceptance_rate,attempt_count,last_failed_at,last_status,last_language,last_test_cases_passed,last_total_test_cases}]}`；错题 = 有已判定未通过提交且尚无通过提交的已审核题目（排队中与评测中不计），通过后自动消失
+- `sort` 取 `recent`（默认，按最近失败时间）或 `attempts`（按失败次数），`size` 取值 1–50
+- `DELETE /api/profile/wrong-problems/{problem_id}` 移出错题本，返回 `{dismissed:true}`；题目不在错题本时返回 404
+- `POST /api/profile/wrong-problems/{problem_id}` 撤销移出，返回 `{dismissed:false}`；移出后若又出现新的失败提交，题目会重新出现在错题本里
+- 首页「待复习」不计入已移出且期间没有新失败提交的题目，错题本移出后该数字同步减少（`0039`）
 - `GET /api/profile/favorites/problems?page=&size=` 返回收藏的已审核题目 `{total,page,size,favorites:[{problem_id,title,difficulty,acceptance_rate,favorited_at}]}`
 - `GET /api/profile/favorites/comments?page=&size=` 返回收藏的评论 `{total,page,size,favorites:[{comment_id,post_id,post_title,parent_id,body_md,author,created_at,favorited_at}]}` 作者字段沿用公开作者结构，匿名评论不会泄露真实用户名
 - 收藏与取消收藏接口均返回 `{favorited}`，重复调用幂等；题目详情和列表的 `favorited` 字段、论坛评论和回复的 `favorited` 字段只对当前登录用户生效

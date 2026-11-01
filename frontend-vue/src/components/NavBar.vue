@@ -303,6 +303,9 @@ onBeforeUnmount(() => {
           <RouterLink role="menuitem" to="/profile/notes" @click="closeProfileMenu">
             我的笔记
           </RouterLink>
+          <RouterLink role="menuitem" to="/profile/wrong-problems" @click="closeProfileMenu">
+            错题本
+          </RouterLink>
           <RouterLink role="menuitem" to="/settings" @click="closeProfileMenu">
             个人偏好设置
           </RouterLink>

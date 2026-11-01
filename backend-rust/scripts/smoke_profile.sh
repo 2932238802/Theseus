@@ -5,8 +5,8 @@
 # 设计文档：doc/2610272_个人界面的完善.md
 #
 # 覆盖：登录资料、用户名修改与冲突、邮箱变更验证、密码修改与 token 失效、
-#       退出所有设备、头像上传/访问/删除、学习分析、论坛收藏、个性化偏好、注销匿名化、
-#       教师有未归档组织时注销被拒绝。
+#       退出所有设备、头像上传/访问/删除、学习分析、错题本、论坛收藏、个性化偏好、
+#       注销匿名化、教师有未归档组织时注销被拒绝。
 #
 # 用法：
 #   ./backend-rust/scripts/smoke_profile.sh
@@ -191,6 +191,27 @@ expect_code "读取学习分析" 200
 expect_jq "汇总包含通过题目" '.data.summary.accepted_problems >= 1'
 expect_jq "趋势返回 30 天" '.data.trend | length == 30'
 expect_jq "包含难度分布" '.data.difficulty | length >= 1'
+
+say "错题本"
+api GET '/profile/wrong-problems?page=1&size=20' "$TOKEN"
+expect_code "读取错题本" 200
+expect_jq "错题本包含未通过题目" '.data.problems | map(.problem_id) | index(1102) != null'
+expect_jq "失败次数已统计" '.data.problems[] | select(.problem_id == 1102) | .attempt_count >= 1'
+expect_jq "返回最近失败状态" '.data.problems[] | select(.problem_id == 1102) | .last_status == "wrong_answer"'
+api GET '/profile/wrong-problems?page=1&size=20&difficulty=hard' "$TOKEN"
+expect_code "按难度筛选" 200
+api DELETE /profile/wrong-problems/1101 "$TOKEN"
+expect_code "已通过的题目不能移出" 404
+api DELETE /profile/wrong-problems/1102 "$TOKEN"
+expect_code "移出错题本" 200
+expect_jq "移出后标记为已移除" '.data.dismissed == true'
+api GET '/profile/wrong-problems?page=1&size=20' "$TOKEN"
+expect_jq "移出后列表不再包含" '.data.problems | map(.problem_id) | index(1102) == null'
+api POST /profile/wrong-problems/1102 "$TOKEN"
+expect_code "撤销移出" 200
+expect_jq "撤销后标记为未移除" '.data.dismissed == false'
+api GET '/profile/wrong-problems?page=1&size=20' "$TOKEN"
+expect_jq "撤销后重新出现" '.data.problems | map(.problem_id) | index(1102) != null'
 
 say "论坛收藏"
 POST_ID=$(psql "$DATABASE_URL" -Atc "SELECT id FROM forum_posts WHERE status = 'published' LIMIT 1")

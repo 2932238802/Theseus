@@ -40,6 +40,7 @@ const ProfilePage = () => import('../views/ProfilePage.vue')
 const SettingsPage = () => import('../views/SettingsPage.vue')
 const ProfileFavoritesPage = () => import('../views/ProfileFavoritesPage.vue')
 const ProfileNotesPage = () => import('../views/ProfileNotesPage.vue')
+const ProfileWrongProblemsPage = () => import('../views/ProfileWrongProblemsPage.vue')
 const ResetPasswordPage = () => import('../views/ResetPasswordPage.vue')
 const ShopPage = () => import('../views/ShopPage.vue')
 const StudentAppealsPage = () => import('../views/StudentAppealsPage.vue')
@@ -61,6 +62,7 @@ const router = createRouter({
     { path: '/settings', name: 'settings', component: SettingsPage, meta: { requiresAuth: true } },
     { path: '/profile/favorites', name: 'profile-favorites', component: ProfileFavoritesPage, meta: { requiresAuth: true } },
     { path: '/profile/notes', name: 'profile-notes', component: ProfileNotesPage, meta: { requiresAuth: true } },
+    { path: '/profile/wrong-problems', name: 'profile-wrong-problems', component: ProfileWrongProblemsPage, meta: { requiresAuth: true } },
     { path: '/profile/appeals', name: 'profile-appeals', component: StudentAppealsPage, meta: { requiresAuth: true } },
     {
       path: '/profile/assignments',

@@ -24,4 +24,5 @@ pub mod profile_handler;
 pub mod ranking_handler;
 pub mod run_handler;
 pub mod submission_handler;
+pub mod wrong_problem_handler;
 pub mod ws_handler;

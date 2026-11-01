@@ -6,7 +6,10 @@ import { createSubmission, fetchSubmission, fetchSubmissionStatus, fetchSubmissi
 import { onRealtime } from '../utils/realtime'
 import type { Language, Submission } from '../types/oj'
 
-const POLL_INTERVAL = 800
+// 结果以服务端推送为主路径，轮询只做兜底，因此间隔放宽到 2 秒
+const POLL_INTERVAL = 2_000
+// 页面在后台时没人盯着结果，进一步降频，切回前台会立刻补一次
+const HIDDEN_POLL_INTERVAL = 10_000
 const POLL_TIMEOUT = 240_000
 
 export const useSubmissionStore = defineStore('submissions', () => {
@@ -55,31 +58,43 @@ export const useSubmissionStore = defineStore('submissions', () => {
     })
   }
 
+  const pollDelay = (): number =>
+    document.visibilityState === 'visible' ? POLL_INTERVAL : HIDDEN_POLL_INTERVAL
+
   const pollSubmission = async (id: number): Promise<Submission | null> => {
     ensureRealtime()
     const token = ++pollToken
     const deadline = Date.now() + POLL_TIMEOUT
+    // 切回前台时立刻补一次状态，不用等隐藏期间的长间隔
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === 'visible') wakePoll?.()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
     let current: Submission | null = null
-    while (Date.now() < deadline) {
-      if (token !== pollToken) return current
-      const snapshot = await fetchSubmissionStatus(id)
-      if (token !== pollToken) return current
-      if (latest.value?.id === id) {
-        latest.value.status = submissionStatusLabel(snapshot.rawStatus)
-        latest.value.rawStatus = snapshot.rawStatus
-        latest.value.testCasesPassed = snapshot.testCasesPassed
-        latest.value.totalTestCases = snapshot.totalTestCases
-        latest.value.message = snapshot.message ?? submissionStatusMessage(snapshot.rawStatus)
+    try {
+      while (Date.now() < deadline) {
+        if (token !== pollToken) return current
+        const snapshot = await fetchSubmissionStatus(id)
+        if (token !== pollToken) return current
+        if (latest.value?.id === id) {
+          latest.value.status = submissionStatusLabel(snapshot.rawStatus)
+          latest.value.rawStatus = snapshot.rawStatus
+          latest.value.testCasesPassed = snapshot.testCasesPassed
+          latest.value.totalTestCases = snapshot.totalTestCases
+          latest.value.message = snapshot.message ?? submissionStatusMessage(snapshot.rawStatus)
+        }
+        if (isTerminalStatus(snapshot.rawStatus)) {
+          // The status endpoint is intentionally small; fetch the detail once
+          // the verdict is final to pick up the first failed case or compile
+          // output for display.
+          current = await fetchSubmission(id)
+          latest.value = current
+          return current
+        }
+        await waitForWake(pollDelay())
       }
-      if (isTerminalStatus(snapshot.rawStatus)) {
-        // The status endpoint is intentionally small; fetch the detail once
-        // the verdict is final to pick up the first failed case or compile
-        // output for display.
-        current = await fetchSubmission(id)
-        latest.value = current
-        return current
-      }
-      await waitForWake(POLL_INTERVAL)
+    } finally {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
     if (token !== pollToken) return current
     throw new Error('评测超时 请稍后在个人中心查看结果')

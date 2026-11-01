@@ -1,10 +1,20 @@
+use std::time::Duration;
+
 use axum::{
     Router,
     extract::DefaultBodyLimit,
+    http::{
+        HeaderValue, Method,
+        header::{AUTHORIZATION, CONTENT_TYPE},
+    },
     middleware,
     routing::{delete, get, post, put},
 };
-use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
+use tower_http::{
+    cors::{AllowOrigin, CorsLayer},
+    services::ServeDir,
+    trace::TraceLayer,
+};
 
 use crate::{
     AppState,
@@ -14,12 +24,13 @@ use crate::{
         favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
         lsp_handler, metrics_handler, note_handler, notification_handler, plus_handler,
         preference_handler, problem_handler, profile_handler, ranking_handler, run_handler,
-        submission_handler, ws_handler,
+        submission_handler, wrong_problem_handler, ws_handler,
     },
 };
 
 pub fn router(state: AppState) -> Router {
     let upload_dir = state.config.upload_dir.clone();
+    let cors = cors_layer(&state.config.cors_allowed_origins);
     Router::new()
         .route("/healthz", get(health_handler::liveness))
         .route("/readyz", get(health_handler::readiness))
@@ -376,6 +387,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/profile/notes", get(note_handler::list))
         .route(
+            "/api/profile/wrong-problems",
+            get(wrong_problem_handler::list),
+        )
+        .route(
+            "/api/profile/wrong-problems/{problem_id}",
+            post(wrong_problem_handler::restore).delete(wrong_problem_handler::dismiss),
+        )
+        .route(
             "/api/profile/favorites/problems",
             get(favorite_handler::list_problem_favorites),
         )
@@ -520,6 +539,30 @@ pub fn router(state: AppState) -> Router {
         // route_layer 在路由匹配之后执行，才能拿到 MatchedPath 作为低基数标签
         .route_layer(middleware::from_fn(crate::utils::metrics::track_http))
         .with_state(state)
-        .layer(CorsLayer::permissive())
+        .layer(cors)
         .layer(TraceLayer::new_for_http())
+}
+
+/// 开发时前端走 Vite 代理、生产走 Nginx 反代，两者都是同源，浏览器不需要
+/// CORS。只有显式配置 `CORS_ALLOWED_ORIGINS` 时才对该白名单放开。
+fn cors_layer(origins: &[String]) -> CorsLayer {
+    let allowed: Vec<HeaderValue> = origins
+        .iter()
+        .filter_map(|origin| origin.parse::<HeaderValue>().ok())
+        .collect();
+    if allowed.is_empty() {
+        return CorsLayer::new();
+    }
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(allowed))
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::PATCH,
+            Method::OPTIONS,
+        ])
+        .allow_headers([AUTHORIZATION, CONTENT_TYPE])
+        .max_age(Duration::from_secs(600))
 }

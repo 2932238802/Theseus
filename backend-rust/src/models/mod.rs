@@ -18,3 +18,4 @@ pub mod season;
 pub mod submission;
 pub mod teaching;
 pub mod user;
+pub mod wrong_problem;

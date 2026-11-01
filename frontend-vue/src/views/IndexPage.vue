@@ -89,7 +89,7 @@ const statsItems = computed(() => {
       label: '待复习',
       value: stats.review_problems,
       unit: '题',
-      to: { path: '/problems', query: { status: 'attempted' } },
+      to: { path: '/profile/wrong-problems' },
     },
     {
       label: '近 7 天提交',
@@ -114,8 +114,8 @@ const shortcuts = [
   },
   {
     label: '错题本',
-    description: '查看尝试未通过的题',
-    to: { path: '/problems', query: { status: 'attempted' } },
+    description: '复习尝试未通过的题',
+    to: '/profile/wrong-problems',
   },
   {
     label: '我的收藏',

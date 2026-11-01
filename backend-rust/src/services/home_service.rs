@@ -6,7 +6,7 @@ use crate::{
     models::home::{
         CheckinResponse, HomeActivity, HomeCheckin, HomeContinue, HomeOverviewResponse, HomeStats,
     },
-    services::{badge_service, profile_service},
+    services::{badge_service, profile_service, wrong_problem_service},
 };
 
 #[derive(Debug, FromRow)]
@@ -39,48 +39,32 @@ struct ActivityRow {
 }
 
 pub async fn overview(pool: &PgPool, user_id: i32) -> Result<HomeOverviewResponse, AppError> {
-    let unfinished: Option<ContinueRow> = sqlx::query_as(
-        "SELECT s.problem_id, p.title AS problem_title, p.difficulty, s.language, s.status, \
-                s.submitted_at \
-         FROM submissions s JOIN problems p ON p.id = s.problem_id \
-         WHERE s.user_id = $1 AND s.status <> 'accepted' \
-           AND NOT EXISTS ( \
-               SELECT 1 FROM submissions a \
-               WHERE a.user_id = $1 AND a.problem_id = s.problem_id AND a.status = 'accepted' \
-           ) \
-         ORDER BY s.submitted_at DESC LIMIT 1",
-    )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::Database)?;
+    // 这些查询互不依赖，并行执行可以把首页从 9 轮串行往返压缩到 1 轮。
+    // 连接池上限由 DB_MAX_CONNECTIONS 控制，并发高时按需调大。
+    let (
+        unfinished,
+        latest,
+        draft,
+        totals,
+        days_with_accepted,
+        week_submissions,
+        recent,
+        reputation,
+        dismissed,
+    ) = tokio::try_join!(
+        fetch_unfinished(pool, user_id),
+        fetch_latest_submission(pool, user_id),
+        fetch_draft(pool, user_id),
+        fetch_totals(pool, user_id),
+        fetch_accepted_days(pool, user_id),
+        fetch_week_submissions(pool, user_id),
+        fetch_recent_activity(pool, user_id),
+        fetch_reputation(pool, user_id),
+        wrong_problem_service::hidden_count(pool, user_id),
+    )?;
 
-    let latest: Option<ContinueRow> = if unfinished.is_some() {
-        None
-    } else {
-        sqlx::query_as(
-            "SELECT s.problem_id, p.title AS problem_title, p.difficulty, s.language, s.status, \
-                    s.submitted_at \
-             FROM submissions s JOIN problems p ON p.id = s.problem_id \
-             WHERE s.user_id = $1 \
-             ORDER BY s.submitted_at DESC LIMIT 1",
-        )
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(AppError::Database)?
-    };
-
-    let draft: Option<DraftContinueRow> = sqlx::query_as(
-        "SELECT d.problem_id, p.title AS problem_title, p.difficulty, d.language, d.updated_at \
-         FROM problem_drafts d JOIN problems p ON p.id = d.problem_id \
-         WHERE d.user_id = $1 AND p.review_status = 'approved' \
-         ORDER BY d.updated_at DESC LIMIT 1",
-    )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::Database)?;
+    let (accepted_problems, attempted_problems) = totals;
+    let streak_days = profile_service::compute_streak(&days_with_accepted);
 
     let from_submission = unfinished
         .map(|row| (row, "resume"))
@@ -115,7 +99,76 @@ pub async fn overview(pool: &PgPool, user_id: i32) -> Result<HomeOverviewRespons
         (None, submission_entry) => submission_entry,
     };
 
-    let (accepted_problems, attempted_problems): (i64, i64) = sqlx::query_as(
+    let (reputation_score, checked_in_today) = reputation;
+
+    Ok(HomeOverviewResponse {
+        continue_learning,
+        stats: HomeStats {
+            streak_days,
+            accepted_problems,
+            // 移出错题本的题目不再计入待复习
+            review_problems: (attempted_problems - accepted_problems - dismissed).max(0),
+            week_submissions,
+        },
+        recent_activity: recent,
+        checkin: HomeCheckin {
+            checked_in_today,
+            reputation_score,
+        },
+    })
+}
+
+async fn fetch_unfinished(pool: &PgPool, user_id: i32) -> Result<Option<ContinueRow>, AppError> {
+    sqlx::query_as(
+        "SELECT s.problem_id, p.title AS problem_title, p.difficulty, s.language, s.status, \
+                s.submitted_at \
+         FROM submissions s JOIN problems p ON p.id = s.problem_id \
+         WHERE s.user_id = $1 AND s.status <> 'accepted' \
+           AND NOT EXISTS ( \
+               SELECT 1 FROM submissions a \
+               WHERE a.user_id = $1 AND a.problem_id = s.problem_id AND a.status = 'accepted' \
+           ) \
+         ORDER BY s.submitted_at DESC LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)
+}
+
+/// 没有未完成题目时，用最近一次提交作为「复习」入口。
+async fn fetch_latest_submission(
+    pool: &PgPool,
+    user_id: i32,
+) -> Result<Option<ContinueRow>, AppError> {
+    sqlx::query_as(
+        "SELECT s.problem_id, p.title AS problem_title, p.difficulty, s.language, s.status, \
+                s.submitted_at \
+         FROM submissions s JOIN problems p ON p.id = s.problem_id \
+         WHERE s.user_id = $1 \
+         ORDER BY s.submitted_at DESC LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)
+}
+
+async fn fetch_draft(pool: &PgPool, user_id: i32) -> Result<Option<DraftContinueRow>, AppError> {
+    sqlx::query_as(
+        "SELECT d.problem_id, p.title AS problem_title, p.difficulty, d.language, d.updated_at \
+         FROM problem_drafts d JOIN problems p ON p.id = d.problem_id \
+         WHERE d.user_id = $1 AND p.review_status = 'approved' \
+         ORDER BY d.updated_at DESC LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)
+}
+
+async fn fetch_totals(pool: &PgPool, user_id: i32) -> Result<(i64, i64), AppError> {
+    sqlx::query_as(
         "SELECT COUNT(DISTINCT problem_id) FILTER (WHERE status = 'accepted')::bigint, \
                 COUNT(DISTINCT problem_id)::bigint \
          FROM submissions WHERE user_id = $1",
@@ -123,9 +176,11 @@ pub async fn overview(pool: &PgPool, user_id: i32) -> Result<HomeOverviewRespons
     .bind(user_id)
     .fetch_one(pool)
     .await
-    .map_err(AppError::Database)?;
+    .map_err(AppError::Database)
+}
 
-    let days_with_accepted: Vec<NaiveDate> = sqlx::query_scalar(
+async fn fetch_accepted_days(pool: &PgPool, user_id: i32) -> Result<Vec<NaiveDate>, AppError> {
+    sqlx::query_scalar(
         "SELECT DISTINCT (submitted_at AT TIME ZONE 'UTC')::date \
          FROM submissions \
          WHERE user_id = $1 AND status = 'accepted' \
@@ -134,19 +189,22 @@ pub async fn overview(pool: &PgPool, user_id: i32) -> Result<HomeOverviewRespons
     .bind(user_id)
     .fetch_all(pool)
     .await
-    .map_err(AppError::Database)?;
-    let streak_days = profile_service::compute_streak(&days_with_accepted);
+    .map_err(AppError::Database)
+}
 
-    let week_submissions: i64 = sqlx::query_scalar(
+async fn fetch_week_submissions(pool: &PgPool, user_id: i32) -> Result<i64, AppError> {
+    sqlx::query_scalar(
         "SELECT COUNT(*)::bigint FROM submissions \
          WHERE user_id = $1 AND submitted_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'",
     )
     .bind(user_id)
     .fetch_one(pool)
     .await
-    .map_err(AppError::Database)?;
+    .map_err(AppError::Database)
+}
 
-    let recent_activity: Vec<HomeActivity> = sqlx::query_as::<_, ActivityRow>(
+async fn fetch_recent_activity(pool: &PgPool, user_id: i32) -> Result<Vec<HomeActivity>, AppError> {
+    let rows: Vec<ActivityRow> = sqlx::query_as(
         "SELECT s.id AS submission_id, s.problem_id, p.title AS problem_title, s.language, \
                 s.status, s.submitted_at \
          FROM submissions s JOIN problems p ON p.id = s.problem_id \
@@ -156,19 +214,22 @@ pub async fn overview(pool: &PgPool, user_id: i32) -> Result<HomeOverviewRespons
     .bind(user_id)
     .fetch_all(pool)
     .await
-    .map_err(AppError::Database)?
-    .into_iter()
-    .map(|row| HomeActivity {
-        submission_id: row.submission_id,
-        problem_id: row.problem_id,
-        problem_title: row.problem_title,
-        language: row.language,
-        status: row.status,
-        submitted_at: row.submitted_at,
-    })
-    .collect();
+    .map_err(AppError::Database)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| HomeActivity {
+            submission_id: row.submission_id,
+            problem_id: row.problem_id,
+            problem_title: row.problem_title,
+            language: row.language,
+            status: row.status,
+            submitted_at: row.submitted_at,
+        })
+        .collect())
+}
 
-    let (reputation_score, checked_in_today): (f64, bool) = sqlx::query_as(
+async fn fetch_reputation(pool: &PgPool, user_id: i32) -> Result<(f64, bool), AppError> {
+    sqlx::query_as(
         "SELECT u.reputation_score::float8, \
                 EXISTS (SELECT 1 FROM reputation_checkins rc \
                         WHERE rc.user_id = u.id \
@@ -178,22 +239,7 @@ pub async fn overview(pool: &PgPool, user_id: i32) -> Result<HomeOverviewRespons
     .bind(user_id)
     .fetch_one(pool)
     .await
-    .map_err(AppError::Database)?;
-
-    Ok(HomeOverviewResponse {
-        continue_learning,
-        stats: HomeStats {
-            streak_days,
-            accepted_problems,
-            review_problems: (attempted_problems - accepted_problems).max(0),
-            week_submissions,
-        },
-        recent_activity,
-        checkin: HomeCheckin {
-            checked_in_today,
-            reputation_score,
-        },
-    })
+    .map_err(AppError::Database)
 }
 
 /// Daily check-in restores 0.1 reputation, capped at 100.

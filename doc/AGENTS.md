@@ -31,7 +31,9 @@
 | `2610315_题目笔记设计方案.md` | 题目页私有 Markdown 笔记、自动保存、个人中心笔记汇总 | 已实现（v1） |
 | `2610316_语义补全设计方案.md` | 题目编辑器服务端 LSP、票据鉴权、增量同步、诊断/悬停与部署 | 已实现（v1，C++ / Python） |
 | `2611011_设置中心与偏好同步设计方案.md` | 统一设置页、账号偏好表、白名单校验、跨设备同步与本机回退 | 已实现（v1） |
-| `2611012_架构与性能收口.md` | 前端路由懒加载、`/metrics` 指标清单与告警建议、GitHub Actions CI | 已实现（v1） |
+| `2611012_架构与性能收口.md` | 前端路由懒加载、`/metrics` 指标清单与告警建议、GitHub Actions CI、首页查询并行、轮询与连接池收敛 | 已实现（v1.1） |
+| `2611013_错题本与练习闭环设计方案.md` | 错题判定、移出与撤销、首页待复习口径、个人中心错题本页面 | 已实现（v1） |
+| `2611014_安全与限流收口设计方案.md` | 认证限流与失败锁定、CORS 白名单、Nginx 安全响应头、CI 依赖审计 | 已实现（v1） |
 | `interview/` | 面经归档、整理规范与索引，按公司/岗位/轮次存放 Markdown；`import_interview.sh` 可批量导入面经板块 | 按面试记录持续补充 |
 | `2610305_服务器部署方案.md` | Docker Compose 单机部署、健康检查、TLS 反代、备份恢复与运维 | 构建与脚本已实现；实际上线需在服务器执行 |
 | `2610241_运行代码功能设计方案.md` | 运行代码、沙箱与多语言执行 | 已实现 |
@@ -75,9 +77,12 @@
 - 题目题解与讨论区：题目页新增「题目描述」与「题解与讨论」Tab，`GET /api/forum/posts?problem_id=` 按题聚合已发布帖子，支持热度/最新排序与分页；「写题解」跳转发帖页并自动选中题目、补「题解」标签；竞赛场景隐藏讨论 Tab；复用论坛能力，无新增表与接口（`2610314`）。
 - 题目笔记：`0037` 新增 `problem_notes`，每个用户每题一份私有 Markdown 笔记；`GET/PUT /api/problems/{id}/note` 读写并自动保存，空内容删除；`GET /api/profile/notes` 返回笔记摘要；题目页新增「笔记」Tab，个人菜单新增「我的笔记」页面（`2610315`）。
 - 语义补全：题目编辑器可开启服务端 LSP——新增 `POST /api/lsp/ticket` 短期票据与独立网关 `lsp_gateway`，通过 WebSocket 桥接 `clangd` / `pyright-langserver`，提供补全、诊断与悬停；v1 仅支持 C++ 与 Python，比赛模式与其它语言下按钮置灰；Compose 新增 `lsp` 镜像与服务（`2610316`）。
-- 判题结果实时推送：Worker 写入终态后向 Redis 频道 `theseus:realtime:submission` 发布结果，API 订阅后按用户推送 `submission.result`；前端提交流程订阅该事件并提前唤醒轮询，未连接时仍按 800ms 轮询兜底；排队超时的 reaper 结果同样推送（`2610295`）。
+- 判题结果实时推送：Worker 写入终态后向 Redis 频道 `theseus:realtime:submission` 发布结果，API 订阅后按用户推送 `submission.result`；前端提交流程订阅该事件并提前唤醒轮询，未连接时按 2 秒轮询兜底（页面隐藏时 10 秒，切回前台立即补一次）；排队超时的 reaper 结果同样推送（`2610295`）。
 - 架构与性能收口：前端 41 个页面改为路由懒加载，首包由 752 KB 降到 141 KB；新增 `GET /metrics` 输出 HTTP 请求数/延迟、数据库连接池、判题 Stream 长度、消费组 pending、死信长度与 Worker 心跳；新增 `.github/workflows/ci.yml` 执行 `cargo fmt/clippy/test`、`npm run build` 与脚本语法检查（`2611012`）。
+- 请求与查询收敛：首页概览的 8 条串行查询改为 `tokio::try_join!` 并行执行，SQL 与返回结构不变；判题兜底轮询由 800ms 放宽到 2 秒，页面隐藏时降到 10 秒并在切回前台时立即补一次；连接池上限改为 `DB_MAX_CONNECTIONS` 环境变量（1–200，默认 10，非法值回退默认）（`2611012`）。
 - 设置中心与偏好同步：`0038` 新增 `user_preferences`，`GET/PUT/DELETE /api/profile/preferences` 按白名单保存外观、编辑器、题目默认值与快捷键；新增 `/settings` 页面与 `usePreferenceStore`，登录后自动拉取并同步，未登录或接口失败时回退本机设置；首次登录自动迁移旧 `localStorage` 偏好，退出登录恢复本机值；设备分栏宽度、结果面板高度与草稿仍只保存在本机（`2611011`）。
+- 安全与限流收口：新增进程内固定窗口限流与登录失败锁定（注册 60 次/小时/IP，登录 300 次/5 分钟/IP、15 次/5 分钟/账号，连续失败 8 次锁定 15 分钟，找回密码、验证与重置密码按 IP/邮箱/用户限流），超限返回 429 与 `Retry-After`；跨域由 `CorsLayer::permissive()` 改为 `CORS_ALLOWED_ORIGINS` 白名单，默认只允许同源；前端 Nginx 输出 nosniff、SAMEORIGIN、Referrer-Policy 与 Permissions-Policy；CI 增加 `cargo audit` 与 `npm audit --omit=dev --audit-level=high`（`2611014`）。
+- 错题本：`0039` 新增 `wrong_problem_dismissals`，`GET /api/profile/wrong-problems` 按最近失败时间或失败次数分页返回未通过题目，支持难度与标签筛选，`DELETE/POST /api/profile/wrong-problems/{problem_id}` 移出与撤销；题目通过后自动消失，移出后再次做错自动回来；新增 `/profile/wrong-problems` 页面与个人菜单入口，首页「待复习」与错题本同口径（`2611013`）。
 
 **部分完成**
 

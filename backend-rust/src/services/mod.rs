@@ -24,3 +24,4 @@ pub mod run_service;
 pub mod season_service;
 pub mod similarity;
 pub mod submission_service;
+pub mod wrong_problem_service;

@@ -72,6 +72,8 @@ pub struct Config {
     pub forum_report_hide_threshold: i32,
     pub forum_max_pinned: i64,
     pub lsp_enabled: bool,
+    /// 允许跨域访问的站点，空表示只允许同源请求。
+    pub cors_allowed_origins: Vec<String>,
 }
 
 impl Config {
@@ -336,6 +338,8 @@ impl Config {
             .unwrap_or(5)
             .max(1);
         let lsp_enabled = env_bool("LSP_ENABLED", true)?;
+        let cors_allowed_origins =
+            parse_cors_origins(env::var("CORS_ALLOWED_ORIGINS").ok().as_deref())?;
         if run_sandbox_runtime != "runsc" && !run_sandbox_allow_runc {
             return Err(AppError::Internal(
                 "RUN_SANDBOX_RUNTIME 必须为 runsc；本地开发需显式设置 RUN_SANDBOX_ALLOW_RUNC=true"
@@ -411,8 +415,39 @@ impl Config {
             forum_report_hide_threshold,
             forum_max_pinned,
             lsp_enabled,
+            cors_allowed_origins,
         })
     }
+}
+
+/// 逗号分隔的站点白名单；不接受通配符，未配置时浏览器的跨域请求全部拒绝。
+fn parse_cors_origins(raw: Option<&str>) -> Result<Vec<String>, AppError> {
+    let mut origins: Vec<String> = Vec::new();
+    for value in raw.unwrap_or("").split(',') {
+        let origin = value.trim().trim_end_matches('/');
+        if origin.is_empty() {
+            continue;
+        }
+        if origin == "*" {
+            return Err(AppError::Internal(
+                "CORS_ALLOWED_ORIGINS 不能使用通配符".to_owned(),
+            ));
+        }
+        if !origin.starts_with("http://") && !origin.starts_with("https://") {
+            return Err(AppError::Internal(format!(
+                "CORS_ALLOWED_ORIGINS 中的 {origin} 必须以 http:// 或 https:// 开头"
+            )));
+        }
+        if origin.contains(char::is_whitespace) {
+            return Err(AppError::Internal(format!(
+                "CORS_ALLOWED_ORIGINS 中的 {origin} 含有空白字符"
+            )));
+        }
+        if !origins.iter().any(|item| item == origin) {
+            origins.push(origin.to_owned());
+        }
+    }
+    Ok(origins)
 }
 
 fn env_ratio(key: &str, default: f64) -> Result<f64, AppError> {
@@ -453,7 +488,7 @@ fn validate_jwt_secret(secret: &str) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_jwt_secret;
+    use super::{parse_cors_origins, validate_jwt_secret};
 
     #[test]
     fn rejects_short_jwt_secret() {
@@ -463,5 +498,31 @@ mod tests {
     #[test]
     fn accepts_long_jwt_secret() {
         assert!(validate_jwt_secret("a-secret-with-at-least-32-characters").is_ok());
+    }
+
+    #[test]
+    fn empty_cors_list_allows_same_origin_only() {
+        assert!(parse_cors_origins(None).unwrap().is_empty());
+        assert!(parse_cors_origins(Some("  , ")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn parses_cors_list_and_trims_trailing_slash() {
+        let origins =
+            parse_cors_origins(Some("https://a.example.com/, http://localhost:5173")).unwrap();
+        assert_eq!(
+            origins,
+            vec![
+                "https://a.example.com".to_owned(),
+                "http://localhost:5173".to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_wildcard_and_invalid_cors_origins() {
+        assert!(parse_cors_origins(Some("*")).is_err());
+        assert!(parse_cors_origins(Some("example.com")).is_err());
+        assert!(parse_cors_origins(Some("https://a.example.com https://b.example.com")).is_err());
     }
 }

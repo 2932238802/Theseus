@@ -30,6 +30,11 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: cargo test
         run: cargo test --all-targets
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit（依赖漏洞）
+        run: cargo audit
 
   frontend:
     name: frontend (build)
@@ -47,6 +52,8 @@ jobs:
       - run: npm ci
       - name: npm run build（含 vue-tsc 类型检查）
         run: npm run build
+      - name: npm audit（仅生产依赖，高危及以上失败）
+        run: npm audit --omit=dev --audit-level=high
 
   scripts:
     name: shell scripts (syntax)
