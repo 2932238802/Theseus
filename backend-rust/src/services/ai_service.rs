@@ -14,7 +14,7 @@ use crate::{
         AI_MAX_CODE_CHARS, AI_MAX_MESSAGE_CHARS, AI_MAX_MESSAGES, AiChatMessage, AiChatRequest,
         AiChatResponse, AiStatusResponse,
     },
-    services::{contest_service, plus_service},
+    services::{assignment_service, contest_service, plus_service},
 };
 
 const AI_TIMEOUT: Duration = Duration::from_secs(45);
@@ -118,6 +118,12 @@ pub async fn chat(
     }
     validate_request(&input)?;
 
+    if assignment_service::ai_disabled_for_problem(pool, user.id, input.problem_id).await? {
+        return Err(AppError::ForbiddenWith(
+            "该作业期间暂不允许使用 AI 助手".to_owned(),
+        ));
+    }
+
     let used_today = reserve_quota(pool, user.id, config.ai_daily_limit).await?;
 
     let result = generate(pool, config, user, &input).await;
@@ -189,7 +195,7 @@ async fn reserve_quota(pool: &PgPool, user_id: i32, daily_limit: i64) -> Result<
          ON CONFLICT (user_id, usage_day) DO UPDATE \
          SET message_count = ai_usage.message_count + 1 \
          WHERE ai_usage.message_count < $2 \
-         RETURNING message_count",
+         RETURNING message_count::BIGINT",
     )
     .bind(user_id)
     .bind(daily_limit.max(1))
@@ -217,7 +223,7 @@ async fn refund_quota(pool: &PgPool, user_id: i32) {
 
 async fn used_today(pool: &PgPool, user_id: i32) -> Result<i64, AppError> {
     let used: Option<i64> = sqlx::query_scalar(
-        "SELECT message_count FROM ai_usage WHERE user_id = $1 AND usage_day = CURRENT_DATE",
+        "SELECT message_count::BIGINT FROM ai_usage WHERE user_id = $1 AND usage_day = CURRENT_DATE",
     )
     .bind(user_id)
     .fetch_optional(pool)
@@ -256,7 +262,7 @@ async fn generate(
 async fn load_problem(pool: &PgPool, problem_id: i32) -> Result<AiProblem, AppError> {
     sqlx::query_as::<_, AiProblem>(
         "SELECT title, description, difficulty, tags, examples, time_limit, memory_limit \
-         FROM problems WHERE id = $1 AND status = 'approved'",
+         FROM problems WHERE id = $1 AND review_status = 'approved'",
     )
     .bind(problem_id)
     .fetch_optional(pool)

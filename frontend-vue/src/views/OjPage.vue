@@ -89,7 +89,7 @@ const isAccepted = computed(() => submissionStore.latest?.status === 'Accepted')
 const latestFailedCase = computed(() => submissionStore.latest?.failedCase ?? null)
 type OutputTab = 'run' | 'submit' | 'history'
 const activeOutputTab = ref<OutputTab>('submit')
-type ProblemTab = 'description' | 'discussion' | 'note' | 'ai'
+type ProblemTab = 'description' | 'discussion' | 'note'
 const problemTab = ref<ProblemTab>('description')
 const HISTORY_PAGE_SIZE = 10
 const historyItems = ref<Submission[]>([])
@@ -149,10 +149,14 @@ const aiAllowed = computed(() => contestId.value === null)
 const aiConfigured = computed(() => aiStatus.value?.enabled === true)
 const aiPlus = computed(() => aiStatus.value?.is_plus === true)
 const aiContestLocked = computed(() => aiStatus.value?.contest_locked === true)
+const aiAssignmentBlocked = computed(
+  () => assignmentId.value !== null && assignment.value?.aiAssistantEnabled === false,
+)
 const aiActive = computed(
   () =>
     aiAllowed.value &&
     !aiContestLocked.value &&
+    !aiAssignmentBlocked.value &&
     aiConfigured.value &&
     aiPlus.value &&
     aiEnabled.value,
@@ -168,6 +172,7 @@ const aiTitle = computed(() => {
   if (aiStatusLoading.value) return '正在检查 AI 助手'
   if (aiStatusFailed.value) return 'AI 助手状态获取失败 请刷新重试'
   if (aiContestLocked.value) return '比赛进行中暂时不能使用 AI 助手'
+  if (aiAssignmentBlocked.value) return '该作业未开启 AI 助手'
   if (!aiConfigured.value) return 'AI 助手暂未开放'
   if (!aiPlus.value) return '升级为 Plus 后可开启 AI 助手'
   return aiEnabled.value ? '关闭 AI 助手' : '开启 AI 助手'
@@ -204,6 +209,10 @@ const toggleAiAssistant = (): void => {
     toast.info('比赛进行中暂时不能使用 AI 助手')
     return
   }
+  if (aiAssignmentBlocked.value) {
+    toast.info('该作业未开启 AI 助手')
+    return
+  }
   if (!aiPlus.value) {
     toast.info('开启 AI 助手需要先升级为 Plus')
     void router.push({ name: 'shop', hash: '#plus' })
@@ -214,12 +223,6 @@ const toggleAiAssistant = (): void => {
     return
   }
   aiEnabled.value = !aiEnabled.value
-  if (aiEnabled.value) problemTab.value = 'ai'
-  else if (problemTab.value === 'ai') problemTab.value = 'description'
-}
-const applyAiUsage = (usage: { daily_limit: number; used_today: number }): void => {
-  if (!aiStatus.value) return
-  aiStatus.value = { ...aiStatus.value, ...usage }
 }
 const toggleProblemFavorite = async (): Promise<void> => {
   if (!authStore.isAuthenticated) {
@@ -1025,11 +1028,71 @@ const nudgeOutput = (delta: number): void => {
   applyOutputHeight()
   localStorage.setItem(OUTPUT_STORAGE_KEY, String(Math.round(outputHeight.value)))
 }
+// 编辑器与右侧 AI 助手之间的横向分栏
+const MIN_AI_WIDTH = 260
+const MAX_AI_WIDTH = 560
+const MIN_CODE_WIDTH = 320
+const AI_WIDTH_STORAGE_KEY = 'theseus-oj-ai-width'
+const aiResizerRef = ref<HTMLElement | null>(null)
+const aiWidth = ref(Number(localStorage.getItem(AI_WIDTH_STORAGE_KEY)) || 360)
+
+const maxAiWidth = computed(() => {
+  const paneWidthValue = editorPaneRef.value?.clientWidth ?? 0
+  const available = paneWidthValue
+    ? paneWidthValue - MIN_CODE_WIDTH - RESIZER_WIDTH
+    : MAX_AI_WIDTH
+  return Math.max(MIN_AI_WIDTH, Math.min(MAX_AI_WIDTH, available))
+})
+const currentAiWidth = (): number =>
+  Math.min(Math.max(aiWidth.value, MIN_AI_WIDTH), maxAiWidth.value)
+const applyAiWidth = (): void => {
+  editorPaneRef.value?.style.setProperty('--ai-width', `${currentAiWidth()}px`)
+}
+
+let resizingAi = false
+let aiPointerId: number | null = null
+let aiRightEdge = 0
+
+const startResizeAi = (event: PointerEvent): void => {
+  if (event.pointerType === 'mouse' && event.button !== 0) return
+  if (!editorPaneRef.value) return
+  resizingAi = true
+  aiPointerId = event.pointerId
+  aiRightEdge = editorPaneRef.value.getBoundingClientRect().right
+  aiResizerRef.value?.setPointerCapture(event.pointerId)
+  document.body.classList.add('is-resizing')
+}
+const onAiPointerMove = (event: PointerEvent): void => {
+  if (!resizingAi) return
+  aiWidth.value = Math.min(Math.max(aiRightEdge - event.clientX, MIN_AI_WIDTH), maxAiWidth.value)
+  applyAiWidth()
+}
+const stopResizeAi = (): void => {
+  if (!resizingAi) return
+  resizingAi = false
+  if (aiPointerId !== null) {
+    aiResizerRef.value?.releasePointerCapture(aiPointerId)
+    aiPointerId = null
+  }
+  document.body.classList.remove('is-resizing')
+  localStorage.setItem(AI_WIDTH_STORAGE_KEY, String(Math.round(currentAiWidth())))
+}
+const resetAiWidth = (): void => {
+  aiWidth.value = 360
+  applyAiWidth()
+  localStorage.removeItem(AI_WIDTH_STORAGE_KEY)
+}
+const nudgeAiWidth = (delta: number): void => {
+  aiWidth.value = Math.min(Math.max(currentAiWidth() + delta, MIN_AI_WIDTH), maxAiWidth.value)
+  applyAiWidth()
+  localStorage.setItem(AI_WIDTH_STORAGE_KEY, String(Math.round(aiWidth.value)))
+}
 const onWindowResize = (): void => {
   measurePageWidth()
   applyWidth()
   measurePaneHeight()
   applyOutputHeight()
+  applyAiWidth()
 }
 
 // 面板随题目加载才出现，出现后再补一次测量与恢复
@@ -1042,6 +1105,7 @@ watch(
   { flush: 'post' },
 )
 watch(isOutputOpen, () => { applyOutputHeight() }, { flush: 'post' })
+watch(aiActive, () => { applyAiWidth() }, { flush: 'post' })
 
 let pageObserver: ResizeObserver | null = null
 
@@ -1052,6 +1116,7 @@ onMounted(() => {
   applyWidth()
   measurePaneHeight()
   applyOutputHeight()
+  applyAiWidth()
   window.addEventListener('resize', onWindowResize)
   window.addEventListener('beforeunload', saveDraft)
   window.addEventListener('keydown', onShortcutKeydown, true)
@@ -1061,6 +1126,9 @@ onMounted(() => {
   window.addEventListener('pointermove', onRowPointerMove)
   window.addEventListener('pointerup', stopResizeRows)
   window.addEventListener('pointercancel', stopResizeRows)
+  window.addEventListener('pointermove', onAiPointerMove)
+  window.addEventListener('pointerup', stopResizeAi)
+  window.addEventListener('pointercancel', stopResizeAi)
   if (typeof ResizeObserver !== 'undefined') {
     pageObserver = new ResizeObserver(() => {
       measurePageWidth()
@@ -1100,10 +1168,6 @@ watch(
     if (value !== aiEnabled.value) aiEnabled.value = value
   },
 )
-// 失去 Plus 或服务端关闭后，自动退出 AI 面板
-watch(aiActive, (value) => {
-  if (!value && problemTab.value === 'ai') problemTab.value = 'description'
-})
 // 账号偏好加载或其它设备修改后，同步到当前答题页
 watch(
   () => preferenceStore.editorFontSize,
@@ -1166,6 +1230,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onRowPointerMove)
   window.removeEventListener('pointerup', stopResizeRows)
   window.removeEventListener('pointercancel', stopResizeRows)
+  window.removeEventListener('pointermove', onAiPointerMove)
+  window.removeEventListener('pointerup', stopResizeAi)
+  window.removeEventListener('pointercancel', stopResizeAi)
   pageObserver?.disconnect()
   pageObserver = null
   document.body.classList.remove('is-resizing')
@@ -1214,22 +1281,11 @@ onBeforeUnmount(() => {
             <button type="button" role="tab" :aria-selected="problemTab === 'description'" :class="{ active: problemTab === 'description' }" @click="problemTab = 'description'">题目描述</button>
             <button type="button" role="tab" :aria-selected="problemTab === 'discussion'" :class="{ active: problemTab === 'discussion' }" @click="problemTab = 'discussion'">题解与讨论</button>
             <button type="button" role="tab" :aria-selected="problemTab === 'note'" :class="{ active: problemTab === 'note' }" @click="problemTab = 'note'">笔记</button>
-            <button v-if="aiActive" type="button" role="tab" :aria-selected="problemTab === 'ai'" :class="{ active: problemTab === 'ai' }" @click="problemTab = 'ai'">AI 助手</button>
           </div>
           <article v-if="contestId || problemTab === 'description'" class="problem-content"><p v-for="paragraph in problemStore.currentProblem.description.split('\n\n')" :key="paragraph">{{ paragraph.replaceAll('**', '').replaceAll('*', '') }}</p><h2>示例</h2><div v-for="(example, index) in problemStore.currentProblem.examples" :key="`${example.input}-${index}`" class="example-block"><span>示例 {{ index + 1 }}</span><pre><b>输入：</b>{{ example.input }}
 <b>输出：</b>{{ example.output }}</pre><p v-if="example.explanation"><b>解释：</b>{{ example.explanation }}</p></div><p v-if="!problemStore.currentProblem.examples.length" class="output-placeholder">暂无示例</p><h2>限制</h2><ul><li>时间限制：{{ problemStore.currentProblem.timeLimit }} ms</li><li>内存限制：{{ problemStore.currentProblem.memoryLimit }} MB</li></ul></article>
           <ProblemDiscussionPanel v-else-if="problemTab === 'discussion'" :problem-id="problemStore.currentProblem.id" />
           <ProblemNotePanel v-else-if="problemTab === 'note'" :problem-id="problemStore.currentProblem.id" />
-          <AiAssistantPanel
-            v-if="aiActive"
-            v-show="problemTab === 'ai'"
-            :key="problemId"
-            :problem-id="problemStore.currentProblem.id"
-            :language="language"
-            :code="code"
-            :status="aiStatus"
-            @usage="applyAiUsage"
-          />
         </div>
       </section>
       <div
@@ -1249,7 +1305,33 @@ onBeforeUnmount(() => {
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
         <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><button type="button" class="editor-ai-toggle" :class="{ active: aiActive }" :disabled="aiButtonDisabled" :aria-pressed="aiActive" :title="aiTitle" @click="toggleAiAssistant">AI 助手</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" :title="`减小字号（${shortcutHint('oj.font-decrease')}）`" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" :title="`增大字号（${shortcutHint('oj.font-increase')}）`" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div><div v-if="lspStatusLabel || saveStatusLabel" class="editor-status-float" aria-live="polite"><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span></div></div>
-        <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :tab-size="preferenceStore.editorTabSize" :theme="editorThemeName" :lsp-enabled="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" @lsp-status="lspStatus = $event" />
+        <div class="editor-main" :class="{ 'has-ai': aiActive }">
+          <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :tab-size="preferenceStore.editorTabSize" :theme="editorThemeName" :lsp-enabled="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" @lsp-status="lspStatus = $event" />
+          <div
+            v-if="aiActive"
+            ref="aiResizerRef"
+            class="pane-resizer ai-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整编辑器与 AI 助手宽度"
+            :aria-valuenow="Math.round(currentAiWidth())"
+            :aria-valuemin="MIN_AI_WIDTH"
+            :aria-valuemax="maxAiWidth"
+            tabindex="0"
+            @pointerdown="startResizeAi"
+            @dblclick="resetAiWidth"
+            @keydown.left.prevent="nudgeAiWidth(24)"
+            @keydown.right.prevent="nudgeAiWidth(-24)"
+          ></div>
+          <AiAssistantPanel
+            v-if="aiActive"
+            :key="problemId"
+            class="ai-assistant-side"
+            :problem-id="problemStore.currentProblem.id"
+            :language="language"
+            :code="code"
+          />
+        </div>
         <div
           ref="outputResizerRef"
           class="pane-resizer-h"

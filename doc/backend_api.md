@@ -269,6 +269,7 @@ v1 只支持 GitHub，且只允许绑定已有 Theseus 账号，不通过 GitHub
   "score_visibility": "after_publish",
   "allow_peer_code": false,
   "show_class_stats": true,
+  "ai_assistant_enabled": true,
   "problems": [
     {
       "problem_id": 1101,
@@ -283,7 +284,9 @@ v1 只支持 GitHub，且只允许绑定已有 Theseus 账号，不通过 GitHub
 - `late_policy`：`forbid` / `allow`。
 - `scoring_policy`：`highest` / `last` / `first_ac`。
 - `score_visibility`：`after_publish` / `after_due` / `during`。
+- `ai_assistant_enabled`：作业可提交期间是否允许 Plus 学生使用 AI 助手，新建默认 `true`；与其它策略不同，发布后仍可修改，变更写 `ai_assistant_changed` 审计。
 - 发布后策略字段锁定，只允许延长 `due_at`；补交/免修和解析发布不受影响。
+- 关闭 AI 助手后，该作业关联的题目在提交窗口内（含迟交宽限与补交时间）调用 `POST /api/ai/chat` 返回 403 `该作业期间暂不允许使用 AI 助手`；`GET /api/assignments/{id}` 的详情字段会返回 `ai_assistant_enabled`，供题目页置灰按钮。
 
 ### 补交/免修
 
@@ -430,7 +433,7 @@ Content-Type: application/json
 - 收藏与取消收藏接口均返回 `{favorited}`，重复调用幂等；题目详情和列表的 `favorited` 字段、论坛评论和回复的 `favorited` 字段只对当前登录用户生效
 - `GET /api/profile/preferences` 返回 `{preferences:{key:value}}`，未设置的键不出现
 - `PUT /api/profile/preferences` 请求 `{"preferences":{"editor.font_size":16}}`，一次最多 64 项，返回写入后的完整偏好
-- 偏好键限 `appearance.theme`、`editor.theme`、`editor.font_size`、`editor.tab_size`、`editor.completion`、`problems.language`、`problems.page_size`、`shortcuts.bindings`；未知键或非法取值返回 400
+- 偏好键限 `appearance.theme`、`editor.theme`、`editor.font_size`、`editor.tab_size`、`editor.completion`、`editor.ai_assistant`、`editor.ai_context_notice`、`problems.language`、`problems.page_size`、`shortcuts.bindings`；未知键或非法取值返回 400
 - `DELETE /api/profile/preferences` 清空全部偏好，`DELETE /api/profile/preferences/{key}` 删除单项；删除后返回剩余偏好
 - 偏好只属于当前登录用户，切换账号或退出登录不会互相影响（`0038`）
 - `GET /api/profile/notification-preferences` 返回 `{email,email_verified,preferences:[{category,channel,enabled}]}`，未保存过的类别返回代码里的默认值
@@ -831,7 +834,7 @@ WebSocket 文本帧直接承载 LSP JSON-RPC 消息。连接建立后网关先�
 
 ## AI 助手
 
-完整设计见 `doc/2611017_AI助手设计方案.md`。入口位于题目页编辑器工具栏「语义补全」旁，仅 Plus 会员可用；管理员保留访问权限。比赛模式下前后端都禁用。
+完整设计见 `doc/2611017_AI助手设计方案.md`。入口位于题目页编辑器工具栏「语义补全」旁，开启后在编辑器右侧显示 AI 面板；仅 Plus 会员可用；管理员保留访问权限。比赛模式下前后端都禁用；作业可按份关闭，见「作业策略接口」。
 
 `GET /api/ai/status` 需要登录，返回：
 

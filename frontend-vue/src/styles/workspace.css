@@ -319,6 +319,56 @@ body.is-resizing-rows {
   overflow: hidden;
 }
 
+/* 编辑器与右侧 AI 助手并排；未开启时编辑器独占整行 */
+.editor-main {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.editor-main.has-ai {
+  grid-template-columns: minmax(0, 1fr) 8px var(--ai-width, 360px);
+}
+
+.editor-main > .code-editor-shell {
+  height: 100%;
+}
+
+.ai-assistant-side {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  padding: var(--space-md);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.ai-assistant-side.ai-assistant {
+  min-height: 0;
+}
+
+.ai-assistant-side .ai-assistant-list {
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 768px) {
+  .editor-main.has-ai {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 240px);
+  }
+
+  .ai-resizer {
+    display: none;
+  }
+
+  .ai-assistant-side {
+    border-top: 1px solid var(--color-border);
+  }
+}
+
 .code-editor {
   position: absolute;
   inset: 0;

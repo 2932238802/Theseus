@@ -125,7 +125,7 @@ onMounted(() => {
     <section class="settings-section" aria-labelledby="settings-editor">
       <header>
         <h2 id="settings-editor">编辑器</h2>
-        <p>字号 缩进与语义补全</p>
+        <p>字号 缩进 语义补全与 AI 提醒</p>
       </header>
       <div class="settings-row">
         <div class="settings-label">
@@ -176,6 +176,21 @@ onMounted(() => {
           @click="prefs.setEditorCompletion(!prefs.editorCompletion)"
         >
           {{ prefs.editorCompletion ? '已开启' : '已关闭' }}
+        </button>
+      </div>
+      <div class="settings-row">
+        <div class="settings-label">
+          <strong>AI 上下文提醒</strong>
+          <small>切换题目时提醒对话不会保存</small>
+        </div>
+        <button
+          type="button"
+          class="settings-toggle"
+          :class="{ active: prefs.editorAiContextNotice }"
+          :aria-pressed="prefs.editorAiContextNotice"
+          @click="prefs.setEditorAiContextNotice(!prefs.editorAiContextNotice)"
+        >
+          {{ prefs.editorAiContextNotice ? '已开启' : '已关闭' }}
         </button>
       </div>
     </section>

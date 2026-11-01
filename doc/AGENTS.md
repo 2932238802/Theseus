@@ -89,7 +89,7 @@
 - 成绩申诉与作业统计报表：`0040` 新增 `assignment_grade_appeals`，成绩发布后学生可提交一次申诉，教师受理或驳回并填写说明，结果写 `grade_appeal_created` / `grade_appeal_resolved` 站内信，处理动作写 `grade.appeal_submit` / `grade.appeal_resolve` 审计；受理不自动改分，改分仍走批改台；新增 `/api/assignments/{id}/statistics/export` 导出概况、逐题统计与未提交名单 CSV，统计接口逐题新增 `not_submitted_count`；学生作业详情新增申诉面板，批改台新增申诉处理弹窗与统计导出入口（`2611015`）。
 - 第三方账号绑定：`0041` 新增 `oauth_identities`，支持 GitHub OAuth 绑定已有账号与快捷登录；不通过第三方自动建号，未绑定账号登录提示先绑定；登录使用 2 分钟一次性票据换 JWT，`state` 为 `JWT_SECRET` 签名且限时；解绑需密码确认，绑定/解绑/登录写 `auth.oauth_*` 审计；凭据仅通过 `.env` 配置，未配置时入口隐藏（`2611016`）。
 - 单设备登录：密码登录与 GitHub 登录成功后递增 `users.token_version`，同一账号此前签发的 JWT 立即失效并返回 401 `账号已在其他设备登录 如非本人操作请修改密码`；前端清除会话后跳转 `/login?kicked=1`，登录页提示修改密码并说明重新登录会退出旧设备；改密、重置密码、退出所有设备与封号沿用同一机制（`2610272`）。
-- AI 助手：题目页编辑器工具栏「语义补全」旁新增「AI 助手」开关，`editor.ai_assistant` 偏好跨设备同步；仅 Plus 会员与管理员可用，非 Plus 引导升级，比赛模式禁用；开启后在左侧新增 AI Tab，可围绕当前题目与代码对话；`0042` 新增 `ai_usage` 记录每日额度，`GET /api/ai/status` 与 `POST /api/ai/chat` 使用 OpenAI 兼容接口，只发送题面、公开示例和本人最近一次提交的通过情况，不发送隐藏用例；未配置 `AI_API_KEY` 时功能关闭（`2611017`）。
+- AI 助手：题目页编辑器工具栏「语义补全」旁新增「AI 助手」开关，`editor.ai_assistant` 偏好跨设备同步；仅 Plus 会员与管理员可用，非 Plus 引导升级，比赛模式禁用；开启后在编辑器右侧显示 AI 面板，分隔条可左右拖动调整宽度，同一题内保留对话；切换题目清空上下文，并按 `editor.ai_context_notice` 提示「切换题目后 AI 上下文不会保存」，可在设置中心恢复；`0042` 新增 `ai_usage` 记录每日额度，`GET /api/ai/status` 与 `POST /api/ai/chat` 使用 OpenAI 兼容接口，只发送题面、公开示例和本人最近一次提交的通过情况，不发送隐藏用例；`0043` 为作业新增 `ai_assistant_enabled`（默认开启），教师关闭后该作业关联题目在提交窗口内前后端均不可用；未配置 `AI_API_KEY` 时功能关闭（`2611017`）。
 
 **部分完成**
 

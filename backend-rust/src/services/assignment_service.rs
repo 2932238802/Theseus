@@ -52,6 +52,7 @@ struct AssignmentRow {
     solutions_published_at: Option<DateTime<Utc>>,
     allow_peer_code: bool,
     show_class_stats: bool,
+    ai_assistant_enabled: bool,
     class_owner_id: i32,
     class_archived_at: Option<DateTime<Utc>>,
 }
@@ -306,7 +307,7 @@ async fn fetch_assignment(pool: &PgPool, id: i32) -> Result<AssignmentRow, AppEr
          a.start_at, a.due_at, a.published_at, a.grades_published_at, \
          a.late_policy, a.late_grace_hours, a.late_penalty_per_day, a.late_penalty_cap, \
          a.max_attempts, a.scoring_policy, a.score_visibility, a.solutions_published_at, \
-         a.allow_peer_code, a.show_class_stats, \
+         a.allow_peer_code, a.show_class_stats, a.ai_assistant_enabled, \
          c.owner_id AS class_owner_id, c.archived_at AS class_archived_at \
          FROM assignments a JOIN classes c ON c.id = a.class_id WHERE a.id = $1",
     )
@@ -326,7 +327,7 @@ async fn fetch_assignment_locked(
          a.start_at, a.due_at, a.published_at, a.grades_published_at, \
          a.late_policy, a.late_grace_hours, a.late_penalty_per_day, a.late_penalty_cap, \
          a.max_attempts, a.scoring_policy, a.score_visibility, a.solutions_published_at, \
-         a.allow_peer_code, a.show_class_stats, \
+         a.allow_peer_code, a.show_class_stats, a.ai_assistant_enabled, \
          c.owner_id AS class_owner_id, c.archived_at AS class_archived_at \
          FROM assignments a JOIN classes c ON c.id = a.class_id WHERE a.id = $1 \
          FOR UPDATE OF a",
@@ -547,8 +548,9 @@ pub async fn create(
     let id: i32 = sqlx::query_scalar(
         "INSERT INTO assignments (class_id, title, description, start_at, due_at, created_by, \
          late_policy, late_grace_hours, late_penalty_per_day, late_penalty_cap, max_attempts, \
-         scoring_policy, score_visibility, allow_peer_code, show_class_stats) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id",
+         scoring_policy, score_visibility, allow_peer_code, show_class_stats, \
+         ai_assistant_enabled) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id",
     )
     .bind(class_id)
     .bind(title)
@@ -565,6 +567,7 @@ pub async fn create(
     .bind(&policy.score_visibility)
     .bind(policy.allow_peer_code)
     .bind(policy.show_class_stats)
+    .bind(request.ai_assistant_enabled.unwrap_or(true))
     .fetch_one(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
@@ -608,6 +611,7 @@ pub async fn update(
              late_policy = $6, late_grace_hours = $7, late_penalty_per_day = $8, \
              late_penalty_cap = $9, max_attempts = $10, scoring_policy = $11, \
              score_visibility = $12, allow_peer_code = $13, show_class_stats = $14, \
+             ai_assistant_enabled = $15, \
              updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'draft'",
         )
         .bind(id)
@@ -624,6 +628,11 @@ pub async fn update(
         .bind(&policy.score_visibility)
         .bind(policy.allow_peer_code)
         .bind(policy.show_class_stats)
+        .bind(
+            request
+                .ai_assistant_enabled
+                .unwrap_or(current.ai_assistant_enabled),
+        )
         .execute(&mut *transaction)
         .await
         .map_err(AppError::Database)?;
@@ -671,17 +680,35 @@ pub async fn update(
         }
         None => current.due_at,
     };
+    let ai_assistant_enabled = request
+        .ai_assistant_enabled
+        .unwrap_or(current.ai_assistant_enabled);
     sqlx::query(
-        "UPDATE assignments SET title = $2, description = $3, due_at = $4, updated_at = CURRENT_TIMESTAMP \
+        "UPDATE assignments SET title = $2, description = $3, due_at = $4, \
+         ai_assistant_enabled = $5, updated_at = CURRENT_TIMESTAMP \
          WHERE id = $1 AND status = 'published'",
     )
     .bind(id)
     .bind(title)
     .bind(description)
     .bind(due_at)
+    .bind(ai_assistant_enabled)
     .execute(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
+
+    if ai_assistant_enabled != current.ai_assistant_enabled {
+        insert_audit(
+            &mut transaction,
+            id,
+            user.id,
+            "ai_assistant_changed",
+            Some(serde_json::json!({ "ai_assistant_enabled": current.ai_assistant_enabled })),
+            Some(serde_json::json!({ "ai_assistant_enabled": ai_assistant_enabled })),
+            None,
+        )
+        .await?;
+    }
 
     if due_at != current.due_at {
         insert_audit(
@@ -1107,6 +1134,7 @@ pub async fn detail(pool: &PgPool, user: &AuthUser, id: i32) -> Result<Assignmen
         score_visibility: assignment.score_visibility,
         allow_peer_code: assignment.allow_peer_code,
         show_class_stats: assignment.show_class_stats,
+        ai_assistant_enabled: assignment.ai_assistant_enabled,
         solutions_published: assignment.solutions_published_at.is_some(),
         solutions_published_at: assignment.solutions_published_at,
         my_deadline,
@@ -1121,6 +1149,66 @@ pub async fn detail(pool: &PgPool, user: &AuthUser, id: i32) -> Result<Assignmen
         late_student_count,
         exempt_count,
     })
+}
+
+/// 判断该题是否需要因为「教师关闭了 AI 助手」而拒绝 AI 请求。
+/// 只考虑用户已加入组织、已发布且仍在提交窗口内的作业；同一题命中任一关闭的作业即拒绝。
+pub async fn ai_disabled_for_problem(
+    pool: &PgPool,
+    user_id: i32,
+    problem_id: i32,
+) -> Result<bool, AppError> {
+    #[derive(Debug, sqlx::FromRow)]
+    struct AiGuardRow {
+        start_at: Option<DateTime<Utc>>,
+        due_at: Option<DateTime<Utc>>,
+        late_policy: String,
+        late_grace_hours: i32,
+        makeup_due_at: Option<DateTime<Utc>>,
+    }
+
+    let rows = sqlx::query_as::<_, AiGuardRow>(
+        "SELECT a.start_at, a.due_at, a.late_policy, a.late_grace_hours, o.makeup_due_at \
+         FROM assignments a \
+         JOIN assignment_problems ap ON ap.assignment_id = a.id AND ap.problem_id = $2 \
+         JOIN class_members cm ON cm.class_id = a.class_id AND cm.user_id = $1 \
+             AND cm.status = 'active' \
+         JOIN classes c ON c.id = a.class_id AND c.archived_at IS NULL \
+         LEFT JOIN assignment_student_overrides o \
+             ON o.assignment_id = a.id AND o.user_id = $1 AND o.problem_id = $2 \
+         WHERE a.status = 'published' AND a.ai_assistant_enabled = FALSE",
+    )
+    .bind(user_id)
+    .bind(problem_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    let now = Utc::now();
+    Ok(rows.iter().any(|row| {
+        ai_guard_window_open(
+            row.start_at,
+            row.due_at,
+            row.makeup_due_at,
+            &row.late_policy,
+            row.late_grace_hours,
+            now,
+        )
+    }))
+}
+
+/// 作业关闭 AI 助手后，只在学生仍可提交的时间段内拦截。
+fn ai_guard_window_open(
+    start_at: Option<DateTime<Utc>>,
+    due_at: Option<DateTime<Utc>>,
+    makeup_due_at: Option<DateTime<Utc>>,
+    late_policy: &str,
+    late_grace_hours: i32,
+    now: DateTime<Utc>,
+) -> bool {
+    start_at.is_none_or(|start| now >= start)
+        && submission_window_end(due_at, makeup_due_at, late_policy, late_grace_hours)
+            .is_some_and(|end| now <= end)
 }
 
 pub async fn list_submissions(
@@ -2053,7 +2141,7 @@ fn round1(value: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{statistics_csv, validate_problem_inputs};
+    use super::{ai_guard_window_open, statistics_csv, validate_problem_inputs};
     use crate::models::teaching::{
         AssignmentProblemInput, GradebookAssignment, GradebookCell, GradebookProblem,
         GradebookResponse, GradebookStudent,
@@ -2086,6 +2174,46 @@ mod tests {
             }];
             assert!(validate_problem_inputs(&problems).is_err());
         }
+    }
+
+    #[test]
+    fn ai_guard_window_follows_submission_window() {
+        use chrono::{Duration, TimeZone, Utc};
+        let at = |hour: u32| {
+            Utc.with_ymd_and_hms(2026, 11, 1, hour, 0, 0)
+                .single()
+                .expect("valid time")
+        };
+        let due = Some(at(12));
+
+        assert!(ai_guard_window_open(None, due, None, "forbid", 0, at(11)));
+        assert!(!ai_guard_window_open(None, due, None, "forbid", 0, at(13)));
+        assert!(!ai_guard_window_open(None, None, None, "forbid", 0, at(11)));
+        assert!(!ai_guard_window_open(
+            Some(at(13)),
+            due,
+            None,
+            "forbid",
+            0,
+            at(12)
+        ));
+        assert!(ai_guard_window_open(None, due, None, "allow", 24, at(13)));
+        assert!(!ai_guard_window_open(
+            None,
+            due,
+            None,
+            "allow",
+            24,
+            at(13) + Duration::hours(24)
+        ));
+        assert!(ai_guard_window_open(
+            None,
+            due,
+            Some(at(12) + Duration::hours(48)),
+            "forbid",
+            0,
+            at(13) + Duration::hours(24)
+        ));
     }
 
     fn sample_cell(attempts: i64, accepted: bool) -> GradebookCell {

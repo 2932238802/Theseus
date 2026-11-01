@@ -304,10 +304,10 @@ onBeforeUnmount(() => {
             我的笔记
           </RouterLink>
           <RouterLink role="menuitem" to="/profile/wrong-problems" @click="closeProfileMenu">
-            错题本
+            我的错题
           </RouterLink>
           <RouterLink role="menuitem" to="/settings" @click="closeProfileMenu">
-            个人偏好设置
+            偏好设置
           </RouterLink>
           <RouterLink
             v-if="authStore.isStudent"

@@ -38,6 +38,7 @@ export interface AssignmentPayload {
   scoreVisibility?: ScoreVisibility
   allowPeerCode?: boolean
   showClassStats?: boolean
+  aiAssistantEnabled?: boolean
   problems?: AssignmentProblemInput[]
 }
 
@@ -55,6 +56,7 @@ interface BackendAssignmentPayload {
   score_visibility?: ScoreVisibility
   allow_peer_code?: boolean
   show_class_stats?: boolean
+  ai_assistant_enabled?: boolean
   problems?: BackendProblemInput[]
 }
 
@@ -87,6 +89,7 @@ const toBackendPayload = (payload: AssignmentPayload): BackendAssignmentPayload 
   score_visibility: payload.scoreVisibility,
   allow_peer_code: payload.allowPeerCode,
   show_class_stats: payload.showClassStats,
+  ai_assistant_enabled: payload.aiAssistantEnabled,
   problems: payload.problems ? mapProblemInputs(payload.problems) : undefined,
 })
 

@@ -260,6 +260,9 @@ pub struct CreateAssignmentRequest {
     pub allow_peer_code: Option<bool>,
     #[serde(default)]
     pub show_class_stats: Option<bool>,
+    /// 作业提交窗口内是否允许 Plus 学生使用 AI 助手；新建默认开启。
+    #[serde(default)]
+    pub ai_assistant_enabled: Option<bool>,
     #[serde(default)]
     pub problems: Vec<AssignmentProblemInput>,
 }
@@ -297,6 +300,8 @@ pub struct UpdateAssignmentRequest {
     pub allow_peer_code: Option<bool>,
     #[serde(default)]
     pub show_class_stats: Option<bool>,
+    #[serde(default)]
+    pub ai_assistant_enabled: Option<bool>,
     #[serde(default)]
     pub problems: Option<Vec<AssignmentProblemInput>>,
 }
@@ -379,6 +384,8 @@ pub struct AssignmentDetail {
     pub score_visibility: String,
     pub allow_peer_code: bool,
     pub show_class_stats: bool,
+    /// 作业提交窗口内是否允许 Plus 学生使用 AI 助手。
+    pub ai_assistant_enabled: bool,
     pub solutions_published: bool,
     pub solutions_published_at: Option<DateTime<Utc>>,
     pub my_deadline: Option<DateTime<Utc>>,

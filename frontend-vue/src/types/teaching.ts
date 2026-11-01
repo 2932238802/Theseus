@@ -130,6 +130,7 @@ export interface AssignmentDetail {
   scoreVisibility: AssignmentPolicy['scoreVisibility']
   allowPeerCode: boolean
   showClassStats: boolean
+  aiAssistantEnabled: boolean
   solutionsPublished: boolean
   solutionsPublishedAt?: string
   myDeadline?: string

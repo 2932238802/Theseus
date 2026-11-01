@@ -46,6 +46,7 @@ const policy = reactive({
   scoreVisibility: 'after_publish' as ScoreVisibility,
   allowPeerCode: false,
   showClassStats: false,
+  aiAssistantEnabled: true,
 })
 const selected = ref<AssignmentProblemInput[]>([])
 const status = ref<'draft' | 'published' | 'archived'>('draft')
@@ -82,6 +83,7 @@ const fillForm = (detail: {
   scoreVisibility: ScoreVisibility
   allowPeerCode: boolean
   showClassStats: boolean
+  aiAssistantEnabled: boolean
   problems: Array<{
     problemId: number
     points: number
@@ -102,6 +104,7 @@ const fillForm = (detail: {
   policy.scoreVisibility = detail.scoreVisibility
   policy.allowPeerCode = detail.allowPeerCode
   policy.showClassStats = detail.showClassStats
+  policy.aiAssistantEnabled = detail.aiAssistantEnabled
   status.value = detail.status
   selected.value = isEdit.value
     ? detail.problems.map((problem) => ({
@@ -209,6 +212,7 @@ const save = async (): Promise<void> => {
     scoreVisibility: policy.scoreVisibility,
     allowPeerCode: policy.allowPeerCode,
     showClassStats: policy.showClassStats,
+    aiAssistantEnabled: policy.aiAssistantEnabled,
   }
   try {
     if (!isEdit.value) {
@@ -224,10 +228,16 @@ const save = async (): Promise<void> => {
       return
     }
     if (isPublished.value || isArchived.value) {
+      const dueAt = toIsoString(form.dueAt)
+      const currentDueAt = assignmentStore.current?.dueAt
+      const dueExtended =
+        Boolean(dueAt) &&
+        (!currentDueAt || new Date(dueAt as string).getTime() > new Date(currentDueAt).getTime())
       await assignmentStore.update(assignmentId.value, {
         title: form.title.trim(),
         description: form.description.trim(),
-        dueAt: toIsoString(form.dueAt),
+        aiAssistantEnabled: policy.aiAssistantEnabled,
+        ...(dueExtended ? { dueAt } : {}),
       })
     } else {
       await assignmentStore.update(assignmentId.value, {
@@ -313,6 +323,24 @@ onMounted(load)
           </div>
           <p v-if="isPublished && form.dueAt" class="teaching-subtle">
             原截止时间：{{ formatDateTime(assignmentStore.current?.dueAt) }}
+          </p>
+        </section>
+
+        <section class="teaching-panel">
+          <div class="section-heading">
+            <h2>AI 助手</h2>
+            <span class="teaching-subtle">发布后仍可修改</span>
+          </div>
+          <label class="teaching-checkbox">
+            <input
+              v-model="policy.aiAssistantEnabled"
+              type="checkbox"
+              :disabled="isArchived"
+            />
+            <span>允许学生在作业期间使用 AI 助手</span>
+          </label>
+          <p class="teaching-subtle">
+            仅对 Plus 学生生效 关闭后 该作业关联的题目在可提交期间不能使用 AI 助手
           </p>
         </section>
 

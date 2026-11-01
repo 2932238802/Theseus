@@ -108,6 +108,7 @@ export interface BackendAssignmentDetail {
   score_visibility: string
   allow_peer_code: boolean
   show_class_stats: boolean
+  ai_assistant_enabled: boolean
   solutions_published: boolean
   solutions_published_at: string | null
   my_deadline: string | null
@@ -296,6 +297,7 @@ export const mapAssignmentDetail = (row: BackendAssignmentDetail): AssignmentDet
   scoreVisibility: parseScoreVisibility(row.score_visibility),
   allowPeerCode: row.allow_peer_code,
   showClassStats: row.show_class_stats,
+  aiAssistantEnabled: row.ai_assistant_enabled,
   solutionsPublished: row.solutions_published,
   solutionsPublishedAt: optional(row.solutions_published_at),
   myDeadline: optional(row.my_deadline),
