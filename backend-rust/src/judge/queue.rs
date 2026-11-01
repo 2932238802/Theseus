@@ -307,6 +307,12 @@ pub async fn has_live_submit_worker(conn: &mut ConnectionManager) -> Result<bool
     has_live_keys(conn, "theseus:submit:worker:*").await
 }
 
+/// Same heartbeat contract as [`has_live_worker`], for the anticheat worker.
+/// 用于 `/metrics` 的存活指标，避免把防作弊扫描的停滞误认为空闲。
+pub async fn has_live_anticheat_worker(conn: &mut ConnectionManager) -> Result<bool, AppError> {
+    has_live_keys(conn, "theseus:anticheat:worker:*").await
+}
+
 async fn has_live_keys(conn: &mut ConnectionManager, pattern: &str) -> Result<bool, AppError> {
     let mut cursor: u64 = 0;
     loop {

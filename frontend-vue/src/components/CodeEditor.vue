@@ -202,6 +202,8 @@ const initialize = async (): Promise<void> => {
       cursorBlinking: 'smooth',
       smoothScrolling: true,
       scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+      // 悬停提示与补全弹窗用固定定位渲染，避免被编辑器外壳的 overflow: hidden 裁剪
+      fixedOverflowWidgets: true,
       ...completionOptions(props.lspEnabled),
     })
     monacoEditor = instance

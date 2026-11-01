@@ -14,6 +14,7 @@ pub mod health_handler;
 pub mod home_handler;
 pub mod invitation_handler;
 pub mod lsp_handler;
+pub mod metrics_handler;
 pub mod note_handler;
 pub mod notification_handler;
 pub mod plus_handler;

@@ -1,48 +1,50 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../store/auth'
-import AdminAuditPage from '../views/AdminAuditPage.vue'
-import AdminContestAppealsPage from '../views/AdminContestAppealsPage.vue'
-import AdminEventsPage from '../views/AdminEventsPage.vue'
-import AdminForumPage from '../views/AdminForumPage.vue'
-import AdminNotifyPage from '../views/AdminNotifyPage.vue'
-import AdminPlusApplicationsPage from '../views/AdminPlusApplicationsPage.vue'
-import AdminProblemsPage from '../views/AdminProblemsPage.vue'
-import AdminSeasonsPage from '../views/AdminSeasonsPage.vue'
-import AdminUsersPage from '../views/AdminUsersPage.vue'
-import AssignmentComposePage from '../views/AssignmentComposePage.vue'
-import AssignmentDetailPage from '../views/AssignmentDetailPage.vue'
-import ClassDetailPage from '../views/ClassDetailPage.vue'
-import ClassesPage from '../views/ClassesPage.vue'
-import ContestPage from '../views/ContestPage.vue'
-import ContestProctorPage from '../views/ContestProctorPage.vue'
-import ContestEventDetailPage from '../views/ContestEventDetailPage.vue'
-import ContestEventsPage from '../views/ContestEventsPage.vue'
-import ContestRankedLeaderboardPage from '../views/ContestRankedLeaderboardPage.vue'
-import ContestResultPage from '../views/ContestResultPage.vue'
-import ContestsPage from '../views/ContestsPage.vue'
-import ForumComposePage from '../views/ForumComposePage.vue'
-import ForumPage from '../views/ForumPage.vue'
-import ForumPostPage from '../views/ForumPostPage.vue'
-import ForgotPasswordPage from '../views/ForgotPasswordPage.vue'
-import GradebookPage from '../views/GradebookPage.vue'
 import IndexPage from '../views/IndexPage.vue'
 import LoginAndRegisterPage from '../views/LoginAndRegisterPage.vue'
-import MyAssignmentsPage from '../views/MyAssignmentsPage.vue'
-import NotFoundPage from '../views/NotFoundPage.vue'
-import NotificationsPage from '../views/NotificationsPage.vue'
-import OjPage from '../views/OjPage.vue'
-import ProblemsPage from '../views/ProblemsPage.vue'
-import PersonalProblemComposePage from '../views/PersonalProblemComposePage.vue'
-import PersonalProblemsPage from '../views/PersonalProblemsPage.vue'
-import ProfilePage from '../views/ProfilePage.vue'
-import SettingsPage from '../views/SettingsPage.vue'
-import ProfileFavoritesPage from '../views/ProfileFavoritesPage.vue'
-import ProfileNotesPage from '../views/ProfileNotesPage.vue'
-import ResetPasswordPage from '../views/ResetPasswordPage.vue'
-import ShopPage from '../views/ShopPage.vue'
-import StudentAppealsPage from '../views/StudentAppealsPage.vue'
-import TeacherCheatReportsPage from '../views/TeacherCheatReportsPage.vue'
-import VerifyEmailPage from '../views/VerifyEmailPage.vue'
+
+// 页面按路由拆包：首屏只加载首页与登录页，其余页面在跳转时才下载
+const AdminAuditPage = () => import('../views/AdminAuditPage.vue')
+const AdminContestAppealsPage = () => import('../views/AdminContestAppealsPage.vue')
+const AdminEventsPage = () => import('../views/AdminEventsPage.vue')
+const AdminForumPage = () => import('../views/AdminForumPage.vue')
+const AdminNotifyPage = () => import('../views/AdminNotifyPage.vue')
+const AdminPlusApplicationsPage = () => import('../views/AdminPlusApplicationsPage.vue')
+const AdminProblemsPage = () => import('../views/AdminProblemsPage.vue')
+const AdminSeasonsPage = () => import('../views/AdminSeasonsPage.vue')
+const AdminUsersPage = () => import('../views/AdminUsersPage.vue')
+const AssignmentComposePage = () => import('../views/AssignmentComposePage.vue')
+const AssignmentDetailPage = () => import('../views/AssignmentDetailPage.vue')
+const ClassDetailPage = () => import('../views/ClassDetailPage.vue')
+const ClassesPage = () => import('../views/ClassesPage.vue')
+const ContestPage = () => import('../views/ContestPage.vue')
+const ContestProctorPage = () => import('../views/ContestProctorPage.vue')
+const ContestEventDetailPage = () => import('../views/ContestEventDetailPage.vue')
+const ContestEventsPage = () => import('../views/ContestEventsPage.vue')
+const ContestRankedLeaderboardPage = () => import('../views/ContestRankedLeaderboardPage.vue')
+const ContestResultPage = () => import('../views/ContestResultPage.vue')
+const ContestsPage = () => import('../views/ContestsPage.vue')
+const ForumComposePage = () => import('../views/ForumComposePage.vue')
+const ForumPage = () => import('../views/ForumPage.vue')
+const ForumPostPage = () => import('../views/ForumPostPage.vue')
+const ForgotPasswordPage = () => import('../views/ForgotPasswordPage.vue')
+const GradebookPage = () => import('../views/GradebookPage.vue')
+const MyAssignmentsPage = () => import('../views/MyAssignmentsPage.vue')
+const NotFoundPage = () => import('../views/NotFoundPage.vue')
+const NotificationsPage = () => import('../views/NotificationsPage.vue')
+const OjPage = () => import('../views/OjPage.vue')
+const ProblemsPage = () => import('../views/ProblemsPage.vue')
+const PersonalProblemComposePage = () => import('../views/PersonalProblemComposePage.vue')
+const PersonalProblemsPage = () => import('../views/PersonalProblemsPage.vue')
+const ProfilePage = () => import('../views/ProfilePage.vue')
+const SettingsPage = () => import('../views/SettingsPage.vue')
+const ProfileFavoritesPage = () => import('../views/ProfileFavoritesPage.vue')
+const ProfileNotesPage = () => import('../views/ProfileNotesPage.vue')
+const ResetPasswordPage = () => import('../views/ResetPasswordPage.vue')
+const ShopPage = () => import('../views/ShopPage.vue')
+const StudentAppealsPage = () => import('../views/StudentAppealsPage.vue')
+const TeacherCheatReportsPage = () => import('../views/TeacherCheatReportsPage.vue')
+const VerifyEmailPage = () => import('../views/VerifyEmailPage.vue')
 
 const router = createRouter({
   history: createWebHistory(),

@@ -302,7 +302,7 @@ async fn read_frame<R: AsyncRead + Unpin>(
         if read == 0 {
             return Ok(None);
         }
-        let trimmed = line.trim_end_matches(|character| character == '\r' || character == '\n');
+        let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
             break;
         }

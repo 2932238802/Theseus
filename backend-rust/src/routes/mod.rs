@@ -1,6 +1,7 @@
 use axum::{
     Router,
     extract::DefaultBodyLimit,
+    middleware,
     routing::{delete, get, post, put},
 };
 use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
@@ -11,9 +12,9 @@ use crate::{
         admin_forum_handler, admin_user_handler, anticheat_handler, assignment_handler,
         audit_handler, auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
         favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
-        lsp_handler, note_handler, notification_handler, plus_handler, preference_handler,
-        problem_handler, profile_handler, ranking_handler, run_handler, submission_handler,
-        ws_handler,
+        lsp_handler, metrics_handler, note_handler, notification_handler, plus_handler,
+        preference_handler, problem_handler, profile_handler, ranking_handler, run_handler,
+        submission_handler, ws_handler,
     },
 };
 
@@ -22,6 +23,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health_handler::liveness))
         .route("/readyz", get(health_handler::readiness))
+        .route("/metrics", get(metrics_handler::render))
         .route("/api/ws/ticket", post(ws_handler::issue_ticket))
         .route("/api/ws", get(ws_handler::connect))
         .route("/api/lsp/ticket", post(lsp_handler::issue_ticket))
@@ -515,6 +517,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/admin/audit-logs/meta", get(audit_handler::meta))
         .route("/api/admin/audit-logs/export", get(audit_handler::export))
         .nest_service("/uploads", ServeDir::new(upload_dir))
+        // route_layer 在路由匹配之后执行，才能拿到 MatchedPath 作为低基数标签
+        .route_layer(middleware::from_fn(crate::utils::metrics::track_http))
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())

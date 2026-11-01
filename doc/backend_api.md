@@ -31,12 +31,21 @@ cargo run
 
 任一依赖不可用时返回 503，`status` 为 `degraded`，并由 `database` / `redis` 字段指出原因；未启用判题时 `redis` 为 `disabled`。两个接口均无鉴权，部署时只在内网/容器网络暴露。
 
+## 指标
+
+- `GET /metrics`：Prometheus 0.0.4 文本格式，无鉴权
+- HTTP 请求数、延迟直方图与在途请求按 `MatchedPath` 路由模板统计，不按真实路径
+- 抓取时现读数据库连接池（size / idle / max）、判题 Stream 长度与消费组 pending、死信 Stream 长度与 Worker 心跳存活
+- 队列依赖不可用时跳过对应样本，接口仍返回 200
+- 指标清单见 `2611012_架构与性能收口.md`
+
 ## 接口清单
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
 | GET | `/healthz` | 无 | 存活探针，仅返回 `{"status":"ok"}`，不访问依赖 |
 | GET | `/readyz` | 无 | 就绪探针，检查 PostgreSQL 与（启用判题时的）Redis，异常返回 503 |
+| GET | `/metrics` | 无 | Prometheus 文本格式指标，含 HTTP、连接池、判题队列与 Worker 心跳 |
 | POST | `/api/auth/register` | 否 | 注册，返回 `{message}` |
 | POST | `/api/auth/login` | 否 | 登录，`username` 字段可传用户名或邮箱，返回 `{token,user}` |
 | GET | `/api/home/overview` | 用户 | 首页学习工作台：继续学习、统计、最近活动、今日签到与信誉分 |
