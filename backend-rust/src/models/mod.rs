@@ -9,6 +9,7 @@ pub mod home;
 pub mod note;
 pub mod notification;
 pub mod plus;
+pub mod preference;
 pub mod problem;
 pub mod profile;
 pub mod ranking;

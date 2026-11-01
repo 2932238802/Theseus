@@ -75,6 +75,10 @@ cargo run
 | POST | `/api/profile/avatar` | 用户 | 上传头像（multipart） |
 | DELETE | `/api/profile/avatar` | 用户 | 删除头像 |
 | GET | `/api/profile/analytics` | 用户 | 个人学习分析，含信誉分与连续签到天数 |
+| GET | `/api/profile/preferences` | 用户 | 当前用户的个性化偏好 |
+| PUT | `/api/profile/preferences` | 用户 | 批量写入个性化偏好 |
+| DELETE | `/api/profile/preferences` | 用户 | 清空当前用户全部偏好 |
+| DELETE | `/api/profile/preferences/{key}` | 用户 | 删除单项偏好 |
 | GET | `/api/profile/badges` | 用户 | 当前有效徽章列表 |
 | PUT | `/api/profile/badges/{code}/visibility` | 用户 | 设置徽章是否在公开位置展示 `{hidden}` |
 | GET | `/api/forum/favorites` | 用户 | 当前用户论坛帖子收藏列表 |
@@ -317,6 +321,11 @@ Authorization: Bearer <teacher>
 - `GET /api/profile/favorites/problems?page=&size=` 返回收藏的已审核题目 `{total,page,size,favorites:[{problem_id,title,difficulty,acceptance_rate,favorited_at}]}`
 - `GET /api/profile/favorites/comments?page=&size=` 返回收藏的评论 `{total,page,size,favorites:[{comment_id,post_id,post_title,parent_id,body_md,author,created_at,favorited_at}]}` 作者字段沿用公开作者结构，匿名评论不会泄露真实用户名
 - 收藏与取消收藏接口均返回 `{favorited}`，重复调用幂等；题目详情和列表的 `favorited` 字段、论坛评论和回复的 `favorited` 字段只对当前登录用户生效
+- `GET /api/profile/preferences` 返回 `{preferences:{key:value}}`，未设置的键不出现
+- `PUT /api/profile/preferences` 请求 `{"preferences":{"editor.font_size":16}}`，一次最多 64 项，返回写入后的完整偏好
+- 偏好键限 `appearance.theme`、`editor.theme`、`editor.font_size`、`editor.tab_size`、`editor.completion`、`problems.language`、`problems.page_size`、`shortcuts.bindings`；未知键或非法取值返回 400
+- `DELETE /api/profile/preferences` 清空全部偏好，`DELETE /api/profile/preferences/{key}` 删除单项；删除后返回剩余偏好
+- 偏好只属于当前登录用户，切换账号或退出登录不会互相影响（`0038`）
 - `GET /api/profile/notification-preferences` 返回 `{email,email_verified,preferences:[{category,channel,enabled}]}`，未保存过的类别返回代码里的默认值
 - `PUT /api/profile/notification-preferences` 请求 `{"preferences":[{"category":"forum","enabled":true}]}`，可一次提交多项，返回与 GET 相同的完整偏好；`category` 取 `class|assignment|forum|account|contest|announcement`
 - 偏好只控制邮件渠道，站内信始终接收；通知邮件只发送到已验证的邮箱，后台邮件循环每轮把待处理通知转入发件箱，用户关闭某类别后该类别不再产生新邮件

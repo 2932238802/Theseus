@@ -3,23 +3,19 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import NotificationBell from './NotificationBell.vue'
 import NavSearch from './NavSearch.vue'
-import { fetchCurrentUser } from '../api/auth'
-import { toErrorMessage } from '../api/client'
-import { uploadAvatar } from '../api/profile'
 import { fetchMyPlusState } from '../api/shop'
 import { useAuthStore } from '../store/auth'
 import { useClassStore } from '../store/classes'
-import { currentTheme, toggleTheme as applyThemeToggle } from '../utils/theme'
+import { usePreferenceStore } from '../store/preferences'
+import { currentTheme } from '../utils/theme'
 
 const authStore = useAuthStore()
 const classStore = useClassStore()
+const preferenceStore = usePreferenceStore()
 const router = useRouter()
 const route = useRoute()
 const isMenuOpen = ref(false)
 const isDark = computed(() => currentTheme.value === 'dark')
-const avatarInput = ref<HTMLInputElement | null>(null)
-const avatarBusy = ref(false)
-const avatarError = ref('')
 const isPlus = ref(false)
 
 const canBrowseAssignments = computed(() => authStore.isStudent || authStore.isTeacher)
@@ -73,6 +69,7 @@ const isProfileArea = computed(
   () =>
     (route.path === '/profile' ||
       route.path.startsWith('/profile/') ||
+      route.path === '/settings' ||
       route.path === '/personal' ||
       route.path.startsWith('/personal/')) &&
     route.path !== '/profile/assignments',
@@ -118,7 +115,7 @@ const onWindowKeydown = (event: KeyboardEvent): void => {
 }
 
 const toggleTheme = (): void => {
-  applyThemeToggle()
+  preferenceStore.toggleAppearanceTheme()
 }
 
 watch(
@@ -157,38 +154,6 @@ watch(
 const logout = (): void => {
   authStore.logout()
   void router.push('/login')
-}
-
-const chooseAvatar = (): void => {
-  avatarError.value = ''
-  avatarInput.value?.click()
-}
-
-const onAvatarChange = async (event: Event): Promise<void> => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  target.value = ''
-  if (!file || avatarBusy.value) return
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-    avatarError.value = '只支持 JPG、PNG、WebP'
-    return
-  }
-  if (file.size > 2 * 1024 * 1024) {
-    avatarError.value = '头像不能超过 2 MB'
-    return
-  }
-  avatarBusy.value = true
-  avatarError.value = ''
-  try {
-    await uploadAvatar(file)
-    const user = await fetchCurrentUser()
-    authStore.updateUser(user)
-    isMenuOpen.value = false
-  } catch (exception: unknown) {
-    avatarError.value = toErrorMessage(exception)
-  } finally {
-    avatarBusy.value = false
-  }
 }
 
 onMounted(() => {
@@ -338,6 +303,9 @@ onBeforeUnmount(() => {
           <RouterLink role="menuitem" to="/profile/notes" @click="closeProfileMenu">
             我的笔记
           </RouterLink>
+          <RouterLink role="menuitem" to="/settings" @click="closeProfileMenu">
+            个人偏好设置
+          </RouterLink>
           <RouterLink
             v-if="authStore.isStudent"
             role="menuitem"
@@ -435,20 +403,7 @@ onBeforeUnmount(() => {
           </strong>
           <span>{{ authStore.user?.email }}</span>
           <hr />
-          <RouterLink v-if="canBrowseAssignments" to="/personal/problems" @click="isMenuOpen = false">个人出题</RouterLink>
           <RouterLink to="/profile" @click="isMenuOpen = false">个人界面</RouterLink>
-          <button type="button" :disabled="avatarBusy" @click="chooseAvatar">
-            {{ avatarBusy ? '上传中…' : '更改头像' }}
-          </button>
-          <input
-            ref="avatarInput"
-            class="visually-hidden"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            hidden
-            @change="onAvatarChange"
-          />
-          <p v-if="avatarError" class="user-menu-error" role="alert">{{ avatarError }}</p>
           <button type="button" @click="logout">退出登录</button>
         </div>
       </template>

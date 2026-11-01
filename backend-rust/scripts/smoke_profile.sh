@@ -5,7 +5,7 @@
 # 设计文档：doc/2610272_个人界面的完善.md
 #
 # 覆盖：登录资料、用户名修改与冲突、邮箱变更验证、密码修改与 token 失效、
-#       退出所有设备、头像上传/访问/删除、学习分析、论坛收藏、注销匿名化、
+#       退出所有设备、头像上传/访问/删除、学习分析、论坛收藏、个性化偏好、注销匿名化、
 #       教师有未归档组织时注销被拒绝。
 #
 # 用法：
@@ -201,6 +201,28 @@ expect_code "读取收藏列表" 200
 expect_jq "收藏总数为 1" '.data.total == 1'
 api DELETE "/forum/posts/$POST_ID/favorite" "$TOKEN"
 expect_code "取消收藏" 200
+
+say "个性化偏好"
+api GET /profile/preferences "$TOKEN"
+expect_code "读取偏好" 200
+expect_jq "新账号偏好为空" '.data.preferences == {}'
+api PUT /profile/preferences "$TOKEN" '{"preferences":{"appearance.theme":"dark","editor.font_size":16,"editor.tab_size":4,"shortcuts.bindings":{"oj.run":null}}}'
+expect_code "写入偏好" 200
+expect_jq "主题已保存" '.data.preferences["appearance.theme"] == "dark"'
+expect_jq "字号已保存" '.data.preferences["editor.font_size"] == 16'
+expect_jq "快捷键已保存" '.data.preferences["shortcuts.bindings"]["oj.run"] == null'
+api GET /profile/preferences "$TOKEN"
+expect_jq "刷新后偏好仍在" '.data.preferences["editor.tab_size"] == 4'
+api PUT /profile/preferences "$TOKEN" '{"preferences":{"unknown.key":1}}'
+expect_code "未知偏好键被拒绝" 400
+api PUT /profile/preferences "$TOKEN" '{"preferences":{"editor.font_size":99}}'
+expect_code "非法偏好值被拒绝" 400
+api DELETE '/profile/preferences/appearance.theme' "$TOKEN"
+expect_code "删除单项偏好" 200
+expect_jq "单项已删除" '.data.preferences | has("appearance.theme") | not'
+api DELETE /profile/preferences "$TOKEN"
+expect_code "清空偏好" 200
+expect_jq "偏好已清空" '.data.preferences == {}'
 
 say "教师注销保护"
 TEACHER_TOKEN=$(login "$TEACHER" admin)

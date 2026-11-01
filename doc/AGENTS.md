@@ -6,7 +6,7 @@
 
 | 文档 | 用途 | 当前状态 |
 |---|---|---|
-| `总体设计.md` | 产品定位、架构、权限、数据模型、接口、路线与总体进度 | 进度基线：2026-10-31，`f075cd8` + 防作弊 M2 + 教学数据导入导出 + 个人出题与导航调整 + 审计中心 + 竞赛收尾 + 容器化部署 + 提交记录 + 商店与 Plus 会员有效期、续费与到期提醒 + 面经板块、结构化筛选与最佳答案 + 题目题解与讨论区 + 题目笔记 |
+| `总体设计.md` | 产品定位、架构、权限、数据模型、接口、路线与总体进度 | 进度基线：2026-11-01，`f075cd8` + 防作弊 M2 + 教学数据导入导出 + 个人出题与导航调整 + 审计中心 + 竞赛收尾 + 容器化部署 + 提交记录 + 商店与 Plus 会员有效期、续费与到期提醒 + 面经板块、结构化筛选与最佳答案 + 题目题解与讨论区 + 题目笔记 + 语义补全 + 设置中心与偏好同步 |
 | `backend_api.md` | 后端接口契约与错误码 | 随接口变更维护 |
 | `2610259_班级与作业设计方案.md` | 三角色、组织、作业、提交、批改详细设计 | 核心闭环已实现 |
 | `2610261_班级邀请与通知完善设计方案.md` | 组织邀请、邀请通知与通知中心 | 已实现 |
@@ -30,6 +30,7 @@
 | `2610314_题目题解与讨论区设计方案.md` | 题目页题解/讨论 Tab、按题目聚合论坛帖子、热度与最新排序、从题目页发题解 | 已实现（v1） |
 | `2610315_题目笔记设计方案.md` | 题目页私有 Markdown 笔记、自动保存、个人中心笔记汇总 | 已实现（v1） |
 | `2610316_语义补全设计方案.md` | 题目编辑器服务端 LSP、票据鉴权、增量同步、诊断/悬停与部署 | 已实现（v1，C++ / Python） |
+| `2611011_设置中心与偏好同步设计方案.md` | 统一设置页、账号偏好表、白名单校验、跨设备同步与本机回退 | 已实现（v1） |
 | `interview/` | 面经归档、整理规范与索引，按公司/岗位/轮次存放 Markdown；`import_interview.sh` 可批量导入面经板块 | 按面试记录持续补充 |
 | `2610305_服务器部署方案.md` | Docker Compose 单机部署、健康检查、TLS 反代、备份恢复与运维 | 构建与脚本已实现；实际上线需在服务器执行 |
 | `2610241_运行代码功能设计方案.md` | 运行代码、沙箱与多语言执行 | 已实现 |
@@ -63,7 +64,7 @@
 - 审计中心：新增 `audit_logs` 追加式留痕与 `GET /api/admin/audit-logs`、`/meta`、`/export`；管理端「审计日志」页面 `/admin/audit` 支持关键词、动作、对象、时间筛选与 CSV 导出；已接入登录、用户管理、题目审核、成绩修改/发布、通知广播、论坛审核/禁言、作弊复核与申诉、赛事与监考复核等动作；成绩审计不保存分数与评语。
 - 竞赛收尾：新增赛季与软重置（`seasons`、`season_ratings`、`contests.season_id`），赛季首次被访问时惰性激活，按系数把段位压回 1000 附近；排行榜支持赛季切换；用户新增年级字段，赛事支持年级范围并在报名/进入时校验；比赛结束后可提交一次赛事申诉，管理员通过后恢复信誉分、撤销作弊判定并重新排名；管理端可导出赛事成绩 CSV；新增 `/admin/seasons` 与 `/admin/contest-appeals` 页面。
 - 容器化部署：后端多阶段镜像内置 API 与两个 Worker，前端 Node 构建 + Nginx 反代 `/api` 与 `/uploads`；`deploy/compose.yaml` 编排 PostgreSQL、Redis、API、判题/防作弊 Worker 与前端；新增 `/healthz`、`/readyz` 健康检查；提供备份、恢复、管理员提升与 `update.sh` 增量更新脚本，以及 TLS 反代与运维手册（`2610305`）。
-- 冒烟脚本：`smoke_teaching.sh`、`smoke_submission.sh`、`smoke_forum.sh`、`smoke_problem_review.sh`、`smoke_auth_email.sh`、`smoke_contest_events.sh`、`smoke_notifications.sh`、`smoke_realtime.sh`、`smoke_anticheat.sh`、`smoke_import_export.sh`、`smoke_audit.sh`。
+- 冒烟脚本：`smoke_teaching.sh`、`smoke_submission.sh`、`smoke_forum.sh`、`smoke_problem_review.sh`、`smoke_auth_email.sh`、`smoke_contest_events.sh`、`smoke_notifications.sh`、`smoke_realtime.sh`、`smoke_anticheat.sh`、`smoke_import_export.sh`、`smoke_audit.sh`、`smoke_profile.sh`（含个性化偏好读写与校验）。
 - 题目页提交记录：新增「提交记录」Tab，按题分页查看本人提交，详情展示代码、编译输出与失败用例，可载入编辑器或与当前代码逐行对比；复用 `GET /api/submissions` 与 `GET /api/submissions/{id}`，新增前端行级 diff（`2610311`）。
 - 商店与 Plus 申请：学生与教师顶部新增「商店」下拉菜单（管理员不显示），`/shop` 展示「升级为 Plus Theseus」；新增 `plus_applications`、`plus_memberships` 与 `GET /api/shop/plus`、`POST /api/shop/plus/apply`、`GET /api/admin/plus-applications`、`POST /api/admin/plus-applications/{id}/resolve`；管理员审核时填写 1–3650 天，通过后写入或顺延会员有效期，到期自动失效并可重新申请；管理员审核后写站内信与审计日志，新增 `/admin/plus-applications` 页面；Plus 权益为面经板块权限与导航、论坛作者旁的 Plus 标识（`2610312`）。
 - Plus 续费与到期提醒：`0035` 为 `plus_applications` 新增 `kind`（`new` / `renewal`），有效期内可提交续费申请，通过后按 `GREATEST(expires_at, now) + days` 顺延；新增 `plus_expiry_notices`，API 进程每小时检查，在到期前 7/3/1 天各写一次 `plus_expiry` 站内信（邮件类别 `account`），同一会员期不重复；商店页支持续费入口与「续费审核中」状态，管理端标记续费申请（`2610312`）。
@@ -73,6 +74,7 @@
 - 题目题解与讨论区：题目页新增「题目描述」与「题解与讨论」Tab，`GET /api/forum/posts?problem_id=` 按题聚合已发布帖子，支持热度/最新排序与分页；「写题解」跳转发帖页并自动选中题目、补「题解」标签；竞赛场景隐藏讨论 Tab；复用论坛能力，无新增表与接口（`2610314`）。
 - 题目笔记：`0037` 新增 `problem_notes`，每个用户每题一份私有 Markdown 笔记；`GET/PUT /api/problems/{id}/note` 读写并自动保存，空内容删除；`GET /api/profile/notes` 返回笔记摘要；题目页新增「笔记」Tab，个人菜单新增「我的笔记」页面（`2610315`）。
 - 语义补全：题目编辑器可开启服务端 LSP——新增 `POST /api/lsp/ticket` 短期票据与独立网关 `lsp_gateway`，通过 WebSocket 桥接 `clangd` / `pyright-langserver`，提供补全、诊断与悬停；v1 仅支持 C++ 与 Python，比赛模式与其它语言下按钮置灰；Compose 新增 `lsp` 镜像与服务（`2610316`）。
+- 设置中心与偏好同步：`0038` 新增 `user_preferences`，`GET/PUT/DELETE /api/profile/preferences` 按白名单保存外观、编辑器、题目默认值与快捷键；新增 `/settings` 页面与 `usePreferenceStore`，登录后自动拉取并同步，未登录或接口失败时回退本机设置；首次登录自动迁移旧 `localStorage` 偏好，退出登录恢复本机值；设备分栏宽度、结果面板高度与草稿仍只保存在本机（`2611011`）。
 
 **部分完成**
 

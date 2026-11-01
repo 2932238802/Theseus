@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ToastHost from './components/ToastHost.vue'
 import { useAuthStore } from './store/auth'
+import { usePreferenceStore } from './store/preferences'
 
 const authStore = useAuthStore()
+const preferenceStore = usePreferenceStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -27,9 +29,21 @@ const onForbidden = async (): Promise<void> => {
 onMounted(() => {
   window.addEventListener('theseus:forbidden', onForbidden)
   if (authStore.isAuthenticated) {
-    void authStore.refreshMe().then(redirectIfForbidden)
+    void authStore.refreshMe().then((ok) => {
+      redirectIfForbidden()
+      if (ok) void preferenceStore.load()
+    })
   }
 })
+
+// 登录后拉取账号偏好，退出后回到本机设置
+watch(
+  () => authStore.isAuthenticated,
+  (authenticated) => {
+    if (authenticated) void preferenceStore.load()
+    else preferenceStore.resetSession()
+  },
+)
 
 onBeforeUnmount(() => {
   window.removeEventListener('theseus:forbidden', onForbidden)

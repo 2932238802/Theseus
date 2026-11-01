@@ -14,6 +14,13 @@ import {
 export const SHORTCUT_STORAGE_KEY = 'theseus-shortcuts-v1'
 const STORAGE_VERSION = 1
 
+// 偏好同步在设置中心里按需挂接，快捷键本身不依赖账号模块
+let changeListener: (() => void) | undefined
+
+export const onShortcutChange = (listener: (() => void) | undefined): void => {
+  changeListener = listener
+}
+
 interface StoredShortcuts {
   version: number
   bindings: Record<string, string | null>
@@ -44,11 +51,15 @@ const readStoredBindings = (): Record<string, string | null> => {
   if (!stored || stored.version !== STORAGE_VERSION || typeof stored.bindings !== 'object' || !stored.bindings) {
     return {}
   }
+  return normalizeBindings(stored.bindings)
+}
 
+const normalizeBindings = (raw: unknown): Record<string, string | null> => {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
   const working: Record<string, string | null> = {}
   for (const action of SHORTCUT_ACTIONS) working[action.id] = action.defaultKey
   const accepted: Record<string, string | null> = {}
-  const entries = Object.entries(stored.bindings)
+  const entries = Object.entries(raw)
 
   // Apply explicit unbinds first so a key freed in storage can be reused regardless of key order.
   for (const [id, rawValue] of entries) {
@@ -87,17 +98,25 @@ export const useShortcutStore = defineStore('shortcuts', () => {
 
   const persist = (): void => {
     const storage = getStorage()
-    if (!storage) return
-    try {
-      if (Object.keys(overrides.value).length === 0) {
-        storage.removeItem(SHORTCUT_STORAGE_KEY)
-        return
+    if (storage) {
+      try {
+        if (Object.keys(overrides.value).length === 0) {
+          storage.removeItem(SHORTCUT_STORAGE_KEY)
+        } else {
+          const payload: StoredShortcuts = { version: STORAGE_VERSION, bindings: overrides.value }
+          storage.setItem(SHORTCUT_STORAGE_KEY, JSON.stringify(payload))
+        }
+      } catch {
+        // Storage can be full or blocked; keep the in-memory setting.
       }
-      const payload: StoredShortcuts = { version: STORAGE_VERSION, bindings: overrides.value }
-      storage.setItem(SHORTCUT_STORAGE_KEY, JSON.stringify(payload))
-    } catch {
-      // Storage can be full or blocked; keep the in-memory setting.
     }
+    changeListener?.()
+  }
+
+  // 从账号偏好恢复快捷键；输入不可信，先按本地规则清洗
+  const applyOverrides = (bindings: unknown): void => {
+    overrides.value = normalizeBindings(bindings)
+    persist()
   }
 
   const setBinding = (actionId: string, value: string): string | null => {
@@ -146,6 +165,7 @@ export const useShortcutStore = defineStore('shortcuts', () => {
     } catch {
       // Ignore blocked storage.
     }
+    changeListener?.()
   }
 
   const isCustomized = (actionId: string): boolean => {
@@ -161,6 +181,7 @@ export const useShortcutStore = defineStore('shortcuts', () => {
     unbind,
     resetBinding,
     resetAll,
+    applyOverrides,
     isCustomized,
   }
 })

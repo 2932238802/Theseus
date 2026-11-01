@@ -17,6 +17,7 @@ pub mod invitation_service;
 pub mod note_service;
 pub mod notification_service;
 pub mod plus_service;
+pub mod preference_service;
 pub mod profile_service;
 pub mod ranking_service;
 pub mod run_service;

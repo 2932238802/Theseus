@@ -7,6 +7,7 @@ import ShortcutDialog from '../components/ShortcutDialog.vue'
 import ProblemDiscussionPanel from '../components/ProblemDiscussionPanel.vue'
 import ProblemNotePanel from '../components/ProblemNotePanel.vue'
 import { useAuthStore } from '../store/auth'
+import { usePreferenceStore } from '../store/preferences'
 import { useProblemStore } from '../store/problems'
 import { useRunStore } from '../store/runs'
 import { useShortcutStore } from '../store/shortcuts'
@@ -44,6 +45,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const preferenceStore = usePreferenceStore()
 const problemStore = useProblemStore()
 const shortcutStore = useShortcutStore()
 const submissionStore = useSubmissionStore()
@@ -973,7 +975,7 @@ onMounted(() => {
 watch(language, (_next, previous) => {
   // 先取消尚未落盘的延迟写入，避免它用新语言覆盖旧语言的草稿
   cancelLocalDraftSave()
-  localStorage.setItem(PREFERRED_LANGUAGE_KEY, language.value)
+  preferenceStore.setProblemLanguage(language.value)
   // 先把上一种语言的当前代码落盘，再恢复新语言的草稿，避免切换时丢失编辑
   if (previous) {
     const previousKey = `theseus-draft-${problemId.value}-${previous}`
@@ -984,14 +986,33 @@ watch(language, (_next, previous) => {
   void hydrateDraftFromServer()
 })
 watch(fontSize, (value) => {
-  localStorage.setItem(EDITOR_FONT_SIZE_KEY, String(value))
+  preferenceStore.setEditorFontSize(value)
 })
 watch(editorTheme, (value) => {
-  localStorage.setItem(EDITOR_THEME_KEY, value)
+  preferenceStore.setEditorTheme(value)
 })
 watch(completionEnabled, (value) => {
-  localStorage.setItem(EDITOR_COMPLETION_KEY, value ? 'on' : 'off')
+  preferenceStore.setEditorCompletion(value)
 })
+// 账号偏好加载或其它设备修改后，同步到当前答题页
+watch(
+  () => preferenceStore.editorFontSize,
+  (value) => {
+    if (value !== fontSize.value) fontSize.value = value
+  },
+)
+watch(
+  () => preferenceStore.editorTheme,
+  (value) => {
+    if (value !== editorTheme.value) editorTheme.value = value
+  },
+)
+watch(
+  () => preferenceStore.editorCompletion,
+  (value) => {
+    if (value !== completionEnabled.value) completionEnabled.value = value
+  },
+)
 watch(code, () => {
   scheduleLocalDraftSave()
   if (!adoptingRemoteDraft) scheduleDraftSync()
@@ -1106,7 +1127,7 @@ onBeforeUnmount(() => {
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
         <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" title="减小字体" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" title="增大字体" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div></div>
-        <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :theme="editorThemeName" :lsp-enabled="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" @lsp-status="lspStatus = $event" />
+        <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :tab-size="preferenceStore.editorTabSize" :theme="editorThemeName" :lsp-enabled="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" @lsp-status="lspStatus = $event" />
         <div
           ref="outputResizerRef"
           class="pane-resizer-h"

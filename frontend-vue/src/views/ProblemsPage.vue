@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { useAuthStore } from '../store/auth'
+import { usePreferenceStore } from '../store/preferences'
 import { useProblemStore } from '../store/problems'
 import { DIFFICULTY_LABELS, PROBLEM_STATUS_OPTIONS } from '../utils/constants'
 import type { Difficulty } from '../types/oj'
@@ -11,6 +12,7 @@ const route = useRoute()
 const router = useRouter()
 const store = useProblemStore()
 const authStore = useAuthStore()
+const preferenceStore = usePreferenceStore()
 const tagOpen = ref(false)
 const tagSearch = ref('')
 const filteredTags = computed(() => store.tags.filter((tag) => tag.toLowerCase().includes(tagSearch.value.trim().toLowerCase())))
@@ -49,8 +51,13 @@ const changePage = (page: number): void => {
   store.query.page = page
   void store.loadProblems()
 }
+const changePageSize = (size: number): void => {
+  preferenceStore.setProblemPageSize(size)
+  applyFilters()
+}
 const reset = (): void => {
   store.resetQuery()
+  store.query.pageSize = preferenceStore.problemPageSize
   void router.replace('/problems')
   void store.loadProblems()
 }
@@ -61,9 +68,19 @@ const onKeywordInput = (): void => {
 
 onMounted(() => {
   updateFromRoute()
+  store.query.pageSize = preferenceStore.problemPageSize
   void store.loadTags()
   void store.loadProblems()
 })
+// 账号偏好加载后或其它设备修改每页数量时，刷新当前列表
+watch(
+  () => preferenceStore.problemPageSize,
+  (size) => {
+    if (size === store.query.pageSize) return
+    store.query.pageSize = size
+    applyFilters()
+  },
+)
 watch(() => route.query, () => {
   updateFromRoute()
   applyFilters()
@@ -82,7 +99,7 @@ onBeforeUnmount(() => window.clearTimeout(keywordTimer))
       <div v-if="authStore.isAuthenticated" class="filter-row"><span>状态</span><div class="filter-pills"><button v-for="option in PROBLEM_STATUS_OPTIONS" :key="option.value" type="button" :class="{ active: store.query.status === option.value }" @click="store.query.status = option.value; applyFilters()">{{ option.label }}</button></div></div>
     </section>
     <section class="problem-list-section">
-      <div class="list-toolbar"><span>共 <strong>{{ store.total }}</strong> 道题目</span><label>每页<select v-model.number="store.query.pageSize" @change="applyFilters"><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select>题</label></div>
+      <div class="list-toolbar"><span>共 <strong>{{ store.total }}</strong> 道题目</span><label>每页<select v-model.number="store.query.pageSize" @change="changePageSize(store.query.pageSize)"><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select>题</label></div>
       <p v-if="store.error" class="list-error" role="alert">{{ store.error }} <button type="button" @click="store.loadProblems">重试</button></p>
       <div class="problem-table-wrap">
         <table class="problem-table">

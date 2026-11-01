@@ -22,6 +22,7 @@ const props = defineProps<{
   modelValue: string
   language: Language
   fontSize: number
+  tabSize: 'auto' | 2 | 4 | 8
   theme: string
   lspEnabled: boolean
   shortcutBindings?: Record<string, string | null>
@@ -50,8 +51,10 @@ let commandPrefix = ''
 let disposed = false
 
 const monacoLanguage = computed(() => LANGUAGE_OPTIONS.find((item) => item.value === props.language)?.monaco ?? 'javascript')
-// Python 惯例 4 空格，其余语言保持 2 空格
-const tabSize = computed(() => (props.language === 'python' ? 4 : 2))
+// 自动时 Python 惯例 4 空格，其余语言保持 2 空格
+const effectiveTabSize = computed(() =>
+  props.tabSize === 'auto' ? (props.language === 'python' ? 4 : 2) : props.tabSize,
+)
 
 // 关闭补全时同时关掉自动建议和参数提示，避免残留零散弹窗
 const completionOptions = (
@@ -193,7 +196,7 @@ const initialize = async (): Promise<void> => {
       padding: { top: 16, bottom: 16 },
       scrollBeyondLastLine: false,
       lineNumbersMinChars: 3,
-      tabSize: tabSize.value,
+      tabSize: effectiveTabSize.value,
       insertSpaces: true,
       renderLineHighlight: 'line',
       cursorBlinking: 'smooth',
@@ -238,10 +241,13 @@ watch(monacoLanguage, (language) => {
   const model = monacoEditor?.getModel()
   if (!model || !monacoApi) return
   monacoApi.editor.setModelLanguage(model, language)
-  model.updateOptions({ tabSize: tabSize.value, insertSpaces: true })
+  model.updateOptions({ tabSize: effectiveTabSize.value, insertSpaces: true })
   syncLsp()
 })
 watch(() => props.fontSize, (fontSize) => monacoEditor?.updateOptions({ fontSize }))
+watch(effectiveTabSize, (tabSize) => {
+  monacoEditor?.getModel()?.updateOptions({ tabSize, insertSpaces: true })
+})
 watch(() => props.theme, (theme) => {
   monacoApi?.editor.setTheme(theme)
 })

@@ -11,8 +11,9 @@ use crate::{
         admin_forum_handler, admin_user_handler, anticheat_handler, assignment_handler,
         audit_handler, auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
         favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
-        lsp_handler, note_handler, notification_handler, plus_handler, problem_handler,
-        profile_handler, ranking_handler, run_handler, submission_handler, ws_handler,
+        lsp_handler, note_handler, notification_handler, plus_handler, preference_handler,
+        problem_handler, profile_handler, ranking_handler, run_handler, submission_handler,
+        ws_handler,
     },
 };
 
@@ -53,6 +54,16 @@ pub fn router(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max(3 * 1024 * 1024)),
         )
         .route("/api/profile/analytics", get(profile_handler::analytics))
+        .route(
+            "/api/profile/preferences",
+            get(preference_handler::get)
+                .put(preference_handler::update)
+                .delete(preference_handler::clear),
+        )
+        .route(
+            "/api/profile/preferences/{key}",
+            delete(preference_handler::delete),
+        )
         .route("/api/profile/badges", get(badge_handler::list))
         .route(
             "/api/profile/badges/{code}/visibility",
