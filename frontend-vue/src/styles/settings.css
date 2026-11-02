@@ -102,33 +102,110 @@
   font-size: 13px;
 }
 
-.settings-pills {
+.settings-row-theme {
+  align-items: stretch;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.theme-picker {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs);
-  padding: 3px;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.theme-picker > .theme-card {
+  align-self: flex-start;
+}
+
+.theme-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.theme-group-label {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: var(--space-sm);
+}
+
+.theme-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: 5px 8px 5px 5px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-bg);
-}
-
-.settings-pills button {
-  padding: 5px 12px;
-  border-radius: 6px;
   color: var(--color-text-secondary);
-  font-size: 13px;
-  transition: background-color var(--duration), color var(--duration);
+  font-size: 12px;
+  text-align: left;
+  transition: border-color var(--duration), box-shadow var(--duration), color var(--duration);
 }
 
-.settings-pills button:hover {
+.theme-card:hover {
+  border-color: var(--color-border-strong);
   color: var(--color-text);
 }
 
-.settings-pills button.active {
-  background: var(--color-surface);
-  box-shadow: var(--shadow-sm);
+.theme-card.active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
   color: var(--color-text);
   font-weight: 500;
+}
+
+.theme-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-swatch {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 5px;
+}
+
+.theme-swatch-bar {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 8px;
+}
+
+.theme-swatch-dot {
+  position: absolute;
+  top: 13px;
+  left: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.theme-swatch-line {
+  position: absolute;
+  top: 13px;
+  left: 16px;
+  width: calc(100% - 22px);
+  height: 4px;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+.theme-swatch-system {
+  background: linear-gradient(135deg, #f7f7f9 0 50%, #38384a 50% 100%);
 }
 
 .settings-stepper {

@@ -37,9 +37,9 @@ import { useContestEvents } from '../utils/contestEvents'
 import { inspectPaste } from '../utils/pasteInspection'
 import { clearDraftMeta, saveDraftMeta } from '../utils/problemDrafts'
 import { buildLineDiff, type DiffRow } from '../utils/lineDiff'
-import { currentTheme } from '../utils/theme'
+import { currentTheme, currentThemeId } from '../utils/theme'
 import {
-  EDITOR_THEME_OPTIONS,
+  EDITOR_THEME_GROUPS,
   isEditorThemeChoice,
   resolveMonacoTheme,
   type EditorThemeChoice,
@@ -83,7 +83,9 @@ const storedEditorTheme = localStorage.getItem(EDITOR_THEME_KEY)
 const editorTheme = ref<EditorThemeChoice>(
   isEditorThemeChoice(storedEditorTheme) ? storedEditorTheme : 'system',
 )
-const editorThemeName = computed(() => resolveMonacoTheme(editorTheme.value, isDark.value))
+const editorThemeName = computed(() =>
+  resolveMonacoTheme(editorTheme.value, isDark.value, currentThemeId.value),
+)
 const draftKey = computed(() => `theseus-draft-${problemId.value}-${language.value}`)
 const isAccepted = computed(() => submissionStore.latest?.status === 'Accepted')
 const latestFailedCase = computed(() => submissionStore.latest?.failedCase ?? null)
@@ -1308,7 +1310,7 @@ onBeforeUnmount(() => {
         @keydown.right.prevent="nudgeSplit(24)"
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
-        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><button type="button" class="editor-ai-toggle" :class="{ active: aiActive }" :disabled="aiButtonDisabled" :aria-pressed="aiActive" :title="aiTitle" @click="toggleAiAssistant">AI 助手</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" aria-label="减小字号" :title="`减小字号（${shortcutHint('oj.font-decrease')}）`" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" :title="`增大字号（${shortcutHint('oj.font-increase')}）`" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div><div v-if="lspStatusLabel || saveStatusLabel" class="editor-status-float" aria-live="polite"><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span></div></div>
+        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><button type="button" class="editor-ai-toggle" :class="{ active: aiActive }" :disabled="aiButtonDisabled" :aria-pressed="aiActive" :title="aiTitle" @click="toggleAiAssistant">AI 助手</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><optgroup v-for="group in EDITOR_THEME_GROUPS" :key="group.label" :label="group.label"><option v-for="option in group.options" :key="option.value" :value="option.value">{{ option.label }}</option></optgroup></select><button type="button" aria-label="减小字号" :title="`减小字号（${shortcutHint('oj.font-decrease')}）`" @click="fontSize = Math.max(MIN_FONT_SIZE, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" :title="`增大字号（${shortcutHint('oj.font-increase')}）`" @click="fontSize = Math.min(MAX_FONT_SIZE, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div><div v-if="lspStatusLabel || saveStatusLabel" class="editor-status-float" aria-live="polite"><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span></div></div>
         <div class="editor-main" :class="{ 'has-ai': aiActive }">
           <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :tab-size="preferenceStore.editorTabSize" :theme="editorThemeName" :lsp-enabled="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" @lsp-status="lspStatus = $event" />
           <div

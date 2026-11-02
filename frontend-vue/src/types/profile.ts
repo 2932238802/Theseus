@@ -99,4 +99,15 @@ export interface CommentFavoriteList {
   favorites: CommentFavorite[]
 }
 
-export type ThemeMode = 'light' | 'dark' | 'system'
+export type ThemeMode =
+  | 'light'
+  | 'dark'
+  | 'system'
+  | 'one-dark'
+  | 'monokai'
+  | 'dracula'
+  | 'nord'
+  | 'tokyo-night'
+  | 'github-dark'
+  | 'github-light'
+  | 'solarized-light'

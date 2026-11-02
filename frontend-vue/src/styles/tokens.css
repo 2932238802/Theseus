@@ -33,6 +33,7 @@
   --shadow-sm: 0 1px 2px rgba(24, 24, 32, 0.06);
   --shadow-md: 0 12px 32px rgba(24, 24, 32, 0.1), 0 2px 8px rgba(24, 24, 32, 0.05);
   --duration: 150ms;
+  color-scheme: light;
 }
 
 :root[data-theme='dark'] {
@@ -58,4 +59,215 @@
   --color-danger-ink: #1c1c1c;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+/* 以下主题参考 VS Code 常见配色，只覆盖颜色变量，间距与圆角沿用 :root */
+
+:root[data-theme='github-light'] {
+  --color-primary: #24292f;
+  --color-primary-ink: #ffffff;
+  --color-accent: #0969da;
+  --color-accent-hover: #0550ae;
+  --color-accent-soft: #ddf4ff;
+  --color-accent-ink: #ffffff;
+  --color-bg: #f6f8fa;
+  --color-surface: #ffffff;
+  --color-text: #24292f;
+  --color-text-secondary: #57606a;
+  --color-text-muted: #6e7781;
+  --color-border: #d0d7de;
+  --color-border-strong: #8c959f;
+  --color-success: #1a7f37;
+  --color-success-soft: #dafbe1;
+  --color-warning: #9a6700;
+  --color-warning-soft: #fff8c5;
+  --color-danger: #cf222e;
+  --color-danger-soft: #ffebe9;
+  --color-danger-ink: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(27, 31, 36, 0.08);
+  --shadow-md: 0 12px 32px rgba(27, 31, 36, 0.12), 0 2px 8px rgba(27, 31, 36, 0.06);
+  color-scheme: light;
+}
+
+:root[data-theme='solarized-light'] {
+  --color-primary: #586e75;
+  --color-primary-ink: #fdf6e3;
+  --color-accent: #268bd2;
+  --color-accent-hover: #1e6fa8;
+  --color-accent-soft: #dbe7ee;
+  --color-accent-ink: #ffffff;
+  --color-bg: #fdf6e3;
+  --color-surface: #eee8d5;
+  --color-text: #586e75;
+  --color-text-secondary: #657b83;
+  --color-text-muted: #93a1a1;
+  --color-border: #d5cfb8;
+  --color-border-strong: #93a1a1;
+  --color-success: #859900;
+  --color-success-soft: #e7ead3;
+  --color-warning: #b58900;
+  --color-warning-soft: #f5ecd0;
+  --color-danger: #dc322f;
+  --color-danger-soft: #f6e1dc;
+  --color-danger-ink: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(88, 110, 117, 0.08);
+  --shadow-md: 0 12px 32px rgba(88, 110, 117, 0.14), 0 2px 8px rgba(88, 110, 117, 0.08);
+  color-scheme: light;
+}
+
+:root[data-theme='one-dark'] {
+  --color-primary: #d7dae0;
+  --color-primary-ink: #21252b;
+  --color-accent: #61afef;
+  --color-accent-hover: #8cc4f5;
+  --color-accent-soft: #31435a;
+  --color-accent-ink: #1b1f27;
+  --color-bg: #282c34;
+  --color-surface: #21252b;
+  --color-text: #abb2bf;
+  --color-text-secondary: #9aa2b1;
+  --color-text-muted: #7f8797;
+  --color-border: #3e4451;
+  --color-border-strong: #5c6370;
+  --color-success: #98c379;
+  --color-success-soft: #2b3a2c;
+  --color-warning: #e5c07b;
+  --color-warning-soft: #3d3425;
+  --color-danger: #e06c75;
+  --color-danger-soft: #3d2a2c;
+  --color-danger-ink: #1b1f27;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+:root[data-theme='monokai'] {
+  --color-primary: #f8f8f2;
+  --color-primary-ink: #272822;
+  --color-accent: #f92672;
+  --color-accent-hover: #fd6a9b;
+  --color-accent-soft: #4a2b35;
+  --color-accent-ink: #ffffff;
+  --color-bg: #272822;
+  --color-surface: #1e1f1c;
+  --color-text: #f8f8f2;
+  --color-text-secondary: #c9c9bd;
+  --color-text-muted: #9d9d90;
+  --color-border: #49483e;
+  --color-border-strong: #75715e;
+  --color-success: #a6e22e;
+  --color-success-soft: #2f3b22;
+  --color-warning: #e6db74;
+  --color-warning-soft: #3e3a26;
+  --color-danger: #f92672;
+  --color-danger-soft: #44222d;
+  --color-danger-ink: #272822;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+:root[data-theme='dracula'] {
+  --color-primary: #f8f8f2;
+  --color-primary-ink: #282a36;
+  --color-accent: #bd93f9;
+  --color-accent-hover: #cbaafb;
+  --color-accent-soft: #3c3552;
+  --color-accent-ink: #1f2130;
+  --color-bg: #282a36;
+  --color-surface: #21222c;
+  --color-text: #f8f8f2;
+  --color-text-secondary: #c8c9d4;
+  --color-text-muted: #9a9db0;
+  --color-border: #44475a;
+  --color-border-strong: #6272a4;
+  --color-success: #50fa7b;
+  --color-success-soft: #22402d;
+  --color-warning: #f1fa8c;
+  --color-warning-soft: #3d3a23;
+  --color-danger: #ff5555;
+  --color-danger-soft: #42232a;
+  --color-danger-ink: #282a36;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+:root[data-theme='nord'] {
+  --color-primary: #eceff4;
+  --color-primary-ink: #2e3440;
+  --color-accent: #88c0d0;
+  --color-accent-hover: #9fd3e0;
+  --color-accent-soft: #3f505c;
+  --color-accent-ink: #2e3440;
+  --color-bg: #2e3440;
+  --color-surface: #3b4252;
+  --color-text: #eceff4;
+  --color-text-secondary: #d8dee9;
+  --color-text-muted: #9aa5b8;
+  --color-border: #4c566a;
+  --color-border-strong: #81a1c1;
+  --color-success: #a3be8c;
+  --color-success-soft: #38422f;
+  --color-warning: #ebcb8b;
+  --color-warning-soft: #463d2b;
+  --color-danger: #bf616a;
+  --color-danger-soft: #452a2e;
+  --color-danger-ink: #2e3440;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+
+:root[data-theme='tokyo-night'] {
+  --color-primary: #c0caf5;
+  --color-primary-ink: #1a1b26;
+  --color-accent: #7aa2f7;
+  --color-accent-hover: #9ab8ff;
+  --color-accent-soft: #2e3a5c;
+  --color-accent-ink: #1a1b26;
+  --color-bg: #1a1b26;
+  --color-surface: #24283b;
+  --color-text: #c0caf5;
+  --color-text-secondary: #a9b1d6;
+  --color-text-muted: #7982a9;
+  --color-border: #3b4261;
+  --color-border-strong: #565f89;
+  --color-success: #9ece6a;
+  --color-success-soft: #263528;
+  --color-warning: #e0af68;
+  --color-warning-soft: #3a3226;
+  --color-danger: #f7768e;
+  --color-danger-soft: #3d2430;
+  --color-danger-ink: #1a1b26;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+:root[data-theme='github-dark'] {
+  --color-primary: #e6edf3;
+  --color-primary-ink: #0d1117;
+  --color-accent: #58a6ff;
+  --color-accent-hover: #79c0ff;
+  --color-accent-soft: #1f3149;
+  --color-accent-ink: #0d1117;
+  --color-bg: #0d1117;
+  --color-surface: #161b22;
+  --color-text: #e6edf3;
+  --color-text-secondary: #b1bac4;
+  --color-text-muted: #8b949e;
+  --color-border: #30363d;
+  --color-border-strong: #6e7681;
+  --color-success: #3fb950;
+  --color-success-soft: #12261a;
+  --color-warning: #d29922;
+  --color-warning-soft: #2b2413;
+  --color-danger: #f85149;
+  --color-danger-soft: #321b1c;
+  --color-danger-ink: #0d1117;
+  --shadow-sm: 0 1px 2px rgba(1, 4, 9, 0.5);
+  --shadow-md: 0 12px 32px rgba(1, 4, 9, 0.7), 0 2px 8px rgba(1, 4, 9, 0.55);
+  color-scheme: dark;
 }

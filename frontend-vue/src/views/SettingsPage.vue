@@ -5,21 +5,16 @@ import ShortcutDialog from '../components/ShortcutDialog.vue'
 import { usePreferenceStore } from '../store/preferences'
 import { useShortcutStore } from '../store/shortcuts'
 import { LANGUAGE_OPTIONS } from '../utils/constants'
-import { EDITOR_THEME_OPTIONS, type EditorThemeChoice } from '../utils/monacoTheme'
+import { EDITOR_THEME_GROUPS, type EditorThemeChoice } from '../utils/monacoTheme'
+import { SYSTEM_THEME_LABEL, THEME_GROUPS } from '../utils/theme'
 import type { EditorTabSize } from '../types/preference'
 import type { Language } from '../types/oj'
-import type { ThemeMode } from '../types/profile'
 
 const prefs = usePreferenceStore()
 const shortcutStore = useShortcutStore()
 const shortcutOpen = ref(false)
 const resetConfirm = ref(false)
 
-const THEME_OPTIONS: Array<{ value: ThemeMode; label: string }> = [
-  { value: 'light', label: '浅色' },
-  { value: 'dark', label: '深色' },
-  { value: 'system', label: '跟随系统' },
-]
 const TAB_OPTIONS: Array<{ value: EditorTabSize; label: string }> = [
   { value: 'auto', label: '自动' },
   { value: 2, label: '2 空格' },
@@ -91,33 +86,79 @@ onMounted(() => {
         <h2 id="settings-appearance">外观</h2>
         <p>全站深浅色与代码编辑器配色</p>
       </header>
-      <div class="settings-row">
+      <div class="settings-row settings-row-theme">
         <div class="settings-label">
           <strong>全站主题</strong>
-          <small>跟随系统时会随设备切换</small>
+          <small>参考 VS Code 配色 跟随系统时会随设备切换</small>
         </div>
-        <div class="settings-pills" role="group" aria-label="全站主题">
+        <div class="theme-picker">
           <button
-            v-for="option in THEME_OPTIONS"
-            :key="option.value"
             type="button"
-            :class="{ active: prefs.appearanceTheme === option.value }"
-            :aria-pressed="prefs.appearanceTheme === option.value"
-            @click="prefs.setAppearanceTheme(option.value)"
+            class="theme-card"
+            :class="{ active: prefs.appearanceTheme === 'system' }"
+            :aria-pressed="prefs.appearanceTheme === 'system'"
+            @click="prefs.setAppearanceTheme('system')"
           >
-            {{ option.label }}
+            <span class="theme-swatch theme-swatch-system" aria-hidden="true" />
+            <span class="theme-card-name">{{ SYSTEM_THEME_LABEL }}</span>
           </button>
+          <div
+            v-for="group in THEME_GROUPS"
+            :key="group.label"
+            class="theme-group"
+            role="group"
+            :aria-label="`${group.label}主题`"
+          >
+            <span class="theme-group-label">{{ group.label }}</span>
+            <div class="theme-grid">
+              <button
+                v-for="option in group.options"
+                :key="option.value"
+                type="button"
+                class="theme-card"
+                :class="{ active: prefs.appearanceTheme === option.value }"
+                :aria-pressed="prefs.appearanceTheme === option.value"
+                @click="prefs.setAppearanceTheme(option.value)"
+              >
+                <span
+                  class="theme-swatch"
+                  :style="{ background: option.swatch.bg }"
+                  aria-hidden="true"
+                >
+                  <span
+                    class="theme-swatch-bar"
+                    :style="{ background: option.swatch.surface }"
+                  />
+                  <span
+                    class="theme-swatch-dot"
+                    :style="{ background: option.swatch.accent }"
+                  />
+                  <span
+                    class="theme-swatch-line"
+                    :style="{ background: option.swatch.text }"
+                  />
+                </span>
+                <span class="theme-card-name">{{ option.label }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="settings-row">
         <div class="settings-label">
           <strong>编辑器主题</strong>
-          <small>默认跟随全站主题</small>
+          <small>跟随全站时自动匹配相同配色</small>
         </div>
         <select v-model="editorTheme" aria-label="编辑器主题">
-          <option v-for="option in EDITOR_THEME_OPTIONS" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
+          <optgroup v-for="group in EDITOR_THEME_GROUPS" :key="group.label" :label="group.label">
+            <option
+              v-for="option in group.options"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </optgroup>
         </select>
       </div>
     </section>

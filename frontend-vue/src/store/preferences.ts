@@ -4,7 +4,7 @@ import { clearPreferences, fetchPreferences, savePreferences } from '../api/pref
 import { toErrorMessage } from '../api/client'
 import { LANGUAGE_OPTIONS } from '../utils/constants'
 import { isEditorThemeChoice } from '../utils/monacoTheme'
-import { applyTheme, currentTheme } from '../utils/theme'
+import { applyTheme, currentTheme, isThemeMode } from '../utils/theme'
 import type { EditorThemeChoice } from '../utils/monacoTheme'
 import type { EditorTabSize } from '../types/preference'
 import type { Language } from '../types/oj'
@@ -53,9 +53,6 @@ const DEFAULT_VALUES: Record<string, unknown> = {
 const FONT_SIZES: [number, number] = [10, 32]
 const PAGE_SIZES = [20, 50, 100]
 const TAB_SIZES = [2, 4, 8]
-
-const isThemeMode = (value: unknown): value is ThemeMode =>
-  value === 'light' || value === 'dark' || value === 'system'
 
 const isLanguage = (value: unknown): value is Language =>
   typeof value === 'string' && LANGUAGE_OPTIONS.some((option) => option.value === value)

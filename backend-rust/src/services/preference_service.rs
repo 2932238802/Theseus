@@ -13,7 +13,19 @@ const MAX_SHORTCUT_BINDINGS: usize = 64;
 const MAX_SHORTCUT_KEY_LEN: usize = 64;
 const MAX_SHORTCUT_VALUE_LEN: usize = 32;
 
-const APPEARANCE_THEMES: &[&str] = &["light", "dark", "system"];
+const APPEARANCE_THEMES: &[&str] = &[
+    "light",
+    "dark",
+    "system",
+    "one-dark",
+    "monokai",
+    "dracula",
+    "nord",
+    "tokyo-night",
+    "github-dark",
+    "github-light",
+    "solarized-light",
+];
 const EDITOR_THEMES: &[&str] = &[
     "system",
     "theseus-light",
