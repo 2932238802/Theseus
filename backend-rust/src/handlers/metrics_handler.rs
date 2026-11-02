@@ -8,7 +8,7 @@ use redis::{aio::ConnectionManager, streams::StreamInfoGroupsReply};
 use crate::{
     AppState,
     judge::queue,
-    utils::metrics::{append_gauge, append_header, http_metrics},
+    utils::metrics::{append_gauge, append_header, contest_match_metrics, http_metrics},
 };
 
 /// `GET /metrics`：Prometheus 文本格式。
@@ -17,6 +17,7 @@ use crate::{
 /// 依赖不可用时对应的样本不输出，抓取本身仍然成功。
 pub async fn render(State(state): State<AppState>) -> Response {
     let mut body = http_metrics().render();
+    contest_match_metrics().render(&mut body);
 
     append_header(
         &mut body,

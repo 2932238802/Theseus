@@ -169,10 +169,158 @@ impl HttpMetrics {
     }
 }
 
+/// 排位匹配的进程内指标：后台 matcher 每轮更新队列长度、锁等待、
+/// 成局数与参赛者排队时长，用于观察匹配延迟和降级情况。
+#[derive(Default)]
+pub struct ContestMatchMetrics {
+    queue_length: AtomicU64,
+    batches_total: AtomicU64,
+    errors_total: AtomicU64,
+    rooms_total: AtomicU64,
+    rooms_by_size: [AtomicU64; 5],
+    participants_total: AtomicU64,
+    queue_wait_micros_total: AtomicU64,
+    batch_duration_micros_total: AtomicU64,
+    lock_wait_micros_total: AtomicU64,
+}
+
+impl ContestMatchMetrics {
+    fn micros(duration: Duration) -> u64 {
+        u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
+    }
+
+    pub fn set_queue_length(&self, length: usize) {
+        self.queue_length.store(length as u64, Ordering::Relaxed);
+    }
+
+    pub fn record_batch(&self, elapsed: Duration) {
+        self.batches_total.fetch_add(1, Ordering::Relaxed);
+        self.batch_duration_micros_total
+            .fetch_add(Self::micros(elapsed), Ordering::Relaxed);
+    }
+
+    pub fn record_error(&self) {
+        self.errors_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_lock_wait(&self, elapsed: Duration) {
+        self.lock_wait_micros_total
+            .fetch_add(Self::micros(elapsed), Ordering::Relaxed);
+    }
+
+    /// `queue_wait_micros` 是房间内所有参赛者等待时长的总和。
+    pub fn record_room(&self, size: usize, queue_wait_micros: u64) {
+        self.rooms_total.fetch_add(1, Ordering::Relaxed);
+        if (2..self.rooms_by_size.len()).contains(&size) {
+            self.rooms_by_size[size].fetch_add(1, Ordering::Relaxed);
+        }
+        self.participants_total
+            .fetch_add(size as u64, Ordering::Relaxed);
+        self.queue_wait_micros_total
+            .fetch_add(queue_wait_micros, Ordering::Relaxed);
+    }
+
+    /// 渲染 Prometheus 文本格式的匹配指标部分。
+    pub fn render(&self, out: &mut String) {
+        append_header(
+            out,
+            "theseus_contest_queue_length",
+            "gauge",
+            "Users currently waiting in the ranked queue.",
+        );
+        out.push_str("theseus_contest_queue_length");
+        push_value(out, self.queue_length.load(Ordering::Relaxed) as f64);
+
+        append_header(
+            out,
+            "theseus_contest_match_batches_total",
+            "counter",
+            "Matchmaking batches run by the background matcher.",
+        );
+        out.push_str("theseus_contest_match_batches_total");
+        push_value(out, self.batches_total.load(Ordering::Relaxed) as f64);
+
+        append_header(
+            out,
+            "theseus_contest_match_errors_total",
+            "counter",
+            "Matchmaking batches that failed.",
+        );
+        out.push_str("theseus_contest_match_errors_total");
+        push_value(out, self.errors_total.load(Ordering::Relaxed) as f64);
+
+        append_header(
+            out,
+            "theseus_contest_match_rooms_total",
+            "counter",
+            "Ranked rooms created, by room size.",
+        );
+        out.push_str("theseus_contest_match_rooms_total");
+        push_value(out, self.rooms_total.load(Ordering::Relaxed) as f64);
+        for size in 2..self.rooms_by_size.len() {
+            let label = size.to_string();
+            out.push_str("theseus_contest_match_rooms_total");
+            write_labels(out, &[("size", label.as_str())]);
+            push_value(out, self.rooms_by_size[size].load(Ordering::Relaxed) as f64);
+        }
+
+        append_header(
+            out,
+            "theseus_contest_match_participants_total",
+            "counter",
+            "Participants placed into ranked rooms.",
+        );
+        out.push_str("theseus_contest_match_participants_total");
+        push_value(out, self.participants_total.load(Ordering::Relaxed) as f64);
+
+        append_header(
+            out,
+            "theseus_contest_match_queue_wait_seconds_total",
+            "counter",
+            "Total time participants spent waiting before being matched, in seconds.",
+        );
+        out.push_str("theseus_contest_match_queue_wait_seconds_total");
+        push_value(
+            out,
+            self.queue_wait_micros_total.load(Ordering::Relaxed) as f64 / 1_000_000.0,
+        );
+
+        append_header(
+            out,
+            "theseus_contest_match_batch_duration_seconds_total",
+            "counter",
+            "Total time spent in matchmaking batches, in seconds.",
+        );
+        out.push_str("theseus_contest_match_batch_duration_seconds_total");
+        push_value(
+            out,
+            self.batch_duration_micros_total.load(Ordering::Relaxed) as f64 / 1_000_000.0,
+        );
+
+        append_header(
+            out,
+            "theseus_contest_match_lock_wait_seconds_total",
+            "counter",
+            "Total time spent waiting for the matchmaking advisory lock, in seconds.",
+        );
+        out.push_str("theseus_contest_match_lock_wait_seconds_total");
+        push_value(
+            out,
+            self.lock_wait_micros_total.load(Ordering::Relaxed) as f64 / 1_000_000.0,
+        );
+    }
+}
+
 /// 全局指标实例。`route_layer` 不携带状态，因此这里用进程级单例。
 pub fn http_metrics() -> &'static HttpMetrics {
     static INSTANCE: OnceLock<HttpMetrics> = OnceLock::new();
     INSTANCE.get_or_init(HttpMetrics::default)
+}
+
+/// 全局排位匹配指标实例。
+pub fn contest_match_metrics() -> &'static ContestMatchMetrics {
+    static INSTANCE: OnceLock<ContestMatchMetrics> = OnceLock::new();
+    INSTANCE.get_or_init(ContestMatchMetrics::default)
 }
 
 /// 记录每个匹配到路由的请求。需要挂在 `Router::route_layer` 上，
@@ -293,6 +441,23 @@ fn format_bucket(bucket: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renders_contest_match_metrics() {
+        let metrics = ContestMatchMetrics::default();
+        metrics.set_queue_length(3);
+        metrics.record_batch(Duration::from_millis(20));
+        metrics.record_lock_wait(Duration::from_millis(1));
+        metrics.record_room(4, 5_000_000);
+        let mut out = String::new();
+        metrics.render(&mut out);
+
+        assert!(out.contains("theseus_contest_queue_length 3\n"));
+        assert!(out.contains("theseus_contest_match_rooms_total 1\n"));
+        assert!(out.contains("theseus_contest_match_rooms_total{size=\"4\"} 1\n"));
+        assert!(out.contains("theseus_contest_match_participants_total 4\n"));
+        assert!(out.contains("theseus_contest_match_queue_wait_seconds_total 5\n"));
+    }
 
     #[test]
     fn records_by_route_and_status_class() {

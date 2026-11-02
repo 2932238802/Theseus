@@ -1,9 +1,9 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use backend_rust::{
     AppState, config::Config, db, db::pool::create_pool, judge::queue, routes,
     services::contest_service, services::email_service, services::notification_service,
-    services::plus_service, services::submission_service,
+    services::plus_service, services::submission_service, utils::metrics::contest_match_metrics,
 };
 use futures_util::StreamExt;
 
@@ -233,7 +233,11 @@ async fn contest_matchmaking_loop(state: AppState) {
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         ticker.tick().await;
-        match contest_service::match_batch(&state.pool).await {
+        let started = Instant::now();
+        let result = contest_service::match_batch(&state.pool).await;
+        let metrics = contest_match_metrics();
+        metrics.record_batch(started.elapsed());
+        match result {
             Ok(rooms) if rooms.is_empty() => {}
             Ok(rooms) => {
                 for room in &rooms {
@@ -249,7 +253,10 @@ async fn contest_matchmaking_loop(state: AppState) {
                 }
                 tracing::info!(rooms = rooms.len(), "ranked contests matched");
             }
-            Err(error) => tracing::error!(error = %error, "failed to match ranked contests"),
+            Err(error) => {
+                metrics.record_error();
+                tracing::error!(error = %error, "failed to match ranked contests")
+            }
         }
     }
 }

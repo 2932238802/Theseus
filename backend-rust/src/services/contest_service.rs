@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::time::Instant;
 
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
@@ -36,6 +37,7 @@ use crate::{
     models::forum::{AdminPinRequest, CreatePostRequest, MAX_TITLE_CHARS},
     models::season::SeasonSummary,
     services::{forum_service, notification_service, season_service},
+    utils::metrics::contest_match_metrics,
 };
 
 const CONTEST_LOCK_NAMESPACE: i32 = 5;
@@ -57,6 +59,10 @@ const MATCH_FALLBACK_TWO_SECONDS: i64 = 300;
 const FALLBACK_RATING_WINDOW: i32 = 150;
 /// 单次后台组局最多创建的房间数，限制一次事务的持锁时长。
 const MAX_MATCH_ROOMS_PER_TICK: usize = 20;
+/// 排队客户端超过这个时间没有刷新心跳，就认为已经离开页面，从队列移除。
+const QUEUE_PRESENCE_TIMEOUT_SECONDS: i64 = 120;
+/// `current` 轮询刷新心跳的最小间隔，避免每 3 秒写一次数据库。
+const QUEUE_PRESENCE_REFRESH_SECONDS: f64 = 15.0;
 const REPUTATION_PENALTY: f64 = 25.0;
 const REPUTATION_RESTRICT_BELOW: f64 = 40.0;
 const FEATURED_EVENT_LIMIT: usize = 3;
@@ -164,6 +170,12 @@ pub async fn match_user(
     }
 
     if let Some(position) = queue_position(pool, user_id).await? {
+        // 重复点击「开始匹配」也算一次心跳，避免刚入队就被判为离开。
+        sqlx::query("UPDATE contest_queue SET last_seen_at = CURRENT_TIMESTAMP WHERE user_id = $1")
+            .bind(user_id)
+            .execute(pool)
+            .await
+            .map_err(AppError::Database)?;
         return Ok(MatchResponse {
             state: "queued".to_owned(),
             queue_position: Some(position),
@@ -175,9 +187,10 @@ pub async fn match_user(
     // 只负责入队。成局由后台 matcher 批量完成，请求路径不等待 advisory lock，
     // 也不携带抽题/建局的开销。
     sqlx::query(
-        "INSERT INTO contest_queue (user_id, camera_permission, screen_permission) VALUES ($1, $2, $3) \
+        "INSERT INTO contest_queue (user_id, camera_permission, screen_permission, last_seen_at) \
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP) \
          ON CONFLICT (user_id) DO UPDATE SET camera_permission = EXCLUDED.camera_permission, \
-             screen_permission = EXCLUDED.screen_permission",
+             screen_permission = EXCLUDED.screen_permission, last_seen_at = CURRENT_TIMESTAMP",
     )
     .bind(user_id)
     .bind(camera.as_deref())
@@ -257,16 +270,42 @@ pub async fn current(pool: &PgPool, user_id: i32) -> Result<CurrentContestRespon
             .await
             .map_err(AppError::Database)?;
     if let Some((joined_at,)) = queued {
-        let position = queue_position(pool, user_id).await?.unwrap_or(1);
-        return Ok(CurrentContestResponse {
-            state: "queued".to_owned(),
-            queue_position: Some(position),
-            queued_at: Some(joined_at),
-            contest: None,
-            my_rating,
-            rating_window: RATING_WINDOW,
-            server_time: Utc::now(),
-        });
+        // 前端排队时每 3 秒轮询一次，这里节流到 15 秒写一次心跳；
+        // 超过 QUEUE_PRESENCE_TIMEOUT_SECONDS 没刷新的行会被 matcher 移出队列。
+        sqlx::query(
+            "UPDATE contest_queue SET last_seen_at = CURRENT_TIMESTAMP \
+             WHERE user_id = $1 \
+               AND last_seen_at <= CURRENT_TIMESTAMP - make_interval(secs => $2::double precision)",
+        )
+        .bind(user_id)
+        .bind(QUEUE_PRESENCE_REFRESH_SECONDS)
+        .execute(pool)
+        .await
+        .map_err(AppError::Database)?;
+        if let Some(position) = queue_position(pool, user_id).await? {
+            return Ok(CurrentContestResponse {
+                state: "queued".to_owned(),
+                queue_position: Some(position),
+                queued_at: Some(joined_at),
+                contest: None,
+                my_rating,
+                rating_window: RATING_WINDOW,
+                server_time: Utc::now(),
+            });
+        }
+        // 队列行在读取后被 matcher 删除：可能刚成局，也可能心跳过期。
+        if let Some(contest_id) = active_contest_id(pool, user_id).await? {
+            let summary = fetch_summary(pool, contest_id, user_id).await?;
+            return Ok(CurrentContestResponse {
+                state: "contest".to_owned(),
+                queue_position: None,
+                queued_at: None,
+                contest: Some(summary),
+                my_rating,
+                rating_window: RATING_WINDOW,
+                server_time: Utc::now(),
+            });
+        }
     }
 
     Ok(CurrentContestResponse {
@@ -2064,12 +2103,26 @@ pub struct MatchedRoom {
 /// 后台 matcher 的一次批量组局：整个批次共用一个 advisory lock 和一个事务，
 /// 把队列里的候选尽量拆成互不重叠的房间。
 pub async fn match_batch(pool: &PgPool) -> Result<Vec<MatchedRoom>, AppError> {
+    let metrics = contest_match_metrics();
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
+    let lock_started = Instant::now();
     sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
         .bind(CONTEST_LOCK_NAMESPACE)
         .execute(&mut *transaction)
         .await
         .map_err(AppError::Database)?;
+    metrics.record_lock_wait(lock_started.elapsed());
+
+    // 清理超过心跳超时的排队行：用户可能已经关闭页面或断网，
+    // 继续留在队列里会被匹配进一场无法参加的比赛。
+    sqlx::query(
+        "DELETE FROM contest_queue \
+         WHERE last_seen_at <= CURRENT_TIMESTAMP - make_interval(secs => $1::double precision)",
+    )
+    .bind(QUEUE_PRESENCE_TIMEOUT_SECONDS as f64)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
 
     // 清理竞态留下的脏队列行：用户已在 running/settling 的比赛里，
     // 却仍有一条队列记录。不清理的话，比赛结束后这条记录会把人
@@ -2104,6 +2157,7 @@ pub async fn match_batch(pool: &PgPool) -> Result<Vec<MatchedRoom>, AppError> {
     .fetch_all(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
+    metrics.set_queue_length(queued.len());
     // 在内存里反复选人，一个批次可以成多局；每选走一组就从候选里移除，
     // 避免同一用户出现在两个房间。
     let now = Utc::now();
@@ -2143,6 +2197,7 @@ pub async fn match_batch(pool: &PgPool) -> Result<Vec<MatchedRoom>, AppError> {
 
     let season_id = season_service::current_season_id_tx(&mut transaction).await?;
     let mut matched_rooms = Vec::with_capacity(groups.len());
+    let mut room_wait_micros = Vec::with_capacity(groups.len());
     for (room_index, group) in groups.iter().enumerate() {
         let start = room_index * PROBLEMS_PER_CONTEST as usize;
         let room_problems = &problems[start..start + PROBLEMS_PER_CONTEST as usize];
@@ -2250,6 +2305,11 @@ pub async fn match_batch(pool: &PgPool) -> Result<Vec<MatchedRoom>, AppError> {
             }
         }
 
+        let wait_micros: u64 = group
+            .iter()
+            .map(|row| (now - row.joined_at).num_microseconds().unwrap_or(0).max(0) as u64)
+            .sum();
+        room_wait_micros.push(wait_micros);
         matched_rooms.push(MatchedRoom {
             contest_id,
             participant_ids: group.iter().map(|row| row.user_id).collect(),
@@ -2271,6 +2331,9 @@ pub async fn match_batch(pool: &PgPool) -> Result<Vec<MatchedRoom>, AppError> {
         .map_err(AppError::Database)?;
 
     transaction.commit().await.map_err(AppError::Database)?;
+    for (room, wait_micros) in matched_rooms.iter().zip(room_wait_micros) {
+        metrics.record_room(room.participant_count as usize, wait_micros);
+    }
     tracing::info!(
         rooms = matched_rooms.len(),
         participants = user_ids.len(),
