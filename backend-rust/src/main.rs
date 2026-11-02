@@ -9,15 +9,26 @@ use futures_util::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 脚本 已经修正 .env 位置
+
     dotenvy::dotenv().ok();
+    // tracing_subscriber 消费 trace产生的事件
+    // with_env_filter 这里相当于 就是 让 LevelFilter 模板 用EnvFilter 代替
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let config = Config::from_env()?;
+    // 全局配置 初始化
+    let config: Config = Config::from_env()?;
+
+    // 创建头像 目录
     tokio::fs::create_dir_all(config.upload_dir.join("avatars")).await?;
+
+    // 创建数据库
     let pool = create_pool(&config.database_url).await?;
+    // 执行 sql 语句
     db::migrate(&pool).await?;
+
     let judge_enabled = config.run_code_enabled || config.submit_judge_enabled;
     let redis = if judge_enabled {
         match queue::connect(&config.redis_url).await {

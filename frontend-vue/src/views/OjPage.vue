@@ -105,6 +105,7 @@ const showHistoryDiff = ref(false)
 let historyRequestSequence = 0
 const isRunDialogOpen = ref(false)
 const isShortcutDialogOpen = ref(false)
+const isPlusDialogOpen = ref(false)
 const runMode = ref<RunMode>('examples')
 const runInput = ref('')
 const runInputError = ref('')
@@ -214,8 +215,7 @@ const toggleAiAssistant = (): void => {
     return
   }
   if (!aiPlus.value) {
-    toast.info('开启 AI 助手需要先升级为 Plus')
-    void router.push({ name: 'shop', hash: '#plus' })
+    isPlusDialogOpen.value = true
     return
   }
   if (!aiConfigured.value) {
@@ -223,6 +223,10 @@ const toggleAiAssistant = (): void => {
     return
   }
   aiEnabled.value = !aiEnabled.value
+}
+const goToPlusUpgrade = (): void => {
+  isPlusDialogOpen.value = false
+  void router.push({ name: 'shop', hash: '#plus' })
 }
 const toggleProblemFavorite = async (): Promise<void> => {
   if (!authStore.isAuthenticated) {
@@ -1530,6 +1534,32 @@ onBeforeUnmount(() => {
       <footer>
         <button class="run-button" type="button" @click="closeHistoryDetail">关闭</button>
         <button class="primary-button" type="button" :disabled="!historyDetail" @click="applyHistoryCode">载入编辑器</button>
+      </footer>
+    </section>
+  </div>
+
+  <div v-if="isPlusDialogOpen" class="modal-backdrop" @click.self="isPlusDialogOpen = false">
+    <section
+      class="run-dialog ai-plus-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ai-plus-title"
+      tabindex="-1"
+      @keydown.esc.stop="isPlusDialogOpen = false"
+    >
+      <header>
+        <div>
+          <h2 id="ai-plus-title">升级 Plus 解锁 AI 助手</h2>
+        </div>
+        <button type="button" aria-label="关闭" @click="isPlusDialogOpen = false">×</button>
+      </header>
+      <div class="run-dialog-body">
+        <p>AI 助手为 Plus 会员专属功能</p>
+        <p class="run-note">升级后可在刷题时获得实时代码讲解与建议</p>
+      </div>
+      <footer>
+        <button class="run-button" type="button" @click="isPlusDialogOpen = false">暂不升级</button>
+        <button class="primary-button" type="button" @click="goToPlusUpgrade">前往升级</button>
       </footer>
     </section>
   </div>

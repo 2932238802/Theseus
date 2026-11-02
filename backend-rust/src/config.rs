@@ -114,6 +114,10 @@ impl Config {
     }
 
     pub fn from_env() -> Result<Self, AppError> {
+        // 从环境变量 进行初始化
+        // to_owned() 借来的字符串切片 → 自己拥有的 String
+        // str -> String
+        // 没有定长 没有长度 -> 分配 内存 和 容量 
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| AppError::Internal("缺少 DATABASE_URL 配置".to_owned()))?;
         let jwt_secret = env::var("JWT_SECRET")
