@@ -23,5 +23,13 @@ RUN if [ -n "$APT_MIRROR" ]; then \
     && test -s /opt/harness/json.hpp \
     && chmod 0644 /opt/harness/json.hpp
 
+# 预编译 harness 固定包含的头文件，避免每次提交都重新解析 bits/stdc++.h。
+# 编译命令必须使用相同的 -std=c++17 -O2 -I/opt/harness，否则 GCC 会忽略这份 PCH。
+RUN printf '%s\n' '#include <bits/stdc++.h>' '#include <sys/resource.h>' '#include "json.hpp"' \
+        > /opt/harness/theseus_precompiled.hpp \
+    && g++ -std=c++17 -O2 -I/opt/harness -x c++-header /opt/harness/theseus_precompiled.hpp \
+        -o /opt/harness/theseus_precompiled.hpp.gch \
+    && chmod 0644 /opt/harness/theseus_precompiled.hpp /opt/harness/theseus_precompiled.hpp.gch
+
 WORKDIR /workspace
 USER 65534:65534

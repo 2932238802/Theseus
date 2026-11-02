@@ -407,6 +407,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/problems/tags", get(problem_handler::tags))
         .route("/api/problems/{id}", get(problem_handler::get))
         .route(
+            "/api/problems/{id}/neighbors",
+            get(problem_handler::neighbors),
+        )
+        .route(
             "/api/problems/{id}/favorite",
             post(favorite_handler::favorite_problem).delete(favorite_handler::unfavorite_problem),
         )

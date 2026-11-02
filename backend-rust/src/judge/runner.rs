@@ -6,7 +6,7 @@ use std::{
 
 use serde::Deserialize;
 use serde_json::Value;
-use tokio::process::Command;
+use tokio::{io::AsyncWriteExt, process::Command};
 
 use crate::{
     common::error::AppError,
@@ -20,6 +20,7 @@ use crate::{
 pub const OUTPUT_LIMIT: usize = 64 * 1024;
 const CONTAINER_TTL_SECONDS: u32 = 300;
 const DEFAULT_MEMORY_MB: u32 = 256;
+const OUTPUT_READ_LIMIT: usize = OUTPUT_LIMIT + 1;
 
 #[derive(Debug, Clone)]
 pub struct SandboxConfig {
@@ -151,7 +152,7 @@ pub fn program_for(language: &str, code: &str, config: &RunConfig) -> Result<Pro
             compile: Some(vec![
                 "sh",
                 "-c",
-                "mkdir -p /workspace/classes && javac -encoding UTF-8 -cp /opt/harness/gson.jar -d /workspace/classes /workspace/Main.java",
+                "mkdir -p /workspace/classes && javac -proc:none -encoding UTF-8 -cp /opt/harness/gson.jar -d /workspace/classes /workspace/Main.java",
             ]),
             run: vec![
                 "java",
@@ -207,13 +208,24 @@ impl SandboxSession {
         }
         start_container(sandbox, container, program.compile.is_some()).await?;
         verify_runtime(sandbox, container).await?;
-        for (name, _) in &program.files {
-            write_to_container(workspace, container, name).await?;
-        }
         if let Some(compile) = program.compile.as_ref() {
             let started = std::time::Instant::now();
-            let (success, output) =
-                exec_capture(container, compile, sandbox.compile_timeout).await?;
+            // 单文件语言（C++ / Java）把源码从 stdin 直接喂给编译命令，
+            // 省掉一次进入 gVisor 沙箱的 docker exec。
+            let (success, output) = match program.files.as_slice() {
+                [(name, _)] => {
+                    let script = compile_script(name, compile);
+                    let source = workspace.join(name);
+                    exec_capture_with_stdin(container, &script, &source, sandbox.compile_timeout)
+                        .await?
+                }
+                files => {
+                    for (name, _) in files {
+                        write_to_container(workspace, container, name).await?;
+                    }
+                    exec_capture(container, compile, sandbox.compile_timeout).await?
+                }
+            };
             let elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
             if success {
                 tracing::info!(container, elapsed_ms, "sandbox compile finished");
@@ -226,6 +238,10 @@ impl SandboxSession {
             // Compilation is the only step that needs the larger budget; restore
             // the strict run-time limit before executing any test case.
             apply_memory_limit(container, run_memory_mb(sandbox)).await;
+        } else {
+            for (name, _) in &program.files {
+                write_to_container(workspace, container, name).await?;
+            }
         }
         Ok(SandboxStart::Ready(Self {
             container: container.to_owned(),
@@ -251,33 +267,62 @@ impl SandboxSession {
         if case.len() > MAX_INPUT_BYTES {
             return Err(AppError::BadRequest("自定义输入不能超过 64 KB".to_owned()));
         }
-        std::fs::write(self.workspace.join("case.json"), case)
-            .map_err(|error| AppError::Internal(format!("写入运行参数失败: {error}")))?;
-        clear_outputs(&self.container).await;
-        write_to_container(&self.workspace, &self.container, "case.json").await?;
 
+        // 一次 docker exec 完成：写入参数、执行、回传结果与输出。
+        // 每个用例只付一次容器调用开销，避免逐文件注入/读取把判题拖到数秒。
         let seconds = timeout.as_secs_f64().max(0.1);
-        let deadline = format!("{seconds:.3}");
+        let tag = random_suffix();
+        let script = case_script(&self.run_command, seconds, &tag);
         let mut command = Command::new("docker");
         command
-            .args(["exec", "--user", "65534:65534", &self.container])
-            .args(["timeout", "-s", "KILL", &deadline])
-            .args(&self.run_command)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .args([
+                "exec",
+                "-i",
+                "--user",
+                "65534:65534",
+                &self.container,
+                "sh",
+                "-c",
+                &script,
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
         let host_timeout = timeout + Duration::from_secs(3);
         let started = std::time::Instant::now();
-        let (timed_out, exit_code) =
-            match tokio::time::timeout(host_timeout, command.output()).await {
-                Ok(Ok(output)) => (false, output.status.code()),
+        let mut child = command
+            .spawn()
+            .map_err(|error| AppError::Internal(format!("沙箱执行进程启动失败: {error}")))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            // 参数最多 64 KB，写入应当瞬间完成；加超时避免 dockerd 卡住时
+            // 调用方无限等待。
+            match tokio::time::timeout(Duration::from_secs(5), stdin.write_all(&case)).await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    let _ = child.kill().await;
+                    return Err(AppError::Internal(format!("写入运行参数失败: {error}")));
+                }
+                Err(_) => {
+                    let _ = child.kill().await;
+                    return Err(AppError::Internal("写入运行参数超时".to_owned()));
+                }
+            }
+        }
+        let (timed_out, stdout, exit_code) =
+            match tokio::time::timeout(host_timeout, child.wait_with_output()).await {
+                Ok(Ok(output)) => (
+                    false,
+                    String::from_utf8_lossy(&output.stdout).into_owned(),
+                    output.status.code(),
+                ),
                 Ok(Err(error)) => {
                     return Err(AppError::Internal(format!("沙箱执行进程启动失败: {error}")));
                 }
                 Err(_) => {
                     kill_container(&self.container).await;
                     self.broken = true;
-                    (true, None)
+                    (true, String::new(), None)
                 }
             };
         let wall_ms = started.elapsed().as_millis().min(i32::MAX as u128) as i32;
@@ -290,7 +335,8 @@ impl SandboxSession {
             });
         }
 
-        let oom = container_oom_killed(&self.container).await;
+        // OOMKilled 只在退出码为 137 时检查，正常用例不再额外 docker inspect。
+        let oom = exit_code == Some(137) && container_oom_killed(&self.container).await;
         if oom {
             return Ok(SandboxOutcome {
                 oom: true,
@@ -308,21 +354,21 @@ impl SandboxSession {
             });
         }
 
-        let result = read_result_file(&self.container).await;
+        let (result, raw_stdout, raw_stderr) = parse_case_output(&stdout, &tag);
         let memory_kb = result
             .as_ref()
             .map(|value| value.memory_kb.max(0))
             .unwrap_or_default();
-        let (raw_stdout, stdout_truncated) = read_output_file(&self.container, "stdout.txt").await;
-        let (raw_stderr, stderr_truncated) = read_output_file(&self.container, "stderr.txt").await;
+        let (stdout, stdout_truncated) = truncate_output(&raw_stdout);
+        let (stderr, stderr_truncated) = truncate_output(&raw_stderr);
 
         Ok(SandboxOutcome {
             timed_out: false,
             oom: false,
             exit_code,
             result,
-            stdout: raw_stdout,
-            stderr: raw_stderr,
+            stdout,
+            stderr,
             runtime_ms: wall_ms,
             memory_kb,
             truncated: stdout_truncated || stderr_truncated,
@@ -353,6 +399,38 @@ async fn exec_capture(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    run_compile(process, timeout).await
+}
+
+/// 把源码文件作为 stdin 交给容器内的 `cat > 文件 && 编译命令`，
+/// 使「写入源码 + 编译」只占一次 docker exec。
+async fn exec_capture_with_stdin(
+    container: &str,
+    script: &str,
+    source: &Path,
+    timeout: Duration,
+) -> Result<(bool, String), AppError> {
+    let stdin = std::fs::File::open(source)
+        .map_err(|error| AppError::Internal(format!("打开运行文件失败: {error}")))?;
+    let mut process = Command::new("docker");
+    process
+        .args([
+            "exec",
+            "-i",
+            "--user",
+            "65534:65534",
+            container,
+            "sh",
+            "-c",
+            script,
+        ])
+        .stdin(Stdio::from(stdin))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    run_compile(process, timeout).await
+}
+
+async fn run_compile(mut process: Command, timeout: Duration) -> Result<(bool, String), AppError> {
     match tokio::time::timeout(timeout, process.output()).await {
         Ok(Ok(output)) => {
             let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -361,7 +439,7 @@ async fn exec_capture(
             Ok((output.status.success(), text))
         }
         Ok(Err(error)) => Err(AppError::Internal(format!("沙箱编译进程启动失败: {error}"))),
-        Err(_) => Ok((false, "编译超时（10 秒）".to_owned())),
+        Err(_) => Ok((false, format!("编译超时（{} 秒）", timeout.as_secs()))),
     }
 }
 
@@ -479,21 +557,6 @@ async fn verify_runtime(sandbox: &SandboxConfig, container: &str) -> Result<(), 
     Ok(())
 }
 
-async fn clear_outputs(container: &str) {
-    let _ = Command::new("docker")
-        .args([
-            "exec",
-            container,
-            "rm",
-            "-f",
-            "/workspace/result.json",
-            "/workspace/stdout.txt",
-            "/workspace/stderr.txt",
-        ])
-        .output()
-        .await;
-}
-
 /// Injects a file into the sandbox through `docker exec` instead of `docker cp`.
 ///
 /// `docker cp` cannot be used here: the sandbox rootfs is read-only and the
@@ -538,36 +601,52 @@ async fn container_oom_killed(container: &str) -> bool {
         })
 }
 
-/// Reads a file from the sandbox through `docker exec`. See
-/// [`write_to_container`] for why `docker cp` cannot be used with the tmpfs
-/// workspace.
-async fn read_from_container(container: &str, file: &str) -> Option<Vec<u8>> {
-    let output = Command::new("docker")
-        .args(["exec", "--user", "65534:65534", container, "cat"])
-        .arg(format!("/workspace/{file}"))
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    Some(output.stdout)
+/// 单个用例的容器内脚本：清理旧输出、从 stdin 写入参数、带超时执行，
+/// 再用一次性标记把结果、stdout、stderr 一起回传。
+fn case_script(run_command: &[&str], seconds: f64, tag: &str) -> String {
+    let deadline = format!("{seconds:.3}");
+    let command = run_command
+        .iter()
+        .map(|part| shell_quote(part))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "rm -f /workspace/result.json /workspace/stdout.txt /workspace/stderr.txt; \
+         cat > /workspace/case.json; \
+         timeout -s KILL {deadline} {command}; status=$?; \
+         printf '%s' '__THESEUS_{tag}_RESULT__'; cat /workspace/result.json 2>/dev/null; \
+         printf '%s' '__THESEUS_{tag}_STDOUT__'; head -c {OUTPUT_READ_LIMIT} /workspace/stdout.txt 2>/dev/null; \
+         printf '%s' '__THESEUS_{tag}_STDERR__'; head -c {OUTPUT_READ_LIMIT} /workspace/stderr.txt 2>/dev/null; \
+         exit $status"
+    )
 }
 
-async fn read_result_file(container: &str) -> Option<HarnessResult> {
-    let content = read_from_container(container, "result.json").await?;
-    serde_json::from_slice(&content).ok()
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-async fn read_output_file(container: &str, file: &str) -> (String, bool) {
-    let content = read_from_container(container, file)
-        .await
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-        .unwrap_or_default();
-    truncate_output(&content)
+/// 容器内的编译脚本：先从 stdin 落盘源码，再执行编译命令。
+/// 只有 `cat` 成功时才编译，退出码取编译命令的退出码。
+fn compile_script(file: &str, compile: &[&str]) -> String {
+    let command = compile
+        .iter()
+        .map(|part| shell_quote(part))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("cat > /workspace/{file} && {command}")
+}
+
+fn parse_case_output(text: &str, tag: &str) -> (Option<HarnessResult>, String, String) {
+    let result_marker = format!("__THESEUS_{tag}_RESULT__");
+    let stdout_marker = format!("__THESEUS_{tag}_STDOUT__");
+    let stderr_marker = format!("__THESEUS_{tag}_STDERR__");
+    let Some((_, rest)) = text.split_once(&result_marker) else {
+        return (None, String::new(), String::new());
+    };
+    let (result_raw, rest) = rest.split_once(&stdout_marker).unwrap_or((rest, ""));
+    let (stdout_raw, stderr_raw) = rest.split_once(&stderr_marker).unwrap_or((rest, ""));
+    let result = serde_json::from_str::<HarnessResult>(result_raw.trim()).ok();
+    (result, stdout_raw.to_owned(), stderr_raw.to_owned())
 }
 
 async fn kill_container(container: &str) {
@@ -610,7 +689,7 @@ pub fn truncate_output(value: &str) -> (String, bool) {
 mod tests {
     use serde_json::json;
 
-    use super::{program_for, truncate_output};
+    use super::{case_script, compile_script, parse_case_output, program_for, truncate_output};
     use crate::judge::run_config::validate_run_config;
 
     fn config() -> crate::models::run::RunConfig {
@@ -664,5 +743,43 @@ mod tests {
         let (value, truncated) = truncate_output("hello");
         assert_eq!(value, "hello");
         assert!(!truncated);
+    }
+
+    #[test]
+    fn quotes_run_command_in_case_script() {
+        let script = case_script(&["java", "-cp", "/a:/b", "Main"], 2.0, "tag1");
+        assert!(script.contains("timeout -s KILL 2.000 'java' '-cp' '/a:/b' 'Main'"));
+        assert!(script.contains("__THESEUS_tag1_RESULT__"));
+        assert!(script.contains("cat > /workspace/case.json"));
+    }
+
+    #[test]
+    fn compile_script_injects_source_through_stdin() {
+        let script = compile_script("main.cpp", &["g++", "-O2", "-o", "/workspace/program"]);
+        assert!(script.starts_with("cat > /workspace/main.cpp && "));
+        assert!(script.contains("'g++' '-O2' '-o' '/workspace/program'"));
+    }
+
+    #[test]
+    fn parses_result_stdout_and_stderr() {
+        let tag = "tag1";
+        let text = format!(
+            "__THESEUS_{tag}_RESULT__{{\"ok\":true,\"actual\":42,\"runtime_ms\":1,\"memory_kb\":2048}}\
+             __THESEUS_{tag}_STDOUT__hello\n\
+             __THESEUS_{tag}_STDERR__oops"
+        );
+        let (result, stdout, stderr) = parse_case_output(&text, tag);
+        let result = result.expect("result should parse");
+        assert!(result.ok);
+        assert_eq!(stdout, "hello\n");
+        assert_eq!(stderr, "oops");
+    }
+
+    #[test]
+    fn missing_result_marker_returns_empty_output() {
+        let (result, stdout, stderr) = parse_case_output("no markers here", "tag1");
+        assert!(result.is_none());
+        assert!(stdout.is_empty());
+        assert!(stderr.is_empty());
     }
 }

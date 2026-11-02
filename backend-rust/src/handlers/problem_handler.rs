@@ -22,7 +22,8 @@ use crate::{
         AdminProblemListItem, AdminProblemListQuery, AdminProblemListResponse,
         AdminProblemResponse, MyProblemListItem, MyProblemListQuery, MyProblemListResponse,
         PendingProblemResponse, ProblemListQuery, ProblemListResponse, ProblemMutationResponse,
-        ProblemRequest, ProblemResponse, ProblemReviewRequest, ProblemRow, StatsResponse,
+        ProblemNeighborsResponse, ProblemRequest, ProblemResponse, ProblemReviewRequest,
+        ProblemRow, StatsResponse,
     },
     services::{
         audit_service::{self, AuditContext, AuditRecord},
@@ -174,6 +175,39 @@ pub async fn get(
     .map_err(AppError::Database)?
     .ok_or_else(|| AppError::NotFound("题目不存在".to_owned()))?;
     Ok(ok(row.response()))
+}
+
+/// 答题页的上一题 / 下一题：题库顺序就是已审核题目的 id 升序。
+pub async fn neighbors(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    if id <= 0 {
+        return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
+    }
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM problems WHERE id = $1 AND review_status = 'approved')",
+    )
+    .bind(id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(AppError::Database)?;
+    if !exists {
+        return Err(AppError::NotFound("题目不存在".to_owned()));
+    }
+    let neighbors = sqlx::query_as::<_, ProblemNeighborsResponse>(
+        "SELECT \
+           (SELECT COUNT(*) FROM problems WHERE review_status = 'approved') AS total, \
+           (SELECT p.id FROM problems p WHERE p.review_status = 'approved' AND p.id < $1 \
+            ORDER BY p.id DESC LIMIT 1) AS prev_id, \
+           (SELECT p.id FROM problems p WHERE p.review_status = 'approved' AND p.id > $1 \
+            ORDER BY p.id ASC LIMIT 1) AS next_id",
+    )
+    .bind(id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(ok(neighbors))
 }
 
 pub async fn mine(

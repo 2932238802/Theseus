@@ -613,6 +613,7 @@ async fn heartbeat_loop(context: WorkerContext) {
 /// Returns whether the queue message can be acknowledged. Infrastructure errors
 /// return `false` so the message stays pending and can be recovered later.
 async fn process_run(context: &WorkerContext, redis: &mut ConnectionManager, run_id: i64) -> bool {
+    let judge_started = Instant::now();
     let row = match fetch_run_row(&context.pool, run_id).await {
         Ok(row) => row,
         Err(error) => {
@@ -776,6 +777,7 @@ async fn process_run(context: &WorkerContext, redis: &mut ConnectionManager, run
         case_passed = passed,
         case_total = total,
         runtime_ms,
+        elapsed_ms = judge_started.elapsed().as_millis() as u64,
         "run finished"
     );
     true
@@ -828,6 +830,7 @@ async fn process_submission(
     redis: &mut ConnectionManager,
     submission_id: i32,
 ) -> bool {
+    let judge_started = Instant::now();
     let row = match fetch_submission_row(&context.pool, submission_id).await {
         Ok(row) => row,
         Err(error) => {
@@ -1022,6 +1025,7 @@ async fn process_submission(
                 test_cases_passed = passed,
                 total_test_cases = total,
                 runtime_ms = ?runtime_ms,
+                elapsed_ms = judge_started.elapsed().as_millis() as u64,
                 "submission finished"
             );
             enqueue_similarity_scan(&context.config, redis, submission_id).await;

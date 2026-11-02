@@ -204,6 +204,14 @@ pub struct ProblemMutationResponse {
     pub message: String,
 }
 
+/// 题库按已审核题目 id 升序排列，邻居即上一条/下一条。
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ProblemNeighborsResponse {
+    pub total: i64,
+    pub prev_id: Option<i32>,
+    pub next_id: Option<i32>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ProblemReviewRequest {
     pub status: String,

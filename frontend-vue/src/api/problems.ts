@@ -52,6 +52,25 @@ export const fetchProblem = async (id: number): Promise<Problem> => {
   return mapProblem(data)
 }
 
+export interface ProblemNeighbors {
+  total: number
+  prevId: number | null
+  nextId: number | null
+}
+
+export const fetchProblemNeighbors = async (id: number): Promise<ProblemNeighbors> => {
+  const data = await unwrap(
+    http.get<ApiEnvelope<{ total: number; prev_id: number | null; next_id: number | null }>>(
+      `/problems/${id}/neighbors`,
+    ),
+  )
+  return {
+    total: Number(data.total) || 0,
+    prevId: typeof data.prev_id === 'number' ? data.prev_id : null,
+    nextId: typeof data.next_id === 'number' ? data.next_id : null,
+  }
+}
+
 export const fetchTags = async (): Promise<string[]> => {
   return unwrap(http.get<ApiEnvelope<string[]>>('/problems/tags'))
 }

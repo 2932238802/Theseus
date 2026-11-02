@@ -1,8 +1,15 @@
 use crate::judge::run_config::{CPP_NODE_DEFINITIONS, cpp_type};
 
-const CPP_TEMPLATE: &str = r#"#include <bits/stdc++.h>
+const CPP_TEMPLATE: &str = r#"// 运行镜像里预编译了 bits/stdc++.h + json.hpp，命中时能省下
+// 重复解析头文件的时间（gVisor 下读取大量 header 尤其慢）。
+// 旧镜像没有这个预编译头时自动回退到逐个头文件 include。
+#if __has_include("theseus_precompiled.hpp")
+#include "theseus_precompiled.hpp"
+#else
+#include <bits/stdc++.h>
 #include <sys/resource.h>
 #include "json.hpp"
+#endif
 using namespace std;
 
 __NODE_DEFS__

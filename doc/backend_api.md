@@ -63,6 +63,7 @@ cargo run
 | GET | `/api/problems/random` | 否 | 随机返回一道已通过审核的题目 `{problem_id}` |
 | GET | `/api/problems/tags` | 否 | 已审核题目的去重标签数组 |
 | GET | `/api/problems/{id}` | 可选 | 已审核题目详情，登录时 `favorited` 表示是否已收藏 |
+| GET | `/api/problems/{id}/neighbors` | 否 | 答题页上一题/下一题：`{total,prev_id,next_id}`，顺序为已审核题目 id 升序 |
 | POST | `/api/problems/{id}/favorite` | 用户 | 收藏题目 |
 | DELETE | `/api/problems/{id}/favorite` | 用户 | 取消收藏题目 |
 | GET | `/api/problems/{id}/draft` | 用户 | 读取云端草稿，查询参数 `language`，返回 `{draft:{language,code,updated_at}\|null}` |

@@ -17,6 +17,8 @@ import { fetchAssignment } from '../api/assignments'
 import { fetchContestProblem } from '../api/contests'
 import { fetchProblemDraft, saveProblemDraft } from '../api/drafts'
 import { setProblemFavorite } from '../api/favorites'
+import { fetchRandomProblem } from '../api/home'
+import { fetchProblemNeighbors } from '../api/problems'
 import { fetchSubmission, fetchSubmissions } from '../api/submissions'
 import { fetchAiStatus, type AiStatus } from '../api/ai'
 import { toErrorMessage } from '../api/client'
@@ -89,6 +91,10 @@ const editorThemeName = computed(() =>
 const draftKey = computed(() => `theseus-draft-${problemId.value}-${language.value}`)
 const isAccepted = computed(() => submissionStore.latest?.status === 'Accepted')
 const latestFailedCase = computed(() => submissionStore.latest?.failedCase ?? null)
+const prevProblemId = ref<number | null>(null)
+const nextProblemId = ref<number | null>(null)
+const problemTotal = ref(0)
+const randomProblemLoading = ref(false)
 type OutputTab = 'run' | 'submit' | 'history'
 const activeOutputTab = ref<OutputTab>('submit')
 type ProblemTab = 'description' | 'discussion' | 'note'
@@ -508,6 +514,7 @@ const loadAssignmentContext = async (): Promise<void> => {
   }
 }
 let pageProblemRequest = 0
+let neighborsRequest = 0
 const loadProblemForPage = async (): Promise<void> => {
   const requestId = ++pageProblemRequest
   if (!contestId.value) {
@@ -532,6 +539,10 @@ const loadPage = async (): Promise<void> => {
   submissionStore.stopPolling()
   submissionStore.latest = null
   runStore.reset()
+  neighborsRequest += 1
+  prevProblemId.value = null
+  nextProblemId.value = null
+  problemTotal.value = 0
   historyRequestSequence += 1
   historyItems.value = []
   historyTotal.value = 0
@@ -552,8 +563,55 @@ const loadPage = async (): Promise<void> => {
     loadProblemForPage(),
     contestId.value ? Promise.resolve() : loadAssignmentContext(),
   ])
+  if (!contestId.value && problemStore.currentProblem) {
+    void loadNeighbors(problemStore.currentProblem.id)
+  }
   restoreDraft()
   await hydrateDraftFromServer()
+}
+
+const loadNeighbors = async (id: number): Promise<void> => {
+  const requestId = ++neighborsRequest
+  prevProblemId.value = null
+  nextProblemId.value = null
+  problemTotal.value = 0
+  // 作业/比赛题目不属于题库顺序，不提供跨题跳转
+  if (contestId.value || assignmentId.value) return
+  try {
+    const result = await fetchProblemNeighbors(id)
+    if (requestId !== neighborsRequest) return
+    prevProblemId.value = result.prevId
+    nextProblemId.value = result.nextId
+    problemTotal.value = result.total
+  } catch {
+    // 上一题/下一题只是辅助入口，取不到时不影响答题
+  }
+}
+
+const goToProblem = async (id: number | null): Promise<void> => {
+  if (id === null) return
+  await router.push({ name: 'problem', params: { id } })
+}
+
+const openRandomProblem = async (): Promise<void> => {
+  if (randomProblemLoading.value) return
+  randomProblemLoading.value = true
+  try {
+    let id = await fetchRandomProblem()
+    // 题库只有一道题时随机结果必然是当前题；多题时重抽一次避免原地不动
+    if (id === problemId.value && problemTotal.value > 1) {
+      id = await fetchRandomProblem()
+    }
+    if (id !== problemId.value) {
+      await router.push({ name: 'problem', params: { id } })
+    } else {
+      toast.info('随机到了当前题目')
+    }
+  } catch (exception: unknown) {
+    toast.error(toErrorMessage(exception))
+  } finally {
+    randomProblemLoading.value = false
+  }
 }
 const problemContextText = (): string => {
   const problem = problemStore.currentProblem
@@ -617,6 +675,9 @@ const submitCode = async (): Promise<void> => {
       contestId.value ? undefined : (assignmentId.value ?? undefined),
       contestId.value ?? undefined,
     )
+    if (final?.status === 'Accepted') {
+      toast.success('通过全部测试用例')
+    }
     if (final && historyLoaded.value) void loadHistory(1)
   } catch {
     isOutputOpen.value = true
@@ -1281,6 +1342,11 @@ onBeforeUnmount(() => {
               <span :class="['difficulty', problemStore.currentProblem.difficulty]">{{ DIFFICULTY_LABELS[problemStore.currentProblem.difficulty] }}</span>
             </div>
           </header>
+          <nav v-if="!contestId && !assignmentId" class="problem-nav" aria-label="题目导航">
+            <button type="button" :disabled="prevProblemId === null" @click="goToProblem(prevProblemId)">← 上一题</button>
+            <button type="button" :disabled="randomProblemLoading" @click="openRandomProblem">{{ randomProblemLoading ? '抽取中' : '随机一题' }}</button>
+            <button type="button" :disabled="nextProblemId === null" @click="goToProblem(nextProblemId)">下一题 →</button>
+          </nav>
           <p v-if="favoriteError" class="form-error" role="alert">{{ favoriteError }}</p>
           <div class="problem-tags"><span v-for="tag in problemStore.currentProblem.tags" :key="tag" class="tag">{{ tag }}</span><span class="acceptance-stat">通过率 {{ problemStore.currentProblem.acceptance.toFixed(1) }}%</span></div>
           <div v-if="!contestId" class="problem-view-tabs" role="tablist" aria-label="题目内容">
@@ -1362,6 +1428,7 @@ onBeforeUnmount(() => {
               <button type="button" class="output-toggle" :aria-expanded="isOutputOpen" :aria-label="isOutputOpen ? '收起结果面板' : '展开结果面板'" @click="isOutputOpen = !isOutputOpen"><span>{{ isOutputOpen ? '⌄' : '›' }}</span></button>
             </div>
             <span v-if="(activeOutputTab === 'run' && runStore.isRunning)" class="running-state"><i class="spinner"></i> {{ runButtonLabel }}</span>
+            <span v-else-if="activeOutputTab === 'submit' && submissionStore.isSubmitting" class="running-state"><i class="spinner"></i> 评测中</span>
             <span v-else-if="activeOutputTab === 'history' && historyLoaded" class="history-count">共 {{ historyTotal }} 条提交</span>
             <span v-else-if="outputStatusLabel" :class="['result-status', outputSucceeded ? 'accepted' : 'failed']">{{ outputStatusLabel }}<template v-if="activeOutputTab === 'run' && runStore.status && runStore.status.caseTotal > 0"> · {{ runStore.status.casePassed }}/{{ runStore.status.caseTotal }}</template></span>
           </header>
@@ -1398,7 +1465,7 @@ onBeforeUnmount(() => {
               <p v-else-if="!runStore.isRunning" class="output-placeholder">运行代码后将在这里显示结果</p>
             </template>
             <template v-else-if="activeOutputTab === 'submit'">
-              <template v-if="submissionStore.latest"><p>{{ submissionStore.latest.message }}</p><dl><div v-if="submissionStore.latest.totalTestCases"><dt>通过用例</dt><dd>{{ submissionStore.latest.testCasesPassed }} / {{ submissionStore.latest.totalTestCases }}</dd></div><div v-if="submissionStore.latest.runtime"><dt>执行用时</dt><dd>{{ submissionStore.latest.runtime }}</dd></div><div v-if="submissionStore.latest.memory"><dt>内存消耗</dt><dd>{{ submissionStore.latest.memory }}</dd></div></dl>
+              <template v-if="submissionStore.latest"><div v-if="isAccepted" class="submit-success" role="status"><span class="submit-success-icon" aria-hidden="true">✓</span><strong>{{ submissionStore.latest.message }}</strong></div><p v-else>{{ submissionStore.latest.message }}</p><dl><div v-if="submissionStore.latest.totalTestCases"><dt>通过用例</dt><dd>{{ submissionStore.latest.testCasesPassed }} / {{ submissionStore.latest.totalTestCases }}</dd></div><div v-if="submissionStore.latest.runtime"><dt>执行用时</dt><dd>{{ submissionStore.latest.runtime }}</dd></div><div v-if="submissionStore.latest.memory"><dt>内存消耗</dt><dd>{{ submissionStore.latest.memory }}</dd></div></dl>
                 <div v-if="submissionStore.latest.compileOutput" class="run-block"><span>编译输出</span><pre>{{ submissionStore.latest.compileOutput }}</pre></div>
                 <template v-if="latestFailedCase">
                   <div class="run-block"><span>失败用例 #{{ latestFailedCase.index + 1 }} · 输入</span><pre>{{ formatInline(latestFailedCase.args) }}</pre></div>
