@@ -55,6 +55,8 @@ const RECONNECT_GRACE_SECONDS: i64 = 120;
 const MATCH_FALLBACK_THREE_SECONDS: i64 = 180;
 const MATCH_FALLBACK_TWO_SECONDS: i64 = 300;
 const FALLBACK_RATING_WINDOW: i32 = 150;
+/// 单次后台组局最多创建的房间数，限制一次事务的持锁时长。
+const MAX_MATCH_ROOMS_PER_TICK: usize = 20;
 const REPUTATION_PENALTY: f64 = 25.0;
 const REPUTATION_RESTRICT_BELOW: f64 = 40.0;
 const FEATURED_EVENT_LIMIT: usize = 3;
@@ -170,6 +172,8 @@ pub async fn match_user(
         });
     }
 
+    // 只负责入队。成局由后台 matcher 批量完成，请求路径不等待 advisory lock，
+    // 也不携带抽题/建局的开销。
     sqlx::query(
         "INSERT INTO contest_queue (user_id, camera_permission, screen_permission) VALUES ($1, $2, $3) \
          ON CONFLICT (user_id) DO UPDATE SET camera_permission = EXCLUDED.camera_permission, \
@@ -182,35 +186,25 @@ pub async fn match_user(
     .await
     .map_err(AppError::Database)?;
 
-    if let Some(contest_id) = try_match(pool).await? {
+    // 入队与上面的 active 检查之间没有锁：后台 matcher 可能刚好把我们
+    // 匹配成局并删掉队列行。这里再确认一次，避免返回「排队中」而实际已在比赛里。
+    if let Some(contest_id) = active_contest_id(pool, user_id).await? {
         let summary = fetch_summary(pool, contest_id, user_id).await?;
         return Ok(MatchResponse {
             state: "matched".to_owned(),
             queue_position: None,
             contest: Some(summary),
-            message: "匹配成功，比赛开始".to_owned(),
+            message: "你已在一场比赛中".to_owned(),
         });
     }
 
-    let position = queue_position(pool, user_id).await?.unwrap_or(1);
+    let position = queue_position(pool, user_id).await?;
     Ok(MatchResponse {
         state: "queued".to_owned(),
-        queue_position: Some(position),
+        queue_position: position,
         contest: None,
         message: "已加入匹配队列，正在等待段位分相近的对手".to_owned(),
     })
-}
-
-/// 比赛内的选手 ID，用于匹配成功后向所有参赛者推送实时事件。
-pub async fn participant_user_ids(pool: &PgPool, contest_id: i32) -> Result<Vec<i32>, AppError> {
-    let rows: Vec<(i32,)> = sqlx::query_as(
-        "SELECT user_id FROM contest_participants WHERE contest_id = $1 ORDER BY user_id",
-    )
-    .bind(contest_id)
-    .fetch_all(pool)
-    .await
-    .map_err(AppError::Database)?;
-    Ok(rows.into_iter().map(|(user_id,)| user_id).collect())
 }
 
 pub async fn cancel_match(pool: &PgPool, user_id: i32) -> Result<CancelMatchResponse, AppError> {
@@ -2058,7 +2052,18 @@ async fn fetch_summary(
     })
 }
 
-async fn try_match(pool: &PgPool) -> Result<Option<i32>, AppError> {
+/// 一次后台成局的结果，供 matcher 循环提交后推送 `match.found`。
+pub struct MatchedRoom {
+    pub contest_id: i32,
+    pub participant_ids: Vec<i32>,
+    pub starts_at: DateTime<Utc>,
+    pub ends_at: DateTime<Utc>,
+    pub participant_count: i32,
+}
+
+/// 后台 matcher 的一次批量组局：整个批次共用一个 advisory lock 和一个事务，
+/// 把队列里的候选尽量拆成互不重叠的房间。
+pub async fn match_batch(pool: &PgPool) -> Result<Vec<MatchedRoom>, AppError> {
     let mut transaction = pool.begin().await.map_err(AppError::Database)?;
     sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
         .bind(CONTEST_LOCK_NAMESPACE)
@@ -2066,23 +2071,57 @@ async fn try_match(pool: &PgPool) -> Result<Option<i32>, AppError> {
         .await
         .map_err(AppError::Database)?;
 
+    // 清理竞态留下的脏队列行：用户已在 running/settling 的比赛里，
+    // 却仍有一条队列记录。不清理的话，比赛结束后这条记录会把人
+    // 自动匹配进下一场。
+    sqlx::query(
+        "DELETE FROM contest_queue q \
+         USING contest_participants p \
+         JOIN contests c ON c.id = p.contest_id \
+         WHERE p.user_id = q.user_id \
+           AND c.status IN ('running', 'settling') \
+           AND p.status IN ('active', 'disconnected', 'timed_out', 'finished')",
+    )
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+
     let queued: Vec<QueueRow> = sqlx::query_as(
         "SELECT q.user_id, q.camera_permission, q.screen_permission, \
                 u.contest_rating AS rating, q.joined_at \
          FROM contest_queue q \
          JOIN users u ON u.id = q.user_id AND u.status = 'active' \
          WHERE u.reputation_score >= 40 \
+           AND NOT EXISTS ( \
+               SELECT 1 FROM contest_participants p \
+               JOIN contests c ON c.id = p.contest_id \
+               WHERE p.user_id = q.user_id \
+                 AND c.status IN ('running', 'settling') \
+                 AND p.status IN ('active', 'disconnected', 'timed_out', 'finished') \
+           ) \
          ORDER BY q.joined_at, q.user_id LIMIT 400 FOR UPDATE OF q",
     )
     .fetch_all(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
-    let Some(group) = select_fair_group(&queued, Utc::now()) else {
+    // 在内存里反复选人，一个批次可以成多局；每选走一组就从候选里移除，
+    // 避免同一用户出现在两个房间。
+    let now = Utc::now();
+    let mut remaining = queued;
+    let mut groups: Vec<Vec<QueueRow>> = Vec::new();
+    while let Some(group) = select_fair_group(&remaining, now) {
+        let matched_ids: Vec<i32> = group.iter().map(|row| row.user_id).collect();
+        remaining.retain(|row| !matched_ids.contains(&row.user_id));
+        groups.push(group);
+    }
+    if groups.is_empty() {
         transaction.commit().await.map_err(AppError::Database)?;
-        return Ok(None);
-    };
-    let user_ids: Vec<i32> = group.iter().map(|row| row.user_id).collect();
+        return Ok(Vec::new());
+    }
+    groups.truncate(MAX_MATCH_ROOMS_PER_TICK);
 
+    // 整个批次只抽一次题，避免每个房间各做一次 ORDER BY random() 全表扫描
+    let requested_problems = groups.len() as i64 * PROBLEMS_PER_CONTEST;
     let problems = sqlx::query_as::<_, ProblemSnapshotRow>(
         "SELECT id, title, description, difficulty, time_limit, memory_limit, tags, examples, \
          code_template, run_config, judge_cases FROM problems \
@@ -2091,119 +2130,139 @@ async fn try_match(pool: &PgPool) -> Result<Option<i32>, AppError> {
            AND jsonb_array_length(judge_cases) > 0 \
          ORDER BY random() LIMIT $1",
     )
-    .bind(PROBLEMS_PER_CONTEST)
+    .bind(requested_problems)
     .fetch_all(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
-    if problems.len() < PROBLEMS_PER_CONTEST as usize {
+    let rooms_available = problems.len() / PROBLEMS_PER_CONTEST as usize;
+    if rooms_available == 0 {
         transaction.commit().await.map_err(AppError::Database)?;
-        return Ok(None);
+        return Ok(Vec::new());
     }
+    groups.truncate(rooms_available);
 
     let season_id = season_service::current_season_id_tx(&mut transaction).await?;
-    let contest_id: i32 = sqlx::query_scalar(
-        "INSERT INTO contests \
+    let mut matched_rooms = Vec::with_capacity(groups.len());
+    for (room_index, group) in groups.iter().enumerate() {
+        let start = room_index * PROBLEMS_PER_CONTEST as usize;
+        let room_problems = &problems[start..start + PROBLEMS_PER_CONTEST as usize];
+        let (contest_id, starts_at, ends_at): (i32, DateTime<Utc>, DateTime<Utc>) = sqlx::query_as(
+            "INSERT INTO contests \
          (status, duration_seconds, problem_count, solve_weight, speed_weight, coding_weight, \
           starts_at, ends_at, season_id) \
          VALUES ('running', $1, $2, $3, $4, $5, CURRENT_TIMESTAMP, \
                  CURRENT_TIMESTAMP + make_interval(secs => $6::double precision), $7) \
-         RETURNING id",
-    )
-    .bind(DURATION_SECONDS)
-    .bind(PROBLEMS_PER_CONTEST as i32)
-    .bind(SOLVE_WEIGHT)
-    .bind(SPEED_WEIGHT)
-    .bind(CODING_WEIGHT)
-    .bind(f64::from(DURATION_SECONDS))
-    .bind(season_id)
-    .fetch_one(&mut *transaction)
-    .await
-    .map_err(AppError::Database)?;
+         RETURNING id, starts_at, ends_at",
+        )
+        .bind(DURATION_SECONDS)
+        .bind(PROBLEMS_PER_CONTEST as i32)
+        .bind(SOLVE_WEIGHT)
+        .bind(SPEED_WEIGHT)
+        .bind(CODING_WEIGHT)
+        .bind(f64::from(DURATION_SECONDS))
+        .bind(season_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(AppError::Database)?;
 
-    for (index, problem) in problems.iter().enumerate() {
-        let run_config = problem
-            .run_config
-            .clone()
-            .ok_or_else(|| AppError::Internal("比赛题目缺少 run_config".to_owned()))?;
-        sqlx::query(
-            "INSERT INTO contest_problems \
+        for (index, problem) in room_problems.iter().enumerate() {
+            let run_config = problem
+                .run_config
+                .clone()
+                .ok_or_else(|| AppError::Internal("比赛题目缺少 run_config".to_owned()))?;
+            sqlx::query(
+                "INSERT INTO contest_problems \
              (contest_id, problem_id, position, points, title, difficulty, description, \
               time_limit, memory_limit, tags, examples, code_template, run_config, judge_cases) \
              VALUES ($1, $2, $3, 100, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
-        )
-        .bind(contest_id)
-        .bind(problem.id)
-        .bind((index + 1) as i32)
-        .bind(&problem.title)
-        .bind(&problem.difficulty)
-        .bind(&problem.description)
-        .bind(problem.time_limit)
-        .bind(problem.memory_limit)
-        .bind(&problem.tags)
-        .bind(
-            problem
-                .examples
-                .clone()
-                .unwrap_or_else(|| Value::Array(Vec::new())),
-        )
-        .bind(
-            problem
-                .code_template
-                .clone()
-                .unwrap_or_else(|| Value::Object(Default::default())),
-        )
-        .bind(run_config)
-        .bind(problem.judge_cases.clone())
-        .execute(&mut *transaction)
-        .await
-        .map_err(AppError::Database)?;
-    }
+            )
+            .bind(contest_id)
+            .bind(problem.id)
+            .bind((index + 1) as i32)
+            .bind(&problem.title)
+            .bind(&problem.difficulty)
+            .bind(&problem.description)
+            .bind(problem.time_limit)
+            .bind(problem.memory_limit)
+            .bind(&problem.tags)
+            .bind(
+                problem
+                    .examples
+                    .clone()
+                    .unwrap_or_else(|| Value::Array(Vec::new())),
+            )
+            .bind(
+                problem
+                    .code_template
+                    .clone()
+                    .unwrap_or_else(|| Value::Object(Default::default())),
+            )
+            .bind(run_config)
+            .bind(problem.judge_cases.clone())
+            .execute(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?;
+        }
 
-    for row in &group {
-        sqlx::query(
-            "INSERT INTO contest_participants \
+        for row in group {
+            sqlx::query(
+                "INSERT INTO contest_participants \
              (contest_id, user_id, status, camera_permission, screen_permission, rating_before) \
              VALUES ($1, $2, 'active', $3, $4, $5)",
-        )
-        .bind(contest_id)
-        .bind(row.user_id)
-        .bind(row.camera_permission.as_deref())
-        .bind(row.screen_permission.as_deref())
-        .bind(row.rating)
-        .execute(&mut *transaction)
-        .await
-        .map_err(AppError::Database)?;
+            )
+            .bind(contest_id)
+            .bind(row.user_id)
+            .bind(row.camera_permission.as_deref())
+            .bind(row.screen_permission.as_deref())
+            .bind(row.rating)
+            .execute(&mut *transaction)
+            .await
+            .map_err(AppError::Database)?;
 
-        if let Some(permission) = row.camera_permission.as_deref() {
-            sqlx::query(
-                "INSERT INTO contest_events \
+            if let Some(permission) = row.camera_permission.as_deref() {
+                sqlx::query(
+                    "INSERT INTO contest_events \
                  (contest_id, user_id, event_id, event_type, payload) \
                  VALUES ($1, $2, 'camera-permission', 'camera_permission', $3) \
                  ON CONFLICT DO NOTHING",
-            )
-            .bind(contest_id)
-            .bind(row.user_id)
-            .bind(json!({ "permission": permission }))
-            .execute(&mut *transaction)
-            .await
-            .map_err(AppError::Database)?;
-        }
+                )
+                .bind(contest_id)
+                .bind(row.user_id)
+                .bind(json!({ "permission": permission }))
+                .execute(&mut *transaction)
+                .await
+                .map_err(AppError::Database)?;
+            }
 
-        if let Some(permission) = row.screen_permission.as_deref() {
-            sqlx::query(
-                "INSERT INTO contest_events \
+            if let Some(permission) = row.screen_permission.as_deref() {
+                sqlx::query(
+                    "INSERT INTO contest_events \
                  (contest_id, user_id, event_id, event_type, payload) \
                  VALUES ($1, $2, 'screen-permission', 'screen_permission', $3) \
                  ON CONFLICT DO NOTHING",
-            )
-            .bind(contest_id)
-            .bind(row.user_id)
-            .bind(json!({ "permission": permission }))
-            .execute(&mut *transaction)
-            .await
-            .map_err(AppError::Database)?;
+                )
+                .bind(contest_id)
+                .bind(row.user_id)
+                .bind(json!({ "permission": permission }))
+                .execute(&mut *transaction)
+                .await
+                .map_err(AppError::Database)?;
+            }
         }
+
+        matched_rooms.push(MatchedRoom {
+            contest_id,
+            participant_ids: group.iter().map(|row| row.user_id).collect(),
+            starts_at,
+            ends_at,
+            participant_count: group.len() as i32,
+        });
     }
+
+    let user_ids: Vec<i32> = matched_rooms
+        .iter()
+        .flat_map(|room| room.participant_ids.iter().copied())
+        .collect();
 
     sqlx::query("DELETE FROM contest_queue WHERE user_id = ANY($1)")
         .bind(&user_ids)
@@ -2213,11 +2272,11 @@ async fn try_match(pool: &PgPool) -> Result<Option<i32>, AppError> {
 
     transaction.commit().await.map_err(AppError::Database)?;
     tracing::info!(
-        contest_id,
+        rooms = matched_rooms.len(),
         participants = user_ids.len(),
-        "contest matched and started"
+        "ranked contests matched and started"
     );
-    Ok(Some(contest_id))
+    Ok(matched_rooms)
 }
 
 /// Picks a queued group whose highest and lowest ratings differ by at most the

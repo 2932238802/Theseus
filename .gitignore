@@ -92,3 +92,6 @@ backend-rust/uploads/
 # Deployment
 deploy/.env
 deploy/backups/
+
+note.md
+./note.md

@@ -55,6 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     tokio::spawn(email_dispatch_loop(state.clone()));
+    tokio::spawn(contest_matchmaking_loop(state.clone()));
     tokio::spawn(contest_settlement_loop(state.clone()));
     tokio::spawn(plus_reminder_loop(state.clone()));
     tokio::spawn(realtime_fanout_loop(state.clone()));
@@ -223,6 +224,34 @@ async fn relay_submission_results(state: &AppState) -> Result<(), redis::RedisEr
         }
     }
     Ok(())
+}
+
+/// 排位匹配的后台单消费者：请求只入队，这里每秒批量组局。
+/// 成局提交后在这里统一推送 `match.found`，因此发起入队的请求不需要等待匹配。
+async fn contest_matchmaking_loop(state: AppState) {
+    let mut ticker = tokio::time::interval(Duration::from_secs(1));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        ticker.tick().await;
+        match contest_service::match_batch(&state.pool).await {
+            Ok(rooms) if rooms.is_empty() => {}
+            Ok(rooms) => {
+                for room in &rooms {
+                    let payload = serde_json::json!({
+                        "contest_id": room.contest_id,
+                        "starts_at": room.starts_at,
+                        "ends_at": room.ends_at,
+                        "participant_count": room.participant_count,
+                    });
+                    state
+                        .realtime
+                        .publish_to(&room.participant_ids, "match.found", &payload);
+                }
+                tracing::info!(rooms = rooms.len(), "ranked contests matched");
+            }
+            Err(error) => tracing::error!(error = %error, "failed to match ranked contests"),
+        }
+    }
 }
 
 /// Settles ranked contests once their deadline (plus a short judging grace
