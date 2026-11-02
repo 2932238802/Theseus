@@ -237,12 +237,13 @@ redis-cli --scan --pattern 'theseus:submit:worker:*'
 
 ## 开发种子数据
 
-仅用于本地/测试环境。`seed_dev.sql` 写入固定 ID 1001-1003 的三道题；`seed_problems_15.sql` 写入固定 ID 1101-1115 的 15 道题（6 道简单、6 道中等、3 道困难），每题都带 `run_config`、公开用例、隐藏 `judge_cases` 和四种语言的代码模板，可直接用于运行与提交评测。`seed_admin.sql` 创建管理员账号 `admin`（密码 `admin`，邮箱 `admin@theseus.local`，邮箱已验证）；脚本幂等，已存在的账号不会被覆盖：
+仅用于本地/测试环境。三个种子脚本合计写入 100 道题：`seed_dev.sql` 写入固定 ID 1001-1003 的三道题；`seed_problems_15.sql` 写入固定 ID 1101-1115 的 15 道题（6 道简单、6 道中等、3 道困难）；`seed_problems_82.sql` 写入固定 ID 1116-1197 的 82 道题（30 道简单、34 道中等、18 道困难）。每题都带 `run_config`、公开用例、隐藏 `judge_cases` 和四种语言的代码模板，可直接用于运行与提交评测。`seed_admin.sql` 创建管理员账号 `admin`（密码 `admin`，邮箱 `admin@theseus.local`，邮箱已验证）；脚本幂等，已存在的账号不会被覆盖：
 
 ```bash
 psql "$DATABASE_URL" -f scripts/seed_admin.sql
 psql "$DATABASE_URL" -f scripts/seed_dev.sql
 psql "$DATABASE_URL" -f scripts/seed_problems_15.sql
+psql "$DATABASE_URL" -f scripts/seed_problems_82.sql
 psql "$DATABASE_URL" -f scripts/clean_dev.sql  # 清理全部固定 ID 种子题
 ```
 
@@ -255,6 +256,14 @@ python3 scripts/generate_judge_cases.py --check    # 用参考解逐条复核现
 ```
 
 重跑 `seed_problems_15.sql` 会通过 `ON CONFLICT` 把新的 `judge_cases` 更新到已有题目上。
+
+`seed_problems_82.sql` 由 `scripts/generate_problem_seed.py` 生成：题目元数据、公开用例和参考解分别放在 `scripts/problem_catalog_easy.py`（1116-1145）、`problem_catalog_medium.py`（1146-1179）、`problem_catalog_hard.py`（1180-1197），隐藏用例由参考解逐条算出，四种语言模板与 `run_config.rs` 的输出保持一致。修改题目后重新生成并校验：
+
+```bash
+python3 scripts/generate_problem_seed.py --dry-run  # 校验定义与参考解，打印统计
+python3 scripts/generate_problem_seed.py            # 重写 seed_problems_82.sql
+python3 scripts/generate_problem_seed.py --check    # 校验现有文件是否需要更新
+```
 
 管理员账号仅用于本地开发/测试，部署到公网前必须修改密码或删除该账号。日常角色调整请使用 `/admin/users`，由接口执行“学生退出组织、教师归档自有组织、最后一个管理员保护”等校验。
 

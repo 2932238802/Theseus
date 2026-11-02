@@ -116,8 +116,29 @@ INSERT INTO problems (
         "cpp": "#include <vector>\nusing namespace std;\n\nclass Solution {\npublic:\n    double findMedianSortedArrays(vector<int>& nums1, vector<int>& nums2) {\n        \n    }\n};\n",
         "java": "class Solution {\n    public double findMedianSortedArrays(int[] nums1, int[] nums2) {\n        \n    }\n}\n"
     }$json$::jsonb,
-    NULL,
-    NULL,
+    $json${
+        "version": 1,
+        "function_name": "findMedianSortedArrays",
+        "params": [
+            {"name": "nums1", "type": "int[]"},
+            {"name": "nums2", "type": "int[]"}
+        ],
+        "return_type": "double",
+        "compare": {"mode": "double"},
+        "public_cases": [
+            {"args": [[1, 3], [2]], "expected": 2.0},
+            {"args": [[1, 2], [3, 4]], "expected": 2.5}
+        ]
+    }$json$::jsonb,
+    $json$[
+        {"args": [[], [1]], "expected": 1.0},
+        {"args": [[1, 3, 5], [2, 4, 6]], "expected": 3.5},
+        {"args": [[0, 0], [0, 0]], "expected": 0.0},
+        {"args": [[2], []], "expected": 2.0},
+        {"args": [[1, 2], [3]], "expected": 2.0},
+        {"args": [[1, 1], [1, 2]], "expected": 1.0},
+        {"args": [[], [2, 3]], "expected": 2.5}
+    ]$json$::jsonb,
     'approved'
 )
 ON CONFLICT (id) DO UPDATE SET
