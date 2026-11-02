@@ -44,3 +44,9 @@ export interface CheckinResult {
   checkin_streak: number
   message: string
 }
+
+export interface CheckinStatus {
+  checked_in_today: boolean
+  reputation_score: number
+  checkin_streak: number
+}

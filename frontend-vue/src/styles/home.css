@@ -19,6 +19,22 @@
   gap: var(--space-sm);
 }
 
+.home-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.home-streak svg {
+  width: 16px;
+  height: 16px;
+  fill: #f97316;
+  stroke: none;
+}
+
 .home-search {
   display: flex;
   align-items: stretch;

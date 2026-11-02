@@ -87,11 +87,7 @@ onMounted(() => {
         <p>全站深浅色与代码编辑器配色</p>
       </header>
       <div class="settings-row settings-row-theme">
-        <div class="settings-label">
-          <strong>全站主题</strong>
-          <small>参考 VS Code 配色 跟随系统时会随设备切换</small>
-        </div>
-        <div class="theme-picker">
+        <div class="theme-picker" role="group" aria-label="全站主题">
           <button
             type="button"
             class="theme-card"

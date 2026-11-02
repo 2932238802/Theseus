@@ -388,7 +388,10 @@ pub fn router(state: AppState) -> Router {
             get(run_handler::detail).delete(run_handler::remove),
         )
         .route("/api/home/overview", get(home_handler::overview))
-        .route("/api/home/check-in", post(home_handler::check_in))
+        .route(
+            "/api/home/check-in",
+            get(home_handler::checkin_status).post(home_handler::check_in),
+        )
         .route("/api/shop/plus", get(plus_handler::my_state))
         .route("/api/shop/plus/apply", post(plus_handler::submit))
         .route(

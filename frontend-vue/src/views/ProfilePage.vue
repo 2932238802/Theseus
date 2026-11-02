@@ -167,6 +167,9 @@ onMounted(() => {
           <span v-if="authStore.user?.emailVerified" class="teaching-badge">邮箱已验证</span>
           <span v-else class="teaching-badge">邮箱未验证</span>
           <span v-if="analytics && checkinStreak > 0" class="profile-checkin-streak">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+            </svg>
             连续签到 {{ checkinStreak }} 天
           </span>
           <span v-if="authStore.user?.pendingEmail" class="teaching-badge">待验证 {{ authStore.user.pendingEmail }}</span>

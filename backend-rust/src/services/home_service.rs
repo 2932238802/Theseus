@@ -4,7 +4,8 @@ use sqlx::{FromRow, PgPool};
 use crate::{
     common::error::AppError,
     models::home::{
-        CheckinResponse, HomeActivity, HomeCheckin, HomeContinue, HomeOverviewResponse, HomeStats,
+        CheckinResponse, CheckinStatus, HomeActivity, HomeCheckin, HomeContinue,
+        HomeOverviewResponse, HomeStats,
     },
     services::{badge_service, profile_service, wrong_problem_service},
 };
@@ -240,6 +241,24 @@ async fn fetch_reputation(pool: &PgPool, user_id: i32) -> Result<(f64, bool), Ap
     .fetch_one(pool)
     .await
     .map_err(AppError::Database)
+}
+
+/// 导航栏火苗只读取签到状态，避免拉取完整首页数据。
+pub async fn checkin_status(pool: &PgPool, user_id: i32) -> Result<CheckinStatus, AppError> {
+    let (reputation_score, checked_in_today) = fetch_reputation(pool, user_id).await?;
+    let checkin_days: Vec<NaiveDate> = sqlx::query_scalar(
+        "SELECT checkin_date FROM reputation_checkins WHERE user_id = $1 \
+         ORDER BY checkin_date DESC",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(CheckinStatus {
+        checked_in_today,
+        reputation_score,
+        checkin_streak: profile_service::compute_streak(&checkin_days),
+    })
 }
 
 /// Daily check-in restores 0.1 reputation, capped at 100.

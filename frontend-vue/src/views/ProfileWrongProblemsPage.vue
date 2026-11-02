@@ -135,7 +135,7 @@ onMounted(() => {
 
 <template>
   <NavBar />
-  <main class="profile-page page-shell">
+  <main class="profile-page page-shell wrong-problems-page">
     <header class="teaching-page-header">
       <div>
         <h1>错题本</h1>

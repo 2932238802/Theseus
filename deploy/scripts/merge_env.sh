@@ -80,3 +80,11 @@ if [[ ${#skip_keys[@]} -gt 0 ]]; then
     echo "==> 以下键缺失且示例值含占位符，请手工填写"
     printf '  %s\n' "${skip_keys[@]}"
 fi
+
+# 密钥不设默认值，示例中保持注释，因此不会被追加
+if ! has_key AI_API_KEY; then
+    echo
+    echo "==> AI_API_KEY 需手工添加（启用 AI 助手时）"
+    echo "  AI_ENABLED=true"
+    echo "  AI_API_KEY=<密钥>"
+fi

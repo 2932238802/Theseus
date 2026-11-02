@@ -3,8 +3,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import { toErrorMessage } from '../api/client'
-import { checkIn, fetchHomeOverview, fetchRandomProblem } from '../api/home'
+import { fetchHomeOverview, fetchRandomProblem } from '../api/home'
 import { useAuthStore } from '../store/auth'
+import { useCheckinStore } from '../store/checkin'
 import { toast } from '../store/toast'
 import { DIFFICULTY_LABELS, LANGUAGE_OPTIONS } from '../utils/constants'
 import { latestDraftMeta, type DraftMeta } from '../utils/problemDrafts'
@@ -24,6 +25,7 @@ interface ContinueView {
 
 const router = useRouter()
 const authStore = useAuthStore()
+const checkinStore = useCheckinStore()
 const searchKeyword = ref('')
 const overview = ref<HomeOverview | null>(null)
 const loading = ref(false)
@@ -31,8 +33,6 @@ const error = ref('')
 const actionError = ref('')
 const randomLoading = ref(false)
 const draft = ref<DraftMeta | null>(null)
-const checkinState = ref<HomeOverview['checkin'] | null>(null)
-const checkinLoading = ref(false)
 
 const continueEntry = computed<ContinueView | null>(() => {
   if (draft.value) {
@@ -135,7 +135,6 @@ const loadOverview = async (): Promise<void> => {
   error.value = ''
   try {
     overview.value = await fetchHomeOverview()
-    checkinState.value = overview.value.checkin
   } catch (exception: unknown) {
     error.value = toErrorMessage(exception)
   } finally {
@@ -162,20 +161,13 @@ const openRandomProblem = async (): Promise<void> => {
 }
 
 const doCheckin = async (): Promise<void> => {
-  if (checkinLoading.value || checkinState.value?.checked_in_today) return
-  checkinLoading.value = true
+  if (checkinStore.isChecking || checkinStore.checkedInToday) return
   actionError.value = ''
   try {
-    const result = await checkIn()
-    checkinState.value = {
-      checked_in_today: true,
-      reputation_score: result.reputation_score,
-    }
+    const result = await checkinStore.checkIn()
     toast.success(result.message)
   } catch (exception: unknown) {
     actionError.value = toErrorMessage(exception)
-  } finally {
-    checkinLoading.value = false
   }
 }
 
@@ -199,14 +191,20 @@ onMounted(() => {
   <main class="home-page page-shell">
     <header class="home-heading">
       <h1>{{ greeting }}</h1>
-      <div v-if="authStore.isAuthenticated && checkinState" class="home-checkin">
+      <div v-if="authStore.isAuthenticated && checkinStore.status" class="home-checkin">
+        <span v-if="checkinStore.streak > 0" class="home-streak">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+          </svg>
+          连续签到 {{ checkinStore.streak }} 天
+        </span>
         <button
           class="forum-secondary-button"
           type="button"
-          :disabled="checkinState.checked_in_today || checkinLoading"
+          :disabled="checkinStore.checkedInToday || checkinStore.isChecking"
           @click="doCheckin"
         >
-          {{ checkinState.checked_in_today ? '今日已签到' : '签到' }}
+          {{ checkinStore.checkedInToday ? '今日已签到' : '签到' }}
         </button>
       </div>
     </header>

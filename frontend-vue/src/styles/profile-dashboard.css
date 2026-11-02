@@ -176,13 +176,21 @@
 .profile-checkin-streak {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   padding: 3px 10px;
-  border: 1px solid var(--color-success);
+  border: 1px solid var(--color-warning);
   border-radius: 999px;
-  background: var(--color-success-soft);
-  color: var(--color-success);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
   font-size: 12px;
   font-weight: 600;
+}
+
+.profile-checkin-streak svg {
+  width: 14px;
+  height: 14px;
+  fill: #f97316;
+  stroke: none;
 }
 
 .profile-badge-section {
@@ -559,6 +567,10 @@
 .profile-favorites {
   display: grid;
   gap: var(--space-sm);
+  margin-top: var(--space-lg);
+}
+
+.wrong-problems-page > .empty-state {
   margin-top: var(--space-lg);
 }
 

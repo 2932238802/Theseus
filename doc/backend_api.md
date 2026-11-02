@@ -57,6 +57,7 @@ cargo run
 | GET | `/api/auth/oauth/bindings` | 用户 | 当前账号的第三方绑定列表 |
 | DELETE | `/api/auth/oauth/{provider}` | 用户 | 解除绑定，需提交 `{password}` |
 | GET | `/api/home/overview` | 用户 | 首页学习工作台：继续学习、统计、最近活动、今日签到与信誉分 |
+| GET | `/api/home/check-in` | 用户 | 签到状态 `{checked_in_today,reputation_score,checkin_streak}`，用于导航栏连续打卡火苗 |
 | POST | `/api/home/check-in` | 用户 | 每日签到，信誉分 +0.1（上限 100） |
 | GET | `/api/problems` | 可选 | 分页题库，见下方查询参数 |
 | GET | `/api/problems/random` | 否 | 随机返回一道已通过审核的题目 `{problem_id}` |
@@ -910,7 +911,7 @@ WebSocket 文本帧直接承载 LSP JSON-RPC 消息。连接建立后网关先�
 
 `continue_learning` 优先取最近一次未通过的提交，没有时取最近一次提交；再与最近一份云端草稿（仅限已审核题目）比较 `last_activity_at`，取更新的一方。来自草稿时 `status` 为 `draft`、`action` 为 `resume`。
 
-`POST /api/home/check-in` 每个 UTC 自然日只能成功一次，返回 `{checked_in,reputation_score,checkin_streak,message}`；首次签到信誉分 +0.1，上限 100，已经签到或已满时 `checked_in=false` 或分数不变。签到成功提示会显示连续签到天数，个人界面展示「连续签到 N 天」。信誉分只能通过每日签到和管理员定量恢复，退款、上诉等人工复核结果由管理员通过 `PUT /api/admin/users/{id}/reputation` 处理。
+`POST /api/home/check-in` 每个 UTC 自然日只能成功一次，返回 `{checked_in,reputation_score,checkin_streak,message}`；首次签到信誉分 +0.1，上限 100，已经签到或已满时 `checked_in=false` 或分数不变。签到成功提示会显示连续签到天数，个人界面展示「连续签到 N 天」。`GET /api/home/check-in` 返回同一签到的当前状态 `{checked_in_today,reputation_score,checkin_streak}`，导航栏在连续签到天数大于 0 时显示火苗与天数。信誉分只能通过每日签到和管理员定量恢复，退款、上诉等人工复核结果由管理员通过 `PUT /api/admin/users/{id}/reputation` 处理。
 
 ### 徽章
 

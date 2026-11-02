@@ -5,11 +5,13 @@ import NotificationBell from './NotificationBell.vue'
 import NavSearch from './NavSearch.vue'
 import { fetchMyPlusState } from '../api/shop'
 import { useAuthStore } from '../store/auth'
+import { useCheckinStore } from '../store/checkin'
 import { useClassStore } from '../store/classes'
 import { usePreferenceStore } from '../store/preferences'
 import { currentTheme } from '../utils/theme'
 
 const authStore = useAuthStore()
+const checkinStore = useCheckinStore()
 const classStore = useClassStore()
 const preferenceStore = usePreferenceStore()
 const router = useRouter()
@@ -17,6 +19,12 @@ const route = useRoute()
 const isMenuOpen = ref(false)
 const isDark = computed(() => currentTheme.value === 'dark')
 const isPlus = ref(false)
+
+const streakTitle = computed(() =>
+  checkinStore.checkedInToday
+    ? `连续签到 ${checkinStore.streak} 天`
+    : `连续签到 ${checkinStore.streak} 天 今天还未签到`,
+)
 
 const canBrowseAssignments = computed(() => authStore.isStudent || authStore.isTeacher)
 const classListReady = computed(
@@ -141,6 +149,7 @@ const loadPlusState = async (): Promise<void> => {
 watch(
   () => authStore.user?.id,
   (id) => {
+    void checkinStore.load(true)
     if (id && canBrowseAssignments.value) {
       void classStore.ensureLoadedFor(id)
       void loadPlusState()
@@ -379,6 +388,18 @@ onBeforeUnmount(() => {
 
     <div class="header-actions">
       <NavSearch />
+      <RouterLink
+        v-if="authStore.isAuthenticated && checkinStore.streak > 0"
+        class="nav-streak"
+        to="/"
+        :title="streakTitle"
+        :aria-label="streakTitle"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+        </svg>
+        <span>{{ checkinStore.streak }}</span>
+      </RouterLink>
       <NotificationBell />
       <button class="icon-button" type="button" :aria-label="isDark ? '切换至浅色模式' : '切换至深色模式'" @click="toggleTheme">
         <svg v-if="isDark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M3 12h2m14 0h2m-2.64-6.36-1.41 1.41M7.05 16.95l-1.41 1.41m0-12.72 1.41 1.41m9.9 9.9 1.41 1.41M15.5 12a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" /></svg>

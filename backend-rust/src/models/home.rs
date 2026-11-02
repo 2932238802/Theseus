@@ -52,3 +52,10 @@ pub struct CheckinResponse {
     pub checkin_streak: i64,
     pub message: String,
 }
+
+#[derive(Debug, Serialize)]
+pub struct CheckinStatus {
+    pub checked_in_today: bool,
+    pub reputation_score: f64,
+    pub checkin_streak: i64,
+}

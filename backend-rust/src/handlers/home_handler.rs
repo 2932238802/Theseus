@@ -17,6 +17,15 @@ pub async fn overview(
     Ok(ok(response))
 }
 
+pub async fn checkin_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    let response = home_service::checkin_status(&state.pool, user.id).await?;
+    Ok(ok(response))
+}
+
 pub async fn check_in(
     State(state): State<AppState>,
     headers: HeaderMap,
