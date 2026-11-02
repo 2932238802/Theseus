@@ -246,6 +246,16 @@ psql "$DATABASE_URL" -f scripts/seed_problems_15.sql
 psql "$DATABASE_URL" -f scripts/clean_dev.sql  # 清理全部固定 ID 种子题
 ```
 
+`seed_problems_15.sql` 的隐藏用例由 `scripts/generate_judge_cases.py` 生成：脚本内置这 15 道题的参考解，用固定随机种子补充边界与随机用例，每题 16-41 条隐藏用例，并与公开用例去重，合计不超过 50 条。修改题目参数或想继续补用例时重新生成即可：
+
+```bash
+python3 scripts/generate_judge_cases.py --dry-run  # 只打印每题的用例数量与体积
+python3 scripts/generate_judge_cases.py            # 重写 seed 文件
+python3 scripts/generate_judge_cases.py --check    # 用参考解逐条复核现有用例
+```
+
+重跑 `seed_problems_15.sql` 会通过 `ON CONFLICT` 把新的 `judge_cases` 更新到已有题目上。
+
 管理员账号仅用于本地开发/测试，部署到公网前必须修改密码或删除该账号。日常角色调整请使用 `/admin/users`，由接口执行“学生退出组织、教师归档自有组织、最后一个管理员保护”等校验。
 
 自定义题目使用 `POST /api/problems/custom` 提交，仅 `teacher` 可调用，初始状态为 `pending`。管理员可通过 `GET /api/admin/problems/pending` 查看待审题目，并用 `PUT /api/admin/problems/:id/review` 携带 `{ "status": "approved" }` 或 `{ "status": "rejected" }` 完成审核。

@@ -95,3 +95,6 @@ deploy/backups/
 
 note.md
 ./note.md
+# Python
+__pycache__/
+*.pyc
