@@ -103,6 +103,8 @@ git pull
 
 `update.sh` 会备份数据库与 uploads、构建镜像、先用新 backend 应用增量迁移，确认迁移成功后再启动 Worker 与前端，并在最后核对健康状态；失败时打印回滚命令。可用 `--skip-build` 复用现有镜像，或 `--no-backup` 跳过备份（不推荐）。
 
+`deploy/.env` 不会被脚本覆盖。升级后若 `.env.example` 新增了配置项，先执行 `deploy/scripts/merge_env.sh --dry-run` 查看缺失项，确认后去掉 `--dry-run` 追加；已有值保持不变，占位符项会提示手工填写。改完 `.env` 后执行 `cd deploy && docker compose up -d` 使配置生效。
+
 健康检查：`GET /healthz`（存活）与 `GET /readyz`（PostgreSQL / Redis）。备份使用 `deploy/scripts/backup.sh`，恢复使用 `deploy/scripts/restore.sh`。完整步骤、gVisor 安装、HTTPS 反代与运维清单见 [`doc/2610305_服务器部署方案.md`](doc/2610305_服务器部署方案.md)。
 
 ## 检查与测试

@@ -4,7 +4,7 @@ import NavBar from '../components/NavBar.vue'
 import ShortcutDialog from '../components/ShortcutDialog.vue'
 import { usePreferenceStore } from '../store/preferences'
 import { useShortcutStore } from '../store/shortcuts'
-import { LANGUAGE_OPTIONS } from '../utils/constants'
+import { FONT_SIZE_MAX, FONT_SIZE_MIN, LANGUAGE_OPTIONS } from '../utils/constants'
 import { EDITOR_THEME_GROUPS, type EditorThemeChoice } from '../utils/monacoTheme'
 import { SYSTEM_THEME_LABEL, THEME_GROUPS } from '../utils/theme'
 import type { EditorTabSize } from '../types/preference'
@@ -171,13 +171,13 @@ onMounted(() => {
       <div class="settings-row">
         <div class="settings-label">
           <strong>字号</strong>
-          <small>10 到 32</small>
+          <small>{{ FONT_SIZE_MIN }} 到 {{ FONT_SIZE_MAX }}</small>
         </div>
         <div class="settings-stepper">
           <button
             type="button"
             aria-label="减小字号"
-            :disabled="prefs.editorFontSize <= 12"
+            :disabled="prefs.editorFontSize <= FONT_SIZE_MIN"
             @click="prefs.setEditorFontSize(prefs.editorFontSize - 1)"
           >
             A−
@@ -186,7 +186,7 @@ onMounted(() => {
           <button
             type="button"
             aria-label="增大字号"
-            :disabled="prefs.editorFontSize >= 20"
+            :disabled="prefs.editorFontSize >= FONT_SIZE_MAX"
             @click="prefs.setEditorFontSize(prefs.editorFontSize + 1)"
           >
             A+

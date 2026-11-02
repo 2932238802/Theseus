@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { clearPreferences, fetchPreferences, savePreferences } from '../api/preferences'
 import { toErrorMessage } from '../api/client'
-import { LANGUAGE_OPTIONS } from '../utils/constants'
+import { FONT_SIZE_MAX, FONT_SIZE_MIN, LANGUAGE_OPTIONS } from '../utils/constants'
 import { isEditorThemeChoice } from '../utils/monacoTheme'
 import { applyTheme, currentTheme, isThemeMode } from '../utils/theme'
 import type { EditorThemeChoice } from '../utils/monacoTheme'
@@ -50,7 +50,7 @@ const DEFAULT_VALUES: Record<string, unknown> = {
   [PREFERENCE_KEYS.shortcutBindings]: {},
 }
 
-const FONT_SIZES: [number, number] = [10, 32]
+const FONT_SIZES: [number, number] = [FONT_SIZE_MIN, FONT_SIZE_MAX]
 const PAGE_SIZES = [20, 50, 100]
 const TAB_SIZES = [2, 4, 8]
 

@@ -28,6 +28,10 @@ export const PROBLEM_STATUS_OPTIONS: Array<{ value: ProblemStatus | 'all'; label
   { value: 'accepted', label: PROBLEM_STATUS_LABELS.accepted },
 ]
 
+// 编辑器字号范围，设置页与答题页共用
+export const FONT_SIZE_MIN = 10
+export const FONT_SIZE_MAX = 32
+
 export const RUN_STATUS_LABELS: Record<RunStatus, string> = {
   queued: '排队中',
   compiling: '编译中',
