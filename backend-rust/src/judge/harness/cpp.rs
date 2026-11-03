@@ -1,6 +1,6 @@
 use crate::judge::run_config::{CPP_NODE_DEFINITIONS, cpp_type};
 
-const CPP_TEMPLATE: &str = r#"// 运行镜像里预编译了 bits/stdc++.h + json.hpp，命中时能省下
+const CPP_TEMPLATE: &str = r#"// 运行镜像里预编译了 bits/stdc++.h + json-c，命中时能省下
 // 重复解析头文件的时间（gVisor 下读取大量 header 尤其慢）。
 // 旧镜像没有这个预编译头时自动回退到逐个头文件 include。
 #if __has_include("theseus_precompiled.hpp")
@@ -8,8 +8,8 @@ const CPP_TEMPLATE: &str = r#"// 运行镜像里预编译了 bits/stdc++.h + jso
 #else
 #include <bits/stdc++.h>
 #include <sys/resource.h>
-#include "json.hpp"
 #endif
+#include <json-c/json.h>
 using namespace std;
 
 __NODE_DEFS__
@@ -19,18 +19,31 @@ __HELPERS__
 
 namespace theseus_harness {
 
-using nlohmann::json;
+static json_object* read_case() {
+    std::ifstream input("/workspace/case.json");
+    if (!input) {
+        throw std::runtime_error("无法打开 case.json");
+    }
+    std::string raw((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    json_object* args = json_tokener_parse(raw.c_str());
+    if (args == nullptr) {
+        throw std::runtime_error("case.json 解析失败");
+    }
+    return args;
+}
 
-static void write_result(bool ok, const json& actual, const std::string& error,
+static void write_result(bool ok, json_object* actual, const std::string& error,
                          long long runtime_ms, long long memory_kb) {
-    json payload;
-    payload["ok"] = ok;
-    payload["actual"] = actual;
-    payload["error"] = ok ? json(nullptr) : json(error);
-    payload["runtime_ms"] = runtime_ms;
-    payload["memory_kb"] = memory_kb;
+    json_object* payload = json_object_new_object();
+    json_object_object_add(payload, "ok", json_object_new_boolean(ok));
+    json_object_object_add(payload, "actual",
+                           actual != nullptr ? actual : json_object_new_null());
+    json_object_object_add(payload, "error",
+                           ok ? json_object_new_null() : json_object_new_string(error.c_str()));
+    json_object_object_add(payload, "runtime_ms", json_object_new_int64(runtime_ms));
+    json_object_object_add(payload, "memory_kb", json_object_new_int64(memory_kb));
     std::ofstream out("/workspace/result.json", std::ios::trunc);
-    out << payload.dump();
+    out << json_object_to_json_string(payload);
 }
 
 }  // namespace theseus_harness
@@ -40,12 +53,10 @@ int main() {
     std::freopen("/workspace/stderr.txt", "w", stderr);
     const auto started = std::chrono::steady_clock::now();
     bool ok = false;
-    nlohmann::json actual = nullptr;
+    json_object* actual = nullptr;
     std::string error;
     try {
-        std::ifstream input("/workspace/case.json");
-        nlohmann::json args;
-        input >> args;
+        json_object* args = theseus_harness::read_case();
 __PARAM_PREP__        Solution theseus_solution;
         actual = __RESULT_EXPR__;
         ok = true;
@@ -68,38 +79,112 @@ __PARAM_PREP__        Solution theseus_solution;
 }
 "#;
 
-const VECTOR_HELPERS: &str = r#"template <typename T>
-static nlohmann::json theseus_to_json_vector(const std::vector<T>& values) {
-    nlohmann::json out = nlohmann::json::array();
-    for (std::size_t index = 0; index < values.size(); ++index) {
-        out.push_back(nlohmann::json(static_cast<T>(values[index])));
+const VECTOR_HELPERS: &str = r#"static json_object* theseus_arg(json_object* args, std::size_t index) {
+    return json_object_array_get_idx(args, index);
+}
+
+template <typename T>
+struct TheseusScalar;
+
+template <>
+struct TheseusScalar<int> {
+    static int get(json_object* value) { return json_object_get_int(value); }
+};
+
+template <>
+struct TheseusScalar<long long> {
+    static long long get(json_object* value) { return json_object_get_int64(value); }
+};
+
+template <>
+struct TheseusScalar<double> {
+    static double get(json_object* value) { return json_object_get_double(value); }
+};
+
+template <>
+struct TheseusScalar<bool> {
+    static bool get(json_object* value) { return json_object_get_boolean(value) != 0; }
+};
+
+template <>
+struct TheseusScalar<std::string> {
+    static std::string get(json_object* value) {
+        const char* text = json_object_get_string(value);
+        return text == nullptr ? std::string() : std::string(text);
+    }
+};
+
+template <typename T>
+static std::vector<T> theseus_to_vector(json_object* value) {
+    std::vector<T> out;
+    const std::size_t size = json_object_array_length(value);
+    out.reserve(size);
+    for (std::size_t index = 0; index < size; ++index) {
+        out.push_back(TheseusScalar<T>::get(json_object_array_get_idx(value, index)));
     }
     return out;
 }
 
 template <typename T>
-static nlohmann::json theseus_to_json_matrix(const std::vector<std::vector<T>>& rows) {
-    nlohmann::json out = nlohmann::json::array();
-    for (std::size_t index = 0; index < rows.size(); ++index) {
-        out.push_back(theseus_to_json_vector(rows[index]));
+static std::vector<std::vector<T>> theseus_to_matrix(json_object* value) {
+    std::vector<std::vector<T>> out;
+    const std::size_t size = json_object_array_length(value);
+    out.reserve(size);
+    for (std::size_t index = 0; index < size; ++index) {
+        out.push_back(theseus_to_vector<T>(json_object_array_get_idx(value, index)));
+    }
+    return out;
+}
+
+static json_object* theseus_to_json(int value) {
+    return json_object_new_int(value);
+}
+
+static json_object* theseus_to_json(long long value) {
+    return json_object_new_int64(value);
+}
+
+// 用户的函数可能直接写 long；在 LP64 上它与 int / long long 都是不同的类型，
+// 没有这个重载时重载决议会在两者之间产生歧义。
+static json_object* theseus_to_json(long value) {
+    return json_object_new_int64(static_cast<long long>(value));
+}
+
+static json_object* theseus_to_json(double value) {
+    return json_object_new_double(value);
+}
+
+static json_object* theseus_to_json(bool value) {
+    return json_object_new_boolean(value);
+}
+
+static json_object* theseus_to_json(const std::string& value) {
+    return json_object_new_string_len(value.data(), static_cast<int>(value.size()));
+}
+
+template <typename T>
+static json_object* theseus_to_json(const std::vector<T>& values) {
+    json_object* out = json_object_new_array();
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        json_object_array_add(out, theseus_to_json(static_cast<T>(values[index])));
     }
     return out;
 }
 
 "#;
 
-const LIST_HELPERS: &str = r#"static ListNode* theseus_build_list(const nlohmann::json& values) {
+const LIST_HELPERS: &str = r#"static ListNode* theseus_build_list(const json_object* values) {
     ListNode* head = nullptr;
-    for (auto it = values.rbegin(); it != values.rend(); ++it) {
-        head = new ListNode(it->get<int>(), head);
+    for (std::size_t index = json_object_array_length(values); index > 0; --index) {
+        head = new ListNode(json_object_get_int(json_object_array_get_idx(values, index - 1)), head);
     }
     return head;
 }
 
-static nlohmann::json theseus_dump_list(ListNode* head) {
-    nlohmann::json out = nlohmann::json::array();
+static json_object* theseus_to_json(ListNode* head) {
+    json_object* out = json_object_new_array();
     while (head != nullptr) {
-        out.push_back(head->val);
+        json_object_array_add(out, json_object_new_int(head->val));
         head = head->next;
     }
     return out;
@@ -107,24 +192,28 @@ static nlohmann::json theseus_dump_list(ListNode* head) {
 
 "#;
 
-const TREE_HELPERS: &str = r#"static TreeNode* theseus_build_tree(const nlohmann::json& values) {
-    if (!values.is_array() || values.empty() || values[0].is_null()) {
+const TREE_HELPERS: &str = r#"static TreeNode* theseus_build_tree(const json_object* values) {
+    const std::size_t size = json_object_array_length(values);
+    if (size == 0 || json_object_is_type(json_object_array_get_idx(values, 0), json_type_null)) {
         return nullptr;
     }
-    TreeNode* root = new TreeNode(values[0].get<int>());
+    TreeNode* root = new TreeNode(json_object_get_int(json_object_array_get_idx(values, 0)));
     std::queue<TreeNode*> pending;
     pending.push(root);
     std::size_t index = 1;
-    while (!pending.empty() && index < values.size()) {
+    while (!pending.empty() && index < size) {
         TreeNode* node = pending.front();
         pending.pop();
-        if (index < values.size() && !values[index].is_null()) {
-            node->left = new TreeNode(values[index].get<int>());
+        if (index < size &&
+            !json_object_is_type(json_object_array_get_idx(values, index), json_type_null)) {
+            node->left = new TreeNode(json_object_get_int(json_object_array_get_idx(values, index)));
             pending.push(node->left);
         }
         ++index;
-        if (index < values.size() && !values[index].is_null()) {
-            node->right = new TreeNode(values[index].get<int>());
+        if (index < size &&
+            !json_object_is_type(json_object_array_get_idx(values, index), json_type_null)) {
+            node->right =
+                new TreeNode(json_object_get_int(json_object_array_get_idx(values, index)));
             pending.push(node->right);
         }
         ++index;
@@ -132,8 +221,8 @@ const TREE_HELPERS: &str = r#"static TreeNode* theseus_build_tree(const nlohmann
     return root;
 }
 
-static nlohmann::json theseus_dump_tree(TreeNode* root) {
-    nlohmann::json out = nlohmann::json::array();
+static json_object* theseus_to_json(TreeNode* root) {
+    json_object* out = json_object_new_array();
     if (root == nullptr) {
         return out;
     }
@@ -143,15 +232,19 @@ static nlohmann::json theseus_dump_tree(TreeNode* root) {
         TreeNode* node = pending.front();
         pending.pop();
         if (node == nullptr) {
-            out.push_back(nullptr);
+            json_object_array_add(out, json_object_new_null());
             continue;
         }
-        out.push_back(node->val);
+        json_object_array_add(out, json_object_new_int(node->val));
         pending.push(node->left);
         pending.push(node->right);
     }
-    while (!out.empty() && out.back().is_null()) {
-        out.erase(out.size() - 1);
+    while (json_object_array_length(out) > 0) {
+        const std::size_t last = json_object_array_length(out) - 1;
+        if (!json_object_is_type(json_object_array_get_idx(out, last), json_type_null)) {
+            break;
+        }
+        json_object_array_del_idx(out, last, 1);
     }
     return out;
 }
@@ -173,7 +266,7 @@ pub fn generate_main(
         .collect::<Vec<_>>()
         .join(", ");
     let call = format!("theseus_solution.{function_name}({call_args})");
-    let result_expr = result_expression(&call, return_type);
+    let result_expr = result_expression(&call);
 
     let mut helpers = String::from(VECTOR_HELPERS);
     let mut node_defs = String::new();
@@ -203,26 +296,40 @@ pub fn generate_main(
 fn prepare_param(index: usize, param_type: &str) -> String {
     match param_type {
         "ListNode" => {
-            format!("        ListNode* a{index} = theseus_build_list(args.at({index}));\n")
+            format!(
+                "        ListNode* a{index} = theseus_build_list(theseus_arg(args, {index}));\n"
+            )
         }
         "TreeNode" => {
-            format!("        TreeNode* a{index} = theseus_build_tree(args.at({index}));\n")
+            format!(
+                "        TreeNode* a{index} = theseus_build_tree(theseus_arg(args, {index}));\n"
+            )
         }
+        nested if nested.ends_with("[][]") => format!(
+            "        auto a{index} = theseus_to_matrix<{}>(theseus_arg(args, {index}));\n",
+            cpp_type(scalar_type(param_type))
+        ),
+        nested if nested.ends_with("[]") => format!(
+            "        auto a{index} = theseus_to_vector<{}>(theseus_arg(args, {index}));\n",
+            cpp_type(scalar_type(param_type))
+        ),
         _ => format!(
-            "        auto a{index} = args.at({index}).get<{}>();\n",
+            "        auto a{index} = TheseusScalar<{}>::get(theseus_arg(args, {index}));\n",
             cpp_type(param_type)
         ),
     }
 }
 
-fn result_expression(call: &str, return_type: &str) -> String {
-    match return_type {
-        "ListNode" => format!("theseus_dump_list({call})"),
-        "TreeNode" => format!("theseus_dump_tree({call})"),
-        nested if nested.ends_with("[][]") => format!("theseus_to_json_matrix({call})"),
-        nested if nested.ends_with("[]") => format!("theseus_to_json_vector({call})"),
-        _ => format!("nlohmann::json({call})"),
+fn result_expression(call: &str) -> String {
+    format!("theseus_to_json({call})")
+}
+
+fn scalar_type(run_type: &str) -> &str {
+    let mut scalar = run_type;
+    while let Some(stripped) = scalar.strip_suffix("[]") {
+        scalar = stripped;
     }
+    scalar
 }
 
 fn uses_type(param_types: &[String], return_type: &str, target: &str) -> bool {
@@ -241,9 +348,11 @@ mod tests {
             &["int".to_owned(), "int".to_owned()],
             "int",
         );
-        assert!(source.contains("#include \"json.hpp\""));
+        assert!(source.contains("#include <json-c/json.h>"));
         assert!(source.contains("theseus_solution.add(a0, a1)"));
-        assert!(source.contains("args.at(0).get<int>()"));
+        assert!(source.contains("TheseusScalar<int>::get(theseus_arg(args, 0))"));
+        assert!(source.contains("json_object_to_json_string(payload)"));
+        assert!(!source.contains("nlohmann"));
         assert!(!source.contains("theseus_build_list"));
     }
 
@@ -256,7 +365,8 @@ mod tests {
             "ListNode",
         );
         assert!(source.contains("theseus_build_list"));
-        assert!(source.contains("theseus_dump_list"));
+        assert!(source.contains("theseus_to_json(ListNode* head)"));
+        assert!(source.contains("theseus_to_json(theseus_solution.reverseList(a0))"));
         assert!(!source.contains("__PARAM_PREP__"));
     }
 
@@ -268,7 +378,20 @@ mod tests {
             &["int[][]".to_owned()],
             "int",
         );
-        assert!(source.contains("std::vector<std::vector<int>>"));
-        assert!(!source.contains("theseus_to_json_matrix(theseus_solution"));
+        assert!(source.contains("theseus_to_matrix<int>(theseus_arg(args, 0))"));
+        assert!(!source.contains("TheseusScalar<std::vector"));
+        assert!(!source.contains("__PARAM_PREP__"));
+    }
+
+    #[test]
+    fn builds_scalar_vectors_and_strings() {
+        let source = generate_main(
+            "class Solution { public: string join(vector<string>& words) { return words[0]; } };",
+            "join",
+            &["string[]".to_owned()],
+            "string",
+        );
+        assert!(source.contains("theseus_to_vector<std::string>(theseus_arg(args, 0))"));
+        assert!(source.contains("struct TheseusScalar<std::string>"));
     }
 }

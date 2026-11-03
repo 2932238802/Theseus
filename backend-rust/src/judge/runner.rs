@@ -158,6 +158,7 @@ pub fn program_for(language: &str, code: &str, config: &RunConfig) -> Result<Pro
                 "-o",
                 "/workspace/program",
                 "/workspace/main.cpp",
+                "-ljson-c",
             ]),
             run: vec!["/workspace/program"],
         }),
@@ -851,7 +852,11 @@ mod tests {
 
         let cpp = program_for("cpp", "class Solution {};", &config).expect("cpp");
         assert_eq!(cpp.files[0].0, "main.cpp");
-        assert!(cpp.compile.is_some());
+        assert!(
+            cpp.compile
+                .as_ref()
+                .is_some_and(|args| args.contains(&"-ljson-c"))
+        );
 
         let java = program_for("java", "class Solution {}", &config).expect("java");
         assert_eq!(java.files[0].0, "Main.java");
