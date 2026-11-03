@@ -33,7 +33,7 @@ Theseus/
 ├── deploy/           # Docker Compose、.env 模板与备份/恢复/管理员脚本
 ├── doc/              # 总体设计、接口与实施文档
 ├── dev.sh            # 本地一键启动 API + Worker + 前端
-└── update.sh         # 服务器拉取代码后的增量更新（备份 / 构建 / 迁移 / 核对）
+└── update.sh         # 服务器拉取代码后的增量更新（备份 / 运行镜像 / 构建 / 迁移 / 核对）
 ```
 
 ## 本地运行
@@ -101,11 +101,11 @@ git pull
 ./update.sh
 ```
 
-`update.sh` 会备份数据库与 uploads、构建镜像、先用新 backend 应用增量迁移，确认迁移成功后再启动 Worker 与前端，并在最后核对健康状态；失败时打印回滚命令。可用 `--skip-build` 复用现有镜像，或 `--no-backup` 跳过备份（不推荐）。
+`update.sh` 会备份数据库与 uploads、检查并（在缺失或定义变化时）重建判题运行镜像、构建服务镜像、先用新 backend 应用增量迁移，确认迁移成功后再启动 Worker 与前端，并在最后核对健康状态；失败时打印回滚命令。可用 `--skip-build` 复用现有服务镜像、`--skip-runners` 跳过运行镜像检查，或 `--no-backup` 跳过备份（不推荐）。
 
 `deploy/.env` 不会被脚本覆盖。升级后若 `.env.example` 新增了配置项，先执行 `deploy/scripts/merge_env.sh --dry-run` 查看缺失项，确认后去掉 `--dry-run` 追加；已有值保持不变，占位符项会提示手工填写。改完 `.env` 后执行 `cd deploy && docker compose up -d` 使配置生效。
 
-健康检查：`GET /healthz`（存活）与 `GET /readyz`（PostgreSQL / Redis）。备份使用 `deploy/scripts/backup.sh`，恢复使用 `deploy/scripts/restore.sh`。完整步骤、gVisor 安装、HTTPS 反代与运维清单见 [`doc/2610305_服务器部署方案.md`](doc/2610305_服务器部署方案.md)。
+健康检查：`GET /healthz`（存活）与 `GET /readyz`（PostgreSQL / Redis）。备份使用 `deploy/scripts/backup.sh`，恢复使用 `deploy/scripts/restore.sh`。完整步骤、gVisor 安装、HTTPS 反代与运维清单见 [`doc/2611031_服务器部署方案.md`](doc/2611031_服务器部署方案.md)。
 
 ## 检查与测试
 

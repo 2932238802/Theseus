@@ -38,7 +38,7 @@
 | `2611016_第三方账号绑定与GitHub登录设计方案.md` | GitHub OAuth 绑定已有账号、快捷登录、一次性票据与解绑密码确认 | 已实现（v1，仅 GitHub） |
 | `2611017_AI助手设计方案.md` | 题目页 AI 助手入口、Plus 门槛、每日额度、上下文边界与 OpenAI 兼容接入 | 部分完成（v1，需配置模型密钥） |
 | `interview/` | 面经归档、整理规范与索引，按公司/岗位/轮次存放 Markdown；`import_interview.sh` 可批量导入面经板块 | 按面试记录持续补充 |
-| `2610305_服务器部署方案.md` | Docker Compose 单机部署、健康检查、TLS 反代、备份恢复与运维 | 构建与脚本已实现；实际上线需在服务器执行 |
+| `2611031_服务器部署方案.md` | Docker Compose 单机部署、健康检查、TLS 反代、备份恢复与运维 | 构建与脚本已实现；实际上线需在服务器执行 |
 | `2610241_运行代码功能设计方案.md` | 运行代码、沙箱与多语言执行 | 已实现 |
 | `2610260_快捷键方案.md` | OJ 快捷键与自定义配置 | 已实现（v1.2，新增字号快捷键与 C++ 格式化） |
 | `2610231_*`、`2610232_*`、`2610233_*`、`2610234_*` | 早期安装、前后端协调与界面优化记录 | 历史实施文档 |
@@ -69,7 +69,7 @@
 - 教学数据导入导出：组织详情支持 CSV 文件或粘贴批量导入学生，逐行返回新增/已存在/重复/不存在/非学生原因；批改台支持导出带 UTF-8 BOM 的成绩 CSV，复用现有计分结果；成绩发布邮件沿用通知偏好链路。
 - 审计中心：新增 `audit_logs` 追加式留痕与 `GET /api/admin/audit-logs`、`/meta`、`/export`；管理端「审计日志」页面 `/admin/audit` 支持关键词、动作、对象、时间筛选与 CSV 导出；已接入登录、用户管理、题目审核、成绩修改/发布、通知广播、论坛审核/禁言、作弊复核与申诉、赛事与监考复核等动作；成绩审计不保存分数与评语。
 - 竞赛收尾：新增赛季与软重置（`seasons`、`season_ratings`、`contests.season_id`），赛季首次被访问时惰性激活，按系数把段位压回 1000 附近；排行榜支持赛季切换；用户新增年级字段，赛事支持年级范围并在报名/进入时校验；比赛结束后可提交一次赛事申诉，管理员通过后恢复信誉分、撤销作弊判定并重新排名；管理端可导出赛事成绩 CSV；新增 `/admin/seasons` 与 `/admin/contest-appeals` 页面。
-- 容器化部署：后端多阶段镜像内置 API 与两个 Worker，前端 Node 构建 + Nginx 反代 `/api` 与 `/uploads`；`deploy/compose.yaml` 编排 PostgreSQL、Redis、API、判题/防作弊 Worker 与前端；新增 `/healthz`、`/readyz` 健康检查；提供备份、恢复、管理员提升与 `update.sh` 增量更新脚本，以及 TLS 反代与运维手册（`2610305`）。
+- 容器化部署：后端多阶段镜像内置 API 与两个 Worker，前端 Node 构建 + Nginx 反代 `/api` 与 `/uploads`；`deploy/compose.yaml` 编排 PostgreSQL、Redis、API、判题/防作弊 Worker 与前端；新增 `/healthz`、`/readyz` 健康检查；提供备份、恢复、管理员提升与 `update.sh` 增量更新脚本，以及 TLS 反代与运维手册（`2611031`）。
 - 冒烟脚本：`smoke_teaching.sh`、`smoke_submission.sh`、`smoke_forum.sh`、`smoke_problem_review.sh`、`smoke_auth_email.sh`、`smoke_contest_events.sh`、`smoke_notifications.sh`、`smoke_realtime.sh`、`smoke_anticheat.sh`、`smoke_import_export.sh`、`smoke_audit.sh`、`smoke_profile.sh`（含个性化偏好读写与校验）、`smoke_grade_appeals.sh`（成绩申诉与统计导出）。
 - 题目页提交记录：新增「提交记录」Tab，按题分页查看本人提交，详情展示代码、编译输出与失败用例，可载入编辑器或与当前代码逐行对比；复用 `GET /api/submissions` 与 `GET /api/submissions/{id}`，新增前端行级 diff（`2610311`）。
 - 商店与 Plus 申请：学生与教师顶部新增「商店」下拉菜单（管理员不显示），`/shop` 展示「升级为 Plus Theseus」；新增 `plus_applications`、`plus_memberships` 与 `GET /api/shop/plus`、`POST /api/shop/plus/apply`、`GET /api/admin/plus-applications`、`POST /api/admin/plus-applications/{id}/resolve`；管理员审核时填写 1–3650 天，通过后写入或顺延会员有效期，到期自动失效并可重新申请；管理员审核后写站内信与审计日志，新增 `/admin/plus-applications` 页面；Plus 权益为面经板块权限与导航、论坛作者旁的 Plus 标识（`2610312`）。

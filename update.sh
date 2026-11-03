@@ -3,12 +3,15 @@
 # 更新后核对新增迁移与健康状态；失败时打印回滚命令，不自动覆盖数据库。
 #
 # 用法：
-#   ./update.sh                # 完整更新（推荐）
-#   ./update.sh --skip-build   # 不重新构建镜像，仅重启并应用镜像内已有迁移
-#   ./update.sh --no-backup    # 跳过更新前备份（不推荐）
+#   ./update.sh                  # 完整更新（推荐）
+#   ./update.sh --skip-build     # 不重新构建服务镜像，仅重启并应用镜像内已有迁移
+#   ./update.sh --skip-runners   # 跳过判题运行镜像的检查与重建
+#   ./update.sh --no-backup      # 跳过更新前备份（不推荐）
 #
 # 说明：
 #   - 在服务器 `git pull` 之后执行；脚本不会自行拉取代码。
+#   - 判题运行镜像（theseus/runner-*:dev）不在 compose 构建范围内，脚本会在
+#     镜像缺失或 docker/runners/ 自上次构建后有改动时自动重建。
 #   - 后端镜像内嵌 `backend-rust/migrations`，启动时由 sqlx 自动执行未应用的迁移。
 #     因此脚本只启动新的 backend 来完成增量迁移，成功后再启动 Worker 与前端。
 #   - 迁移失败时脚本退出并打印 `deploy/scripts/restore.sh` 回滚命令，由人工决定是否恢复。
@@ -19,6 +22,7 @@ DEPLOY="$ROOT/deploy"
 
 DO_BUILD=1
 DO_BACKUP=1
+DO_RUNNERS=1
 
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[警告]\033[0m %s\n' "$*"; }
@@ -26,29 +30,32 @@ die() { printf '\033[1;31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
 
 usage() {
     cat <<'EOF'
-Theseus 服务器增量更新：备份 -> 构建 -> 先迁移 -> 启动全部 -> 更新后核对。
+Theseus 服务器增量更新：备份 -> 运行镜像 -> 构建 -> 先迁移 -> 启动全部 -> 更新后核对。
 
 用法：
   ./update.sh [选项]
 
 选项：
-  --skip-build   跳过镜像构建，使用现有镜像（镜像内没有新迁移时不会更新数据库）
-  --no-backup    跳过更新前备份（不推荐）
-  -h, --help     显示帮助
+  --skip-build     跳过服务镜像构建，使用现有镜像（镜像内没有新迁移时不会更新数据库）
+  --skip-runners   跳过判题运行镜像的检查与重建
+  --no-backup      跳过更新前备份（不推荐）
+  -h, --help       显示帮助
 
 流程：
   1. 记录当前迁移版本，对比仓库 migrations/ 列出待应用迁移
   2. 调用 deploy/scripts/backup.sh 备份数据库与 uploads
-  3. docker compose build
-  4. 停止 backend 与两个 Worker，仅启动新 backend 应用增量迁移
-  5. 迁移成功后启动其余服务
-  6. 核对新增迁移、失败迁移与健康状态
+  3. 检查判题运行镜像，缺失或定义有变化时重新构建
+  4. docker compose build
+  5. 停止 backend 与两个 Worker，仅启动新 backend 应用增量迁移
+  6. 迁移成功后启动其余服务
+  7. 核对新增迁移、失败迁移与健康状态
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --skip-build) DO_BUILD=0 ;;
+        --skip-runners) DO_RUNNERS=0 ;;
         --no-backup) DO_BACKUP=0 ;;
         -h|--help) usage; exit 0 ;;
         *) die "未知参数：$1（使用 --help 查看用法）" ;;
@@ -77,6 +84,7 @@ set +a
 PGUSER=${POSTGRES_USER:-theseus}
 PGDB=${POSTGRES_DB:-theseus}
 BACKUP_DIR=${BACKUP_DIR:-$DEPLOY/backups}
+RUNNER_STATE="$DEPLOY/.runner-images.commit"
 DB_DUMP=""
 UPLOADS_TAR=""
 TMP_DIR=$(mktemp -d)
@@ -158,6 +166,74 @@ fail_update() {
     exit 1
 }
 
+# 运行镜像不在 compose 里，必须由宿主机单独构建。以下判断避免每次更新都重建，
+# 同时保证 docker/runners/ 改动后不会继续使用旧镜像（例如缺 libjson-c）。
+runner_image_tags() {
+    printf '%s\n' \
+        "${RUN_IMAGE_PYTHON:-theseus/runner-python:dev}" \
+        "${RUN_IMAGE_NODE:-theseus/runner-node:dev}" \
+        "${RUN_IMAGE_CPP:-theseus/runner-cpp:dev}" \
+        "${RUN_IMAGE_JAVA:-theseus/runner-java:dev}"
+}
+
+runner_images_are_local() {
+    [[ "${RUN_IMAGE_PYTHON:-theseus/runner-python:dev}" == "theseus/runner-python:dev" ]] &&
+        [[ "${RUN_IMAGE_NODE:-theseus/runner-node:dev}" == "theseus/runner-node:dev" ]] &&
+        [[ "${RUN_IMAGE_CPP:-theseus/runner-cpp:dev}" == "theseus/runner-cpp:dev" ]] &&
+        [[ "${RUN_IMAGE_JAVA:-theseus/runner-java:dev}" == "theseus/runner-java:dev" ]]
+}
+
+runner_images_missing() {
+    local image
+    while IFS= read -r image; do
+        docker image inspect "$image" >/dev/null 2>&1 || return 0
+    done < <(runner_image_tags)
+    return 1
+}
+
+runner_images_stale() {
+    local last=""
+    if [[ -f "$RUNNER_STATE" ]]; then
+        last=$(tr -d '[:space:]' <"$RUNNER_STATE")
+    fi
+    # 工作区有未提交的运行镜像改动时也重建（本地开发场景）。
+    if ! git -C "$ROOT" diff --quiet HEAD -- \
+        backend-rust/docker/runners backend-rust/scripts/build_runtime_images.sh; then
+        return 0
+    fi
+    # 没有记录过一次成功构建时，无法判断镜像是否过期，按需要重建处理。
+    [[ -n "$last" ]] || return 0
+    git -C "$ROOT" cat-file -e "${last}^{commit}" 2>/dev/null || return 0
+    ! git -C "$ROOT" diff --quiet "$last" HEAD -- \
+        backend-rust/docker/runners backend-rust/scripts/build_runtime_images.sh
+}
+
+ensure_runner_images() {
+    if ((DO_RUNNERS == 0)); then
+        warn "--skip-runners：跳过判题运行镜像检查"
+        return
+    fi
+    if ! runner_images_are_local; then
+        warn "RUN_IMAGE_* 指向自定义镜像，跳过本地构建；请自行确保镜像已更新"
+        return
+    fi
+    local reason=""
+    if runner_images_missing; then
+        reason="有运行镜像缺失"
+    elif runner_images_stale; then
+        reason="运行镜像定义在上次构建后有改动"
+    else
+        say "判题运行镜像已是最新（$(tr -d '[:space:]' <"$RUNNER_STATE")）"
+        return
+    fi
+    say "构建判题运行镜像（${reason}）"
+    if ! bash "$ROOT/backend-rust/scripts/build_runtime_images.sh"; then
+        die "判题运行镜像构建失败，服务保持原样"
+    fi
+    git -C "$ROOT" rev-parse HEAD >"$RUNNER_STATE"
+    say "判题运行镜像构建完成（$(tr -d '[:space:]' <"$RUNNER_STATE")）"
+}
+
 # ---------- 1. 更新前检查 ----------
 git_head=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)
 say "更新前检查（当前提交：$git_head）"
@@ -211,15 +287,18 @@ else
     warn "--no-backup：跳过更新前备份，迁移失败将无法直接回滚数据库"
 fi
 
-# ---------- 3. 构建镜像 ----------
+# ---------- 3. 构建判题运行镜像 ----------
+ensure_runner_images
+
+# ---------- 4. 构建服务镜像 ----------
 if ((DO_BUILD)); then
-    say "构建镜像"
+    say "构建服务镜像"
     "${COMPOSE[@]}" build || fail_update "镜像构建失败，服务保持原样"
 else
     warn "--skip-build：使用现有镜像"
 fi
 
-# ---------- 4. 应用增量迁移 ----------
+# ---------- 5. 应用增量迁移 ----------
 say "停止 backend 与 Worker，保留 postgres/redis"
 "${COMPOSE[@]}" stop backend judge-worker anticheat-worker
 
@@ -247,7 +326,7 @@ else
     say "本次没有新增迁移（数据库已是最新）"
 fi
 
-# ---------- 5. 启动全部服务 ----------
+# ---------- 6. 启动全部服务 ----------
 say "启动全部服务"
 "${COMPOSE[@]}" up -d
 
@@ -255,7 +334,7 @@ if ! wait_backend 120; then
     fail_update "重启后 backend 未恢复 healthy"
 fi
 
-# ---------- 6. 更新后核对 ----------
+# ---------- 7. 更新后核对 ----------
 say "服务状态"
 "${COMPOSE[@]}" ps
 

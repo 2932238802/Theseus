@@ -92,6 +92,7 @@ backend-rust/uploads/
 # Deployment
 deploy/.env
 deploy/backups/
+deploy/.runner-images.commit
 
 note.md
 ./note.md

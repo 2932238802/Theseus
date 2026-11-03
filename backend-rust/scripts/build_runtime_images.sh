@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # 构建 Judge Worker 的四种语言运行镜像。
-# 用法：sudo bash scripts/build_runtime_images.sh [--set-mirror]
-#   --set-mirror  若 /etc/docker/daemon.json 不存在，写入国内可用的 registry mirror 并重启 Docker
+# 用法：bash scripts/build_runtime_images.sh [--set-mirror]
+#   --set-mirror  若 /etc/docker/daemon.json 不存在，写入国内可用的 registry mirror 并重启 Docker（需要 root）
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-if [[ ${EUID} -ne 0 ]]; then
-    echo "需要 root：sudo bash $0 [--set-mirror]" >&2
+# 只有写 /etc/docker 的 mirror 配置需要 root；单纯构建镜像只需 docker 权限，
+# 这样 update.sh 可以不必整体以 root 运行。
+if [[ ${1:-} == "--set-mirror" && ${EUID} -ne 0 ]]; then
+    echo "配置 Docker mirror 需要 root：sudo bash $0 --set-mirror" >&2
     exit 1
 fi
 
