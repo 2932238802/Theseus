@@ -188,6 +188,10 @@ pub fn generate_main(
         helpers.push_str(TREE_HELPERS);
     }
 
+    // NOTE:
+    // __NODE_DEFS__ 是节点的定义 替换的 之后
+    // __USER_CODE__ 用户提交的源码
+    //
     CPP_TEMPLATE
         .replace("__NODE_DEFS__", node_defs.trim_end())
         .replace("__USER_CODE__", code)

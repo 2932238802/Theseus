@@ -45,13 +45,29 @@ pub struct PublicCase {
     pub expected: Value,
 }
 
+// NOTE:
+// 1. 一道题怎么调用 怎么判断对错
+// {
+//   "version": 1,
+//   "function_name": "twoSum",
+//   "params": [
+//     { "name": "nums", "type": "int[]" },
+//     { "name": "target", "type": "int" }
+//   ],
+//   "return_type": "int[]",
+//   "compare": { "mode": "exact" },
+//   "public_cases": [
+//     { "args": [[2, 7, 11, 15], 9], "expected": [0, 1] }
+//   ]
+// }
+// 2. version 这里暂时设置为1 给之后的拓展留接口
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunConfig {
     pub version: u32,
     pub function_name: String,
     pub params: Vec<RunParam>,
     pub return_type: String,
-    pub compare: CompareConfig,
+    pub compare: CompareConfig, // 答案比较方式
     #[serde(default)]
     pub public_cases: Vec<PublicCase>,
 }

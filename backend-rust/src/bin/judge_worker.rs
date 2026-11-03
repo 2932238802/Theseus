@@ -13,7 +13,9 @@ use backend_rust::{
         compare::values_match,
         queue::{self, ClaimedEntry},
         run_config::{normalize_for_compare, validate_input},
-        runner::{SandboxConfig, SandboxOutcome, SandboxSession, SandboxStart, program_for},
+        runner::{
+            BatchStop, SandboxConfig, SandboxOutcome, SandboxSession, SandboxStart, program_for,
+        },
     },
     models::{
         run::{
@@ -54,6 +56,9 @@ use tokio::sync::Semaphore;
 
 const CASE_TIMEOUT: Duration = Duration::from_secs(2);
 const RUN_TIMEOUT: Duration = Duration::from_secs(10);
+/// 每次 `docker exec` 最多执行的用例数。分块可以限制首次失败后仍被浪费的
+/// 执行量，同时把 50 个用例的容器调用次数从 50 次降到 4 次。
+const CASE_BATCH_SIZE: usize = 16;
 const CLAIM_MIN_IDLE_MS: u64 = 120_000;
 const CLAIM_COUNT: usize = 10;
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
@@ -694,20 +699,25 @@ async fn process_run(context: &WorkerContext, redis: &mut ConnectionManager, run
     cache_status(redis, &row, RUN_STATUS_RUNNING, 0, total, None).await;
 
     let started = Instant::now();
-    let mut results = Vec::with_capacity(cases.len());
-    let mut passed = 0i32;
-    let mut first_error: Option<String> = None;
-    for (index, (args, expected)) in cases.iter().enumerate() {
+    let case_args = cases
+        .iter()
+        .map(|(args, _)| args.clone())
+        .collect::<Vec<_>>();
+    let mut outcomes = Vec::with_capacity(cases.len());
+    let mut stop = BatchStop::Complete;
+    let mut offset = 0usize;
+    while offset < case_args.len() {
         let remaining = RUN_TIMEOUT.saturating_sub(started.elapsed());
         if remaining.is_zero() {
-            if first_error.is_none() {
-                first_error = Some("运行阶段超过 10 秒，剩余用例未执行".to_owned());
-            }
-            results.push(unrun_case(index as i32, args, expected));
-            continue;
+            stop = BatchStop::BudgetExhausted;
+            break;
         }
-        let outcome = match session.run_case(args, CASE_TIMEOUT.min(remaining)).await {
-            Ok(outcome) => outcome,
+        let end = (offset + CASE_BATCH_SIZE).min(case_args.len());
+        let batch = match session
+            .run_cases(&case_args[offset..end], CASE_TIMEOUT, remaining, false)
+            .await
+        {
+            Ok(batch) => batch,
             Err(error) => {
                 session.shutdown().await;
                 tracing::error!(
@@ -718,8 +728,36 @@ async fn process_run(context: &WorkerContext, redis: &mut ConnectionManager, run
                 return false;
             }
         };
+        if matches!(batch.stop, BatchStop::Aborted) {
+            session.shutdown().await;
+            tracing::error!(run_id, "sandbox batch aborted, leaving run pending");
+            return false;
+        }
+        outcomes.extend(batch.cases);
+        stop = batch.stop;
+        if !matches!(stop, BatchStop::Complete) {
+            break;
+        }
+        offset = end;
+    }
+    session.shutdown().await;
+
+    let mut results = Vec::with_capacity(cases.len());
+    let mut passed = 0i32;
+    let mut first_error: Option<String> = None;
+    for (index, (args, expected)) in cases.iter().enumerate() {
+        let Some(outcome) = outcomes.get(index) else {
+            if first_error.is_none() {
+                first_error = Some(match stop {
+                    BatchStop::BudgetExhausted => "运行阶段超过 10 秒，剩余用例未执行".to_owned(),
+                    _ => "沙箱执行中断，剩余用例未执行".to_owned(),
+                });
+            }
+            results.push(unrun_case(index as i32, args, expected));
+            continue;
+        };
         let (case, matched, error) =
-            build_case_result(index as i32, args, expected, &outcome, &run_config);
+            build_case_result(index as i32, args, expected, outcome, &run_config);
         if matched {
             passed += 1;
         }
@@ -729,7 +767,6 @@ async fn process_run(context: &WorkerContext, redis: &mut ConnectionManager, run
         results.push(case);
         cache_status(redis, &row, RUN_STATUS_RUNNING, passed, total, None).await;
     }
-    session.shutdown().await;
 
     let status = aggregate_status(&results);
     let cases_value = json!(results);
@@ -933,13 +970,18 @@ async fn process_submission(
 
     let budget = Duration::from_secs(context.config.submit_run_timeout_secs);
     let started = Instant::now();
+    let case_args = cases
+        .iter()
+        .map(|(args, _)| args.clone())
+        .collect::<Vec<_>>();
     let mut results = Vec::with_capacity(cases.len());
     let mut passed = 0i32;
     let mut verdict: Option<&'static str> = None;
     let mut error_message: Option<String> = None;
     let mut executed = 0usize;
+    let mut offset = 0usize;
 
-    for (index, (args, expected)) in cases.iter().enumerate() {
+    while offset < case_args.len() {
         let remaining = budget.saturating_sub(started.elapsed());
         if remaining.is_zero() {
             verdict = Some(SUBMISSION_STATUS_TIME_LIMIT_EXCEEDED);
@@ -949,8 +991,12 @@ async fn process_submission(
             ));
             break;
         }
-        let outcome = match session.run_case(args, CASE_TIMEOUT.min(remaining)).await {
-            Ok(outcome) => outcome,
+        let end = (offset + CASE_BATCH_SIZE).min(case_args.len());
+        let batch = match session
+            .run_cases(&case_args[offset..end], CASE_TIMEOUT, remaining, true)
+            .await
+        {
+            Ok(batch) => batch,
             Err(error) => {
                 session.shutdown().await;
                 tracing::error!(
@@ -961,31 +1007,68 @@ async fn process_submission(
                 return false;
             }
         };
-        let expected = Some(expected.clone());
-        let (case, matched, case_error) =
-            build_case_result(index as i32, args, &expected, &outcome, &run_config);
-        executed += 1;
-        let case_status = case.status.clone();
-        results.push(case);
-        if matched {
-            passed += 1;
-            continue;
+        if matches!(batch.stop, BatchStop::Aborted) {
+            session.shutdown().await;
+            tracing::error!(
+                submission_id,
+                "sandbox batch aborted, leaving submission pending"
+            );
+            return false;
         }
-        let case_verdict = verdict_for_case(&case_status);
-        error_message = Some(match case_verdict {
-            SUBMISSION_STATUS_TIME_LIMIT_EXCEEDED => {
-                format!("第 {} 个用例执行超过 2 秒", index + 1)
+        let mut batch_failed = false;
+        for (map_index, outcome) in batch.cases.iter().enumerate() {
+            let index = offset + map_index;
+            let (args, expected) = &cases[index];
+            let expected = Some(expected.clone());
+            let (case, matched, case_error) =
+                build_case_result(index as i32, args, &expected, outcome, &run_config);
+            executed += 1;
+            let case_status = case.status.clone();
+            results.push(case);
+            if matched {
+                passed += 1;
+                continue;
             }
-            SUBMISSION_STATUS_MEMORY_LIMIT_EXCEEDED => {
-                format!("第 {} 个用例内存超过限制", index + 1)
+            let case_verdict = verdict_for_case(&case_status);
+            error_message = Some(match case_verdict {
+                SUBMISSION_STATUS_TIME_LIMIT_EXCEEDED => {
+                    format!("第 {} 个用例执行超过 2 秒", index + 1)
+                }
+                SUBMISSION_STATUS_MEMORY_LIMIT_EXCEEDED => {
+                    format!("第 {} 个用例内存超过限制", index + 1)
+                }
+                SUBMISSION_STATUS_RUNTIME_ERROR => {
+                    case_error.unwrap_or_else(|| format!("第 {} 个用例运行时错误", index + 1))
+                }
+                _ => format!("第 {} 个用例输出与预期不一致", index + 1),
+            });
+            verdict = Some(case_verdict);
+            batch_failed = true;
+            break;
+        }
+        if batch_failed {
+            break;
+        }
+        match batch.stop {
+            BatchStop::Complete => {}
+            BatchStop::BudgetExhausted => {
+                verdict = Some(SUBMISSION_STATUS_TIME_LIMIT_EXCEEDED);
+                error_message = Some(format!(
+                    "判题总时长超过 {} 秒，剩余用例未执行",
+                    context.config.submit_run_timeout_secs
+                ));
+                break;
             }
-            SUBMISSION_STATUS_RUNTIME_ERROR => {
-                case_error.unwrap_or_else(|| format!("第 {} 个用例运行时错误", index + 1))
+            BatchStop::CaseFailed => {
+                // 容器内脚本因非 0 退出码提前结束，但上面的循环没有定位到
+                // 失败用例时，按运行时错误处理，避免静默地判为通过。
+                verdict = Some(SUBMISSION_STATUS_RUNTIME_ERROR);
+                error_message = Some("判题进程异常退出".to_owned());
+                break;
             }
-            _ => format!("第 {} 个用例输出与预期不一致", index + 1),
-        });
-        verdict = Some(case_verdict);
-        break;
+            BatchStop::Aborted => unreachable!("aborted batches return early"),
+        }
+        offset = end;
     }
     session.shutdown().await;
 

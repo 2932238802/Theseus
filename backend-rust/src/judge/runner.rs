@@ -62,6 +62,28 @@ pub struct SandboxOutcome {
     pub truncated: bool,
 }
 
+/// Why a batch stopped before executing every requested case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BatchStop {
+    /// Every requested case produced a complete result block.
+    #[default]
+    Complete,
+    /// A case exited non-zero and the script was asked to stop on failure.
+    CaseFailed,
+    /// The in-container total budget ran out before the next case started.
+    BudgetExhausted,
+    /// The shell/Docker call ended unexpectedly; the task should be retried.
+    Aborted,
+}
+
+/// Outcomes of one `docker exec` that may contain several test cases.
+#[derive(Debug, Clone, Default)]
+pub struct BatchOutcome {
+    /// Complete results, in the same order as the requested cases.
+    pub cases: Vec<SandboxOutcome>,
+    pub stop: BatchStop,
+}
+
 pub struct Program {
     files: Vec<(&'static str, String)>,
     compile: Option<Vec<&'static str>>,
@@ -251,28 +273,55 @@ impl SandboxSession {
         }))
     }
 
-    pub async fn run_case(
+    /// 在一次 `docker exec` 中顺序执行多个用例。
+    ///
+    /// 容器内脚本先把 stdin 里的 JSONL 写到 `/workspace/cases.jsonl`，再逐条
+    /// 写入 `case.json`、带超时执行，并用随机标记回传 result/stdout/stderr。
+    /// `stop_on_failure` 为真时，某个用例退出码非 0 就提前结束（提交判题）；
+    /// 为假时继续执行剩余用例（运行示例，用户希望看到所有用例的结果）。
+    pub async fn run_cases(
         &mut self,
-        args: &[Value],
-        timeout: Duration,
-    ) -> Result<SandboxOutcome, AppError> {
+        cases: &[Vec<Value>],
+        per_case_timeout: Duration,
+        total_budget: Duration,
+        stop_on_failure: bool,
+    ) -> Result<BatchOutcome, AppError> {
         if self.broken {
-            return Ok(SandboxOutcome {
-                timed_out: true,
-                ..SandboxOutcome::default()
+            return Ok(BatchOutcome {
+                cases: Vec::new(),
+                stop: BatchStop::Aborted,
             });
         }
-        let case = serde_json::to_vec(args)
-            .map_err(|error| AppError::Internal(format!("序列化运行参数失败: {error}")))?;
-        if case.len() > MAX_INPUT_BYTES {
-            return Err(AppError::BadRequest("自定义输入不能超过 64 KB".to_owned()));
+        if cases.is_empty() {
+            return Ok(BatchOutcome::default());
+        }
+        if total_budget.is_zero() {
+            return Ok(BatchOutcome {
+                cases: Vec::new(),
+                stop: BatchStop::BudgetExhausted,
+            });
         }
 
-        // 一次 docker exec 完成：写入参数、执行、回传结果与输出。
-        // 每个用例只付一次容器调用开销，避免逐文件注入/读取把判题拖到数秒。
-        let seconds = timeout.as_secs_f64().max(0.1);
+        // 每个用例一行紧凑 JSON；解析端按行读取，不会把多个数组混在一起。
+        let mut payload = Vec::new();
+        for args in cases {
+            let line = serde_json::to_vec(args)
+                .map_err(|error| AppError::Internal(format!("序列化运行参数失败: {error}")))?;
+            if line.len() > MAX_INPUT_BYTES {
+                return Err(AppError::BadRequest("自定义输入不能超过 64 KB".to_owned()));
+            }
+            payload.extend_from_slice(&line);
+            payload.push(b'\n');
+        }
+
         let tag = random_suffix();
-        let script = case_script(&self.run_command, seconds, &tag);
+        let script = batch_case_script(
+            &self.run_command,
+            per_case_timeout.as_secs().max(1),
+            total_budget.as_secs().max(1),
+            stop_on_failure,
+            &tag,
+        );
         let mut command = Command::new("docker");
         command
             .args([
@@ -289,15 +338,14 @@ impl SandboxSession {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true);
-        let host_timeout = timeout + Duration::from_secs(3);
-        let started = std::time::Instant::now();
+        // 容器内脚本自带总预算；这里多留 10 秒只作为 Docker 卡死的保险。
+        let host_timeout = total_budget + Duration::from_secs(10);
         let mut child = command
             .spawn()
             .map_err(|error| AppError::Internal(format!("沙箱执行进程启动失败: {error}")))?;
         if let Some(mut stdin) = child.stdin.take() {
-            // 参数最多 64 KB，写入应当瞬间完成；加超时避免 dockerd 卡住时
-            // 调用方无限等待。
-            match tokio::time::timeout(Duration::from_secs(5), stdin.write_all(&case)).await {
+            // 50 个用例最多约 3 MB，给足 30 秒避免写入被误判超时。
+            match tokio::time::timeout(Duration::from_secs(30), stdin.write_all(&payload)).await {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => {
                     let _ = child.kill().await;
@@ -309,69 +357,44 @@ impl SandboxSession {
                 }
             }
         }
-        let (timed_out, stdout, exit_code) =
-            match tokio::time::timeout(host_timeout, child.wait_with_output()).await {
-                Ok(Ok(output)) => (
-                    false,
-                    String::from_utf8_lossy(&output.stdout).into_owned(),
-                    output.status.code(),
-                ),
-                Ok(Err(error)) => {
-                    return Err(AppError::Internal(format!("沙箱执行进程启动失败: {error}")));
-                }
-                Err(_) => {
-                    kill_container(&self.container).await;
-                    self.broken = true;
-                    (true, String::new(), None)
-                }
-            };
-        let wall_ms = started.elapsed().as_millis().min(i32::MAX as u128) as i32;
-        if timed_out {
-            return Ok(SandboxOutcome {
-                timed_out: true,
-                exit_code,
-                runtime_ms: wall_ms,
-                ..SandboxOutcome::default()
-            });
-        }
+        let stdout = match tokio::time::timeout(host_timeout, child.wait_with_output()).await {
+            Ok(Ok(output)) => String::from_utf8_lossy(&output.stdout).into_owned(),
+            Ok(Err(error)) => {
+                return Err(AppError::Internal(format!("沙箱执行进程启动失败: {error}")));
+            }
+            Err(_) => {
+                kill_container(&self.container).await;
+                self.broken = true;
+                return Ok(BatchOutcome {
+                    cases: Vec::new(),
+                    stop: BatchStop::Aborted,
+                });
+            }
+        };
 
-        // OOMKilled 只在退出码为 137 时检查，正常用例不再额外 docker inspect。
-        let oom = exit_code == Some(137) && container_oom_killed(&self.container).await;
-        if oom {
-            return Ok(SandboxOutcome {
-                oom: true,
-                exit_code,
-                runtime_ms: wall_ms,
-                ..SandboxOutcome::default()
-            });
-        }
-        if matches!(exit_code, Some(137) | Some(124)) {
-            return Ok(SandboxOutcome {
-                timed_out: true,
-                exit_code,
-                runtime_ms: wall_ms,
-                ..SandboxOutcome::default()
-            });
-        }
-
-        let (result, raw_stdout, raw_stderr) = parse_case_output(&stdout, &tag);
-        let memory_kb = result
-            .as_ref()
-            .map(|value| value.memory_kb.max(0))
-            .unwrap_or_default();
-        let (stdout, stdout_truncated) = truncate_output(&raw_stdout);
-        let (stderr, stderr_truncated) = truncate_output(&raw_stderr);
-
-        Ok(SandboxOutcome {
-            timed_out: false,
-            oom: false,
-            exit_code,
-            result,
-            stdout,
-            stderr,
-            runtime_ms: wall_ms,
-            memory_kb,
-            truncated: stdout_truncated || stderr_truncated,
+        let parsed = parse_cases_output(&stdout, &tag, cases.len());
+        // 退出码 137 既可能是 timeout -s KILL，也可能是 cgroup OOM；只有
+        // 容器确实 OOMKilled 时才标记为内存超限，且整批只 inspect 一次。
+        let killed_by_signal = parsed.iter().any(|case| case.exit_code == Some(137));
+        let oom = killed_by_signal && container_oom_killed(&self.container).await;
+        let outcomes = parsed
+            .iter()
+            .map(|case| build_outcome(case, oom))
+            .collect::<Vec<_>>();
+        let budget_exhausted = stdout.contains(&budget_marker(&tag));
+        let stop = if stop_on_failure && parsed.last().is_some_and(|case| case.exit_code != Some(0))
+        {
+            BatchStop::CaseFailed
+        } else if parsed.len() == cases.len() {
+            BatchStop::Complete
+        } else if budget_exhausted {
+            BatchStop::BudgetExhausted
+        } else {
+            BatchStop::Aborted
+        };
+        Ok(BatchOutcome {
+            cases: outcomes,
+            stop,
         })
     }
 
@@ -601,23 +624,49 @@ async fn container_oom_killed(container: &str) -> bool {
         })
 }
 
-/// 单个用例的容器内脚本：清理旧输出、从 stdin 写入参数、带超时执行，
-/// 再用一次性标记把结果、stdout、stderr 一起回传。
-fn case_script(run_command: &[&str], seconds: f64, tag: &str) -> String {
-    let deadline = format!("{seconds:.3}");
+/// 多个用例的容器内脚本：整批参数从 stdin 一次落盘，循环里逐条执行。
+///
+/// 每条用例用带下标的一次性标记回传，调用方据此把结果对回原下标；退出码
+/// 非 0 时是否继续由 `stop_on_failure` 决定。总预算用 `date +%s` 控制，
+/// 预算耗尽时输出 `BUDGET_EXHAUSTED` 标记并停止。
+fn batch_case_script(
+    run_command: &[&str],
+    per_case_secs: u64,
+    budget_secs: u64,
+    stop_on_failure: bool,
+    tag: &str,
+) -> String {
     let command = run_command
         .iter()
         .map(|part| shell_quote(part))
         .collect::<Vec<_>>()
         .join(" ");
+    let break_on_failure = if stop_on_failure { "break" } else { ":" };
     format!(
-        "rm -f /workspace/result.json /workspace/stdout.txt /workspace/stderr.txt; \
-         cat > /workspace/case.json; \
-         timeout -s KILL {deadline} {command}; status=$?; \
-         printf '%s' '__THESEUS_{tag}_RESULT__'; cat /workspace/result.json 2>/dev/null; \
-         printf '%s' '__THESEUS_{tag}_STDOUT__'; head -c {OUTPUT_READ_LIMIT} /workspace/stdout.txt 2>/dev/null; \
-         printf '%s' '__THESEUS_{tag}_STDERR__'; head -c {OUTPUT_READ_LIMIT} /workspace/stderr.txt 2>/dev/null; \
-         exit $status"
+        "cat > /workspace/cases.jsonl || exit 1; \
+         i=0; \
+         deadline=$(( $(date +%s) + {budget_secs} )); \
+         while IFS= read -r line; do \
+           [ -z \"$line\" ] && continue; \
+           i=$((i+1)); \
+           now=$(date +%s); \
+           remaining=$((deadline - now)); \
+           if [ \"$remaining\" -le 0 ]; then \
+             printf '%s' \"__THESEUS_{tag}_BUDGET_EXHAUSTED__\"; \
+             break; \
+           fi; \
+           case_seconds={per_case_secs}; \
+           if [ \"$case_seconds\" -gt \"$remaining\" ]; then case_seconds=$remaining; fi; \
+           printf '%s' \"$line\" > /workspace/case.json; \
+           rm -f /workspace/result.json /workspace/stdout.txt /workspace/stderr.txt; \
+           timeout -s KILL \"$case_seconds\" {command} < /dev/null; status=$?; \
+           printf '%s' \"__THESEUS_{tag}_CASE_${{i}}_RESULT__\"; cat /workspace/result.json 2>/dev/null; \
+           printf '%s' \"__THESEUS_{tag}_CASE_${{i}}_STDOUT__\"; head -c {OUTPUT_READ_LIMIT} /workspace/stdout.txt 2>/dev/null; \
+           printf '%s' \"__THESEUS_{tag}_CASE_${{i}}_STDERR__\"; head -c {OUTPUT_READ_LIMIT} /workspace/stderr.txt 2>/dev/null; \
+           printf '%s' \"__THESEUS_{tag}_CASE_${{i}}_EXIT__\"; printf '%s' \"$status\"; \
+           printf '%s' \"__THESEUS_{tag}_CASE_${{i}}_END__\"; \
+           if [ \"$status\" -ne 0 ]; then {break_on_failure}; fi; \
+         done < /workspace/cases.jsonl"
     )
 }
 
@@ -636,17 +685,97 @@ fn compile_script(file: &str, compile: &[&str]) -> String {
     format!("cat > /workspace/{file} && {command}")
 }
 
-fn parse_case_output(text: &str, tag: &str) -> (Option<HarnessResult>, String, String) {
-    let result_marker = format!("__THESEUS_{tag}_RESULT__");
-    let stdout_marker = format!("__THESEUS_{tag}_STDOUT__");
-    let stderr_marker = format!("__THESEUS_{tag}_STDERR__");
-    let Some((_, rest)) = text.split_once(&result_marker) else {
-        return (None, String::new(), String::new());
-    };
-    let (result_raw, rest) = rest.split_once(&stdout_marker).unwrap_or((rest, ""));
-    let (stdout_raw, stderr_raw) = rest.split_once(&stderr_marker).unwrap_or((rest, ""));
-    let result = serde_json::from_str::<HarnessResult>(result_raw.trim()).ok();
-    (result, stdout_raw.to_owned(), stderr_raw.to_owned())
+#[derive(Debug, Clone, Default)]
+struct ParsedCase {
+    result: Option<HarnessResult>,
+    stdout: String,
+    stderr: String,
+    exit_code: Option<i32>,
+}
+
+fn case_marker(tag: &str, index: usize, kind: &str) -> String {
+    format!("__THESEUS_{tag}_CASE_{index}_{kind}__")
+}
+
+fn budget_marker(tag: &str) -> String {
+    format!("__THESEUS_{tag}_BUDGET_EXHAUSTED__")
+}
+
+/// 按下标解析批量输出；某个用例的标记不完整时立即停止，后面的用例视为未执行。
+fn parse_cases_output(text: &str, tag: &str, expected: usize) -> Vec<ParsedCase> {
+    let mut parsed = Vec::with_capacity(expected);
+    let mut cursor = text;
+    for index in 1..=expected {
+        let result_marker = case_marker(tag, index, "RESULT");
+        let Some((_, rest)) = cursor.split_once(&result_marker) else {
+            break;
+        };
+        let stdout_marker = case_marker(tag, index, "STDOUT");
+        let stderr_marker = case_marker(tag, index, "STDERR");
+        let exit_marker = case_marker(tag, index, "EXIT");
+        let end_marker = case_marker(tag, index, "END");
+        let Some((result_raw, rest)) = rest.split_once(&stdout_marker) else {
+            break;
+        };
+        let Some((stdout_raw, rest)) = rest.split_once(&stderr_marker) else {
+            break;
+        };
+        let Some((stderr_raw, rest)) = rest.split_once(&exit_marker) else {
+            break;
+        };
+        let Some((exit_raw, rest)) = rest.split_once(&end_marker) else {
+            break;
+        };
+        parsed.push(ParsedCase {
+            result: serde_json::from_str(result_raw.trim()).ok(),
+            stdout: stdout_raw.to_owned(),
+            stderr: stderr_raw.to_owned(),
+            exit_code: exit_raw.trim().parse().ok(),
+        });
+        cursor = rest;
+    }
+    parsed
+}
+
+fn build_outcome(case: &ParsedCase, oom: bool) -> SandboxOutcome {
+    let (stdout, stdout_truncated) = truncate_output(&case.stdout);
+    let (stderr, stderr_truncated) = truncate_output(&case.stderr);
+    if oom && case.exit_code == Some(137) {
+        return SandboxOutcome {
+            oom: true,
+            exit_code: case.exit_code,
+            stdout,
+            stderr,
+            truncated: stdout_truncated || stderr_truncated,
+            ..SandboxOutcome::default()
+        };
+    }
+    if matches!(case.exit_code, Some(124) | Some(137)) {
+        return SandboxOutcome {
+            timed_out: true,
+            exit_code: case.exit_code,
+            stdout,
+            stderr,
+            truncated: stdout_truncated || stderr_truncated,
+            ..SandboxOutcome::default()
+        };
+    }
+    let memory_kb = case
+        .result
+        .as_ref()
+        .map(|result| result.memory_kb.max(0))
+        .unwrap_or_default();
+    SandboxOutcome {
+        timed_out: false,
+        oom: false,
+        exit_code: case.exit_code,
+        result: case.result.clone(),
+        stdout,
+        stderr,
+        runtime_ms: 0,
+        memory_kb,
+        truncated: stdout_truncated || stderr_truncated,
+    }
 }
 
 async fn kill_container(container: &str) {
@@ -689,7 +818,9 @@ pub fn truncate_output(value: &str) -> (String, bool) {
 mod tests {
     use serde_json::json;
 
-    use super::{case_script, compile_script, parse_case_output, program_for, truncate_output};
+    use super::{
+        batch_case_script, compile_script, parse_cases_output, program_for, truncate_output,
+    };
     use crate::judge::run_config::validate_run_config;
 
     fn config() -> crate::models::run::RunConfig {
@@ -746,11 +877,100 @@ mod tests {
     }
 
     #[test]
-    fn quotes_run_command_in_case_script() {
-        let script = case_script(&["java", "-cp", "/a:/b", "Main"], 2.0, "tag1");
-        assert!(script.contains("timeout -s KILL 2.000 'java' '-cp' '/a:/b' 'Main'"));
-        assert!(script.contains("__THESEUS_tag1_RESULT__"));
-        assert!(script.contains("cat > /workspace/case.json"));
+    fn batch_script_runs_every_case_in_one_exec() {
+        let script = batch_case_script(&["java", "-cp", "/a:/b", "Main"], 2, 10, true, "tag1");
+        assert!(script.contains("cat > /workspace/cases.jsonl"));
+        assert!(script.contains("while IFS= read -r line"));
+        assert!(script.contains("'java' '-cp' '/a:/b' 'Main' < /dev/null"));
+        assert!(script.contains("__THESEUS_tag1_CASE_${i}_RESULT__"));
+        assert!(script.contains("__THESEUS_tag1_BUDGET_EXHAUSTED__"));
+        assert!(script.contains("done < /workspace/cases.jsonl"));
+        assert!(script.contains("if [ \"$status\" -ne 0 ]; then break; fi"));
+    }
+
+    #[test]
+    fn batch_script_continues_after_failure_when_requested() {
+        let script = batch_case_script(&["python3", "/workspace/main.py"], 2, 10, false, "tag1");
+        assert!(script.contains("if [ \"$status\" -ne 0 ]; then :; fi"));
+    }
+
+    #[test]
+    fn batch_script_executes_cases_and_stops_on_failure() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let workspace =
+            std::env::temp_dir().join(format!("theseus-batch-test-{}", super::random_suffix()));
+        std::fs::create_dir_all(&workspace).expect("workspace should be created");
+        let ws = workspace.display().to_string();
+        // 模拟 harness：读 case.json，写 result/stdout/stderr；含 "fail" 的用例退出 3。
+        let fake = format!(
+            "cat {ws}/case.json > {ws}/stdout.txt; \
+             printf '%s' '{{\"ok\":true,\"actual\":1,\"runtime_ms\":1,\"memory_kb\":2}}' > {ws}/result.json; \
+             printf '%s' 'boom' > {ws}/stderr.txt; \
+             grep -q fail {ws}/case.json && exit 3; exit 0"
+        );
+        let run_command = ["sh", "-c", fake.as_str()];
+        let payload = "[[1,2]]\n[\"fail\"]\n[[3,4]]\n";
+
+        for (stop_on_failure, expected) in [(true, 2usize), (false, 3usize)] {
+            let script = batch_case_script(&run_command, 2, 10, stop_on_failure, "tag1")
+                .replace("/workspace", &ws);
+            let mut child = Command::new("sh")
+                .args(["-c", &script])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("batch script should spawn");
+            child
+                .stdin
+                .take()
+                .expect("stdin should be piped")
+                .write_all(payload.as_bytes())
+                .expect("payload should be writable");
+            let output = child.wait_with_output().expect("batch script should exit");
+            let text = String::from_utf8_lossy(&output.stdout);
+            let parsed = parse_cases_output(&text, "tag1", 3);
+            assert_eq!(parsed.len(), expected, "script: {script}\noutput: {text}");
+            assert_eq!(parsed[0].exit_code, Some(0));
+            assert!(parsed[0].result.as_ref().is_some_and(|result| result.ok));
+            assert_eq!(parsed[0].stderr, "boom");
+            if stop_on_failure {
+                assert_eq!(parsed[1].exit_code, Some(3));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&workspace);
+    }
+
+    #[test]
+    fn batch_script_is_valid_shell() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        for stop_on_failure in [true, false] {
+            let script = batch_case_script(
+                &["java", "-cp", "/a:/b", "Main"],
+                2,
+                10,
+                stop_on_failure,
+                "tag1",
+            );
+            let mut child = Command::new("sh")
+                .arg("-n")
+                .stdin(Stdio::piped())
+                .spawn()
+                .expect("sh should be available");
+            child
+                .stdin
+                .take()
+                .expect("stdin should be piped")
+                .write_all(script.as_bytes())
+                .expect("script should be writable");
+            assert!(
+                child.wait().expect("sh should exit").success(),
+                "generated script is not valid shell: {script}"
+            );
+        }
     }
 
     #[test]
@@ -761,25 +981,48 @@ mod tests {
     }
 
     #[test]
-    fn parses_result_stdout_and_stderr() {
+    fn parses_multiple_case_blocks() {
         let tag = "tag1";
         let text = format!(
-            "__THESEUS_{tag}_RESULT__{{\"ok\":true,\"actual\":42,\"runtime_ms\":1,\"memory_kb\":2048}}\
-             __THESEUS_{tag}_STDOUT__hello\n\
-             __THESEUS_{tag}_STDERR__oops"
+            "__THESEUS_{tag}_CASE_1_RESULT__{{\"ok\":true,\"actual\":42,\"runtime_ms\":1,\"memory_kb\":2048}}\
+             __THESEUS_{tag}_CASE_1_STDOUT__hello\n\
+             __THESEUS_{tag}_CASE_1_STDERR__oops\
+             __THESEUS_{tag}_CASE_1_EXIT__0\
+             __THESEUS_{tag}_CASE_1_END__\
+             __THESEUS_{tag}_CASE_2_RESULT__\
+             __THESEUS_{tag}_CASE_2_STDOUT__\
+             __THESEUS_{tag}_CASE_2_STDERR__boom\
+             __THESEUS_{tag}_CASE_2_EXIT__1\
+             __THESEUS_{tag}_CASE_2_END__"
         );
-        let (result, stdout, stderr) = parse_case_output(&text, tag);
-        let result = result.expect("result should parse");
-        assert!(result.ok);
-        assert_eq!(stdout, "hello\n");
-        assert_eq!(stderr, "oops");
+        let parsed = parse_cases_output(&text, tag, 3);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].exit_code, Some(0));
+        assert!(parsed[0].result.as_ref().is_some_and(|result| result.ok));
+        assert_eq!(parsed[0].stdout, "hello\n");
+        assert_eq!(parsed[0].stderr, "oops");
+        assert_eq!(parsed[1].exit_code, Some(1));
+        assert!(parsed[1].result.is_none());
+        assert_eq!(parsed[1].stderr, "boom");
     }
 
     #[test]
-    fn missing_result_marker_returns_empty_output() {
-        let (result, stdout, stderr) = parse_case_output("no markers here", "tag1");
-        assert!(result.is_none());
-        assert!(stdout.is_empty());
-        assert!(stderr.is_empty());
+    fn stops_parsing_at_first_incomplete_case() {
+        let tag = "tag1";
+        let text = format!(
+            "__THESEUS_{tag}_CASE_1_RESULT__{{\"ok\":true}}\
+             __THESEUS_{tag}_CASE_1_STDOUT__\
+             __THESEUS_{tag}_CASE_1_STDERR__\
+             __THESEUS_{tag}_CASE_1_EXIT__0\
+             __THESEUS_{tag}_CASE_1_END__\
+             __THESEUS_{tag}_CASE_2_RESULT__{{\"ok\":true}}"
+        );
+        let parsed = parse_cases_output(&text, tag, 2);
+        assert_eq!(parsed.len(), 1);
+    }
+
+    #[test]
+    fn missing_markers_produce_no_cases() {
+        assert!(parse_cases_output("no markers here", "tag1", 2).is_empty());
     }
 }
