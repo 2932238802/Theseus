@@ -70,6 +70,29 @@ let lspGeneration = 0
 let lspSignature = 'off'
 let commandPrefix = ''
 let disposed = false
+let viewRefreshFrame = 0
+
+// 格式化、重置、载入历史提交都会一次性替换整篇代码。Monaco 在这种批量改写后
+// 偶尔不会回收旧的行元素，表现为同一个位置叠着两行文字（重影）。等这一帧的
+// 编辑处理结束后重新布局并强制整体重绘，让视口缓存和行 DOM 重新对齐。
+const refreshViewAfterBulkEdit = (): void => {
+  if (viewRefreshFrame) cancelAnimationFrame(viewRefreshFrame)
+  viewRefreshFrame = requestAnimationFrame(() => {
+    viewRefreshFrame = 0
+    const instance = monacoEditor
+    if (!instance) return
+    instance.layout()
+    instance.render(true)
+  })
+}
+
+// 单行输入不会触发；多行粘贴、整篇替换与格式化都会走到这里
+const isBulkEdit = (event: editor.IModelContentChangedEvent): boolean =>
+  event.isFlush ||
+  event.changes.some(
+    (change) =>
+      change.text.includes('\n') || change.range.endLineNumber - change.range.startLineNumber > 1,
+  )
 
 const monacoLanguage = computed(() => LANGUAGE_OPTIONS.find((item) => item.value === props.language)?.monaco ?? 'javascript')
 // 自动时 Python 惯例 4 空格，其余语言保持 2 空格
@@ -232,7 +255,10 @@ const initialize = async (): Promise<void> => {
     registerShortcutCommands(monaco)
     applyShortcutRules()
     applyCompletionKeyRule(monaco, props.lspEnabled)
-    instance.onDidChangeModelContent(() => emit('update:modelValue', instance.getValue()))
+    instance.onDidChangeModelContent((event: editor.IModelContentChangedEvent) => {
+      emit('update:modelValue', instance.getValue())
+      if (isBulkEdit(event)) refreshViewAfterBulkEdit()
+    })
     status.value = 'ready'
     syncLsp()
   } catch (error: unknown) {
@@ -260,6 +286,7 @@ watch(() => props.modelValue, (value) => {
   ])
   instance.pushUndoStop()
   if (position) instance.setPosition(position)
+  refreshViewAfterBulkEdit()
 })
 watch(monacoLanguage, (language) => {
   const model = monacoEditor?.getModel()
@@ -268,7 +295,11 @@ watch(monacoLanguage, (language) => {
   model.updateOptions({ tabSize: effectiveTabSize.value, insertSpaces: true })
   syncLsp()
 })
-watch(() => props.fontSize, (fontSize) => monacoEditor?.updateOptions({ fontSize }))
+watch(() => props.fontSize, (fontSize) => {
+  monacoEditor?.updateOptions({ fontSize })
+  // 字号变化会重算行高，同样需要整体重绘一次，避免残留旧行
+  refreshViewAfterBulkEdit()
+})
 watch(effectiveTabSize, (tabSize) => {
   monacoEditor?.getModel()?.updateOptions({ tabSize, insertSpaces: true })
 })
@@ -290,6 +321,10 @@ defineExpose({ focus })
 
 onBeforeUnmount(() => {
   disposed = true
+  if (viewRefreshFrame) {
+    cancelAnimationFrame(viewRefreshFrame)
+    viewRefreshFrame = 0
+  }
   container.value?.removeEventListener('paste', onPaste)
   shortcutRuleDisposable?.dispose()
   shortcutRuleDisposable = undefined

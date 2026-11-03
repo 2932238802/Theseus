@@ -80,6 +80,15 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     customizable: true,
   },
   {
+    id: 'oj.close-ai',
+    label: '关闭 AI 面板',
+    group: 'view',
+    scope: 'oj',
+    defaultKey: 'Mod+Shift+.',
+    customizable: true,
+    note: '面板打开时生效，焦点在 AI 输入框内也可使用',
+  },
+  {
     id: 'oj.font-increase',
     label: '增大字号',
     group: 'view',

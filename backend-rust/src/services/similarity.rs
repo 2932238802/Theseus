@@ -180,7 +180,7 @@ fn hash_gram(tokens: &[String]) -> u64 {
             hash ^= u64::from(*byte);
             hash = hash.wrapping_mul(FNV_PRIME);
         }
-        // token 之间加分隔符，避免 ("ab","c") 与 ("a","bc") 哈希相同。
+        // token 之间加分隔符，避免 ("ab","c") 与 ("a","bc") 哈希相同
         hash ^= 0xff;
         hash = hash.wrapping_mul(FNV_PRIME);
     }
