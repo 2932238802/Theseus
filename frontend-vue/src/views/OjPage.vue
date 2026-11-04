@@ -6,6 +6,7 @@ import AcceptedCelebration from '../components/AcceptedCelebration.vue'
 import AiAssistantPanel from '../components/AiAssistantPanel.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 import FailedCaseSaveControl from '../components/FailedCaseSaveControl.vue'
+import MarkdownBody from '../components/MarkdownBody.vue'
 import ShortcutDialog from '../components/ShortcutDialog.vue'
 import ProblemDiscussionPanel from '../components/ProblemDiscussionPanel.vue'
 import ProblemNotePanel from '../components/ProblemNotePanel.vue'
@@ -72,6 +73,10 @@ const initialLanguage = (): Language => {
   const stored = localStorage.getItem(PREFERRED_LANGUAGE_KEY)
   return isLanguage(stored) ? stored : 'cpp'
 }
+
+/** 示例配图统一交给 MarkdownBody 渲染，复用清洗与点击预览。 */
+const exampleImageMarkdown = (image: string, index: number): string =>
+  `![示例 ${index + 1} 示意图](${image})`
 const language = ref<Language>(initialLanguage())
 const code = ref('')
 const editorRef = ref<{ focus: () => void } | null>(null)
@@ -1397,7 +1402,7 @@ onBeforeUnmount(() => {
             <button type="button" role="tab" :aria-selected="problemTab === 'discussion'" :class="{ active: problemTab === 'discussion' }" @click="problemTab = 'discussion'">题解与讨论</button>
             <button type="button" role="tab" :aria-selected="problemTab === 'note'" :class="{ active: problemTab === 'note' }" @click="problemTab = 'note'">笔记</button>
           </div>
-          <article v-if="contestId || problemTab === 'description'" class="problem-content"><p v-for="paragraph in problemStore.currentProblem.description.split('\n\n')" :key="paragraph">{{ paragraph.replaceAll('**', '').replaceAll('*', '') }}</p><h2>示例</h2><div v-for="(example, index) in problemStore.currentProblem.examples" :key="`${example.input}-${index}`" class="example-block"><span>示例 {{ index + 1 }}</span><pre><b>输入：</b>{{ example.input }}
+          <article v-if="contestId || problemTab === 'description'" class="problem-content"><MarkdownBody class="problem-statement" :content="problemStore.currentProblem.description" /><h2>示例</h2><div v-for="(example, index) in problemStore.currentProblem.examples" :key="`${example.input}-${index}`" class="example-block"><span>示例 {{ index + 1 }}</span><MarkdownBody v-if="example.image" class="example-illustration" :content="exampleImageMarkdown(example.image, index)" /><pre><b>输入：</b>{{ example.input }}
 <b>输出：</b>{{ example.output }}</pre><p v-if="example.explanation"><b>解释：</b>{{ example.explanation }}</p></div><p v-if="!problemStore.currentProblem.examples.length" class="output-placeholder">暂无示例</p><h2>限制</h2><ul><li>时间限制：{{ problemStore.currentProblem.timeLimit }} ms</li><li>内存限制：{{ problemStore.currentProblem.memoryLimit }} MB</li></ul></article>
           <ProblemDiscussionPanel v-else-if="problemTab === 'discussion'" :problem-id="problemStore.currentProblem.id" />
           <ProblemNotePanel v-else-if="problemTab === 'note'" :problem-id="problemStore.currentProblem.id" />

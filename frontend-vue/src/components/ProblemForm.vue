@@ -123,8 +123,9 @@ const normalizeExamples = (): ProblemExample[] => {
       input: example.input.trim(),
       output: example.output.trim(),
       explanation: example.explanation?.trim() || undefined,
+      image: example.image?.trim() || undefined,
     }))
-    .filter((example) => example.input || example.output || example.explanation)
+    .filter((example) => example.input || example.output || example.explanation || example.image)
   if (rows.some((example) => !example.input || !example.output)) {
     throw new Error('每个示例都需要填写输入和输出')
   }
@@ -259,6 +260,10 @@ const fillTemplate = (): void => {
         <label>
           <span>解释 可选</span>
           <textarea v-model="example.explanation" rows="3" />
+        </label>
+        <label>
+          <span>配图 URL 可选</span>
+          <input v-model="example.image" placeholder="/problem-images/1113-trapping-rain-water-1.png" />
         </label>
         <button
           class="teaching-secondary-button problem-example-remove"

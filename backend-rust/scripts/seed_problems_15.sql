@@ -693,15 +693,18 @@ strs[i] 仅由小写英文字母组成',
     $json$[
     {
         "input": "head = [1, 2, 3, 4, 5]",
-        "output": "[5, 4, 3, 2, 1]"
+        "output": "[5, 4, 3, 2, 1]",
+        "image": "/problem-images/1106-reverse-linked-list-1.png"
     },
     {
         "input": "head = [1, 2]",
-        "output": "[2, 1]"
+        "output": "[2, 1]",
+        "image": "/problem-images/1106-reverse-linked-list-2.png"
     },
     {
         "input": "head = []",
-        "output": "[]"
+        "output": "[]",
+        "image": "/problem-images/1106-reverse-linked-list-3.png"
     }
 ]$json$::jsonb,
     $json$[
@@ -1695,11 +1698,13 @@ grid[i][j] 为 0 或 1',
     {
         "input": "height = [0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1]",
         "output": "6",
-        "explanation": "柱子之间可以接住 6 个单位的雨水。"
+        "explanation": "柱子之间可以接住 6 个单位的雨水。",
+        "image": "/problem-images/1113-trapping-rain-water-1.png"
     },
     {
         "input": "height = [4, 2, 0, 3, 2, 5]",
-        "output": "9"
+        "output": "9",
+        "image": "/problem-images/1113-trapping-rain-water-2.png"
     }
 ]$json$::jsonb,
     $json$[

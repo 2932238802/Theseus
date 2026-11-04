@@ -14,6 +14,8 @@
 #     镜像缺失或 docker/runners/ 自上次构建后有改动时自动重建。
 #   - 后端镜像内嵌 `backend-rust/migrations`，启动时由 sqlx 自动执行未应用的迁移。
 #     因此脚本只启动新的 backend 来完成增量迁移，成功后再启动 Worker 与前端。
+#   - 迁移成功后会执行 `backend-rust/scripts/patch_problem_images.sql`，把题面
+#     配图等纯数据更新同步到数据库；该脚本幂等，重复执行不会改动无差异的题目。
 #   - 迁移失败时脚本退出并打印 `deploy/scripts/restore.sh` 回滚命令，由人工决定是否恢复。
 set -euo pipefail
 
@@ -47,8 +49,9 @@ Theseus 服务器增量更新：备份 -> 运行镜像 -> 构建 -> 先迁移 ->
   3. 检查判题运行镜像，缺失或定义有变化时重新构建
   4. docker compose build
   5. 停止 backend 与两个 Worker，仅启动新 backend 应用增量迁移
-  6. 迁移成功后启动其余服务
-  7. 核对新增迁移、失败迁移与健康状态
+  6. 执行题面配图补丁（backend-rust/scripts/patch_problem_images.sql）
+  7. 启动其余服务
+  8. 核对新增迁移、失败迁移与健康状态
 EOF
 }
 
@@ -324,6 +327,16 @@ if [[ -n "$new_migrations" ]]; then
     printf '%s\n' "$new_migrations" | sed 's/^/    /'
 else
     say "本次没有新增迁移（数据库已是最新）"
+fi
+
+# ---------- 5.5 题面配图补丁 ----------
+# 纯数据更新，与镜像无关；放在迁移之后、启动全部服务之前执行。
+PATCH_IMAGES="$ROOT/backend-rust/scripts/patch_problem_images.sql"
+if [[ -f "$PATCH_IMAGES" ]]; then
+    say "应用题面配图补丁"
+    if ! db_psql -q <"$PATCH_IMAGES"; then
+        fail_update "题面配图补丁执行失败"
+    fi
 fi
 
 # ---------- 6. 启动全部服务 ----------

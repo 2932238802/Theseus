@@ -129,6 +129,12 @@ body.is-resizing {
   line-height: 1.7;
 }
 
+/* 题面用 Markdown 渲染以支持图片，字号与题面正文保持一致。 */
+.problem-content .problem-statement {
+  font-size: 15px;
+  line-height: 1.7;
+}
+
 .problem-content p + p {
   margin-top: 12px;
 }
@@ -172,6 +178,15 @@ body.is-resizing {
   font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+/* 示例配图：与示例内容对齐，点击可查看大图（MarkdownBody 提供）。 */
+.example-block .example-illustration {
+  padding: 12px 12px 0;
+}
+
+.example-block .example-illustration img {
+  margin: 0;
 }
 
 .example-block p {

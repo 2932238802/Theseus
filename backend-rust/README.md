@@ -258,6 +258,8 @@ python3 scripts/generate_judge_cases.py --check    # 用参考解逐条复核现
 
 重跑 `seed_problems_15.sql` 会通过 `ON CONFLICT` 把新的 `judge_cases` 更新到已有题目上。
 
+服务器上已有题库的题面配图更新不要靠重跑种子（会覆盖管理端修改），而是在 `scripts/patch_problem_images.sql` 里按题目 ID 追加幂等 `UPDATE`；`update.sh` 每次升级都会自动执行该文件。图片本身放在 `frontend-vue/public/problem-images/`，题目内用 `/problem-images/<文件名>` 引用。
+
 `seed_problems_82.sql` 由 `scripts/generate_problem_seed.py` 生成：题目元数据、公开用例和参考解分别放在 `scripts/problem_catalog_easy.py`（1116-1145）、`problem_catalog_medium.py`（1146-1179）、`problem_catalog_hard.py`（1180-1197），隐藏用例由参考解逐条算出，四种语言模板与 `run_config.rs` 的输出保持一致。修改题目后重新生成并校验：
 
 ```bash

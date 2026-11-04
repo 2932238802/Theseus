@@ -43,6 +43,8 @@ export interface ProblemExample {
   input: string
   output: string
   explanation?: string
+  /** 示例配图，站内绝对路径（如 /problem-images/...）或 http(s) 地址。 */
+  image?: string
 }
 
 export interface Problem {
