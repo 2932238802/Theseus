@@ -38,7 +38,7 @@ import {
 } from '../utils/constants'
 import { SHORTCUT_ACTIONS, displayShortcut, matchesShortcut, resolveBinding } from '../utils/shortcuts'
 import type { Language, Submission } from '../types/oj'
-import type { RunCase, RunMode } from '../types/run'
+import type { RunMode } from '../types/run'
 import { formatArgs, formatInline } from '../utils/format'
 import { useContestEvents } from '../utils/contestEvents'
 import { inspectPaste } from '../utils/pasteInspection'
@@ -122,7 +122,6 @@ const isRunDialogOpen = ref(false)
 const isShortcutDialogOpen = ref(false)
 const isPlusDialogOpen = ref(false)
 const acceptedSubmission = ref<Submission | null>(null)
-const acceptedProblemTitle = ref('')
 const runMode = ref<RunMode>('examples')
 const runInput = ref('')
 const runInputError = ref('')
@@ -567,7 +566,6 @@ const loadPage = async (): Promise<void> => {
   problemTab.value = 'description'
   isRunDialogOpen.value = false
   acceptedSubmission.value = null
-  acceptedProblemTitle.value = ''
   if (contestId.value) {
     assignment.value = null
     assignmentError.value = ''
@@ -609,12 +607,6 @@ const goToProblem = async (id: number | null): Promise<void> => {
 
 const closeAcceptedCelebration = (): void => {
   acceptedSubmission.value = null
-}
-
-const goToNextProblemFromCelebration = (): void => {
-  const id = nextProblemId.value
-  acceptedSubmission.value = null
-  void goToProblem(id)
 }
 
 const openRandomProblem = async (): Promise<void> => {
@@ -700,7 +692,6 @@ const submitCode = async (): Promise<void> => {
       contestId.value ?? undefined,
     )
     if (final?.status === 'Accepted') {
-      acceptedProblemTitle.value = problemStore.currentProblem.title
       acceptedSubmission.value = final
     }
     if (final && historyLoaded.value) void loadHistory(1)
@@ -740,10 +731,6 @@ const openHistoryTab = (): void => {
   if (authStore.isAuthenticated && !historyLoaded.value && !historyLoading.value) {
     void loadHistory(1)
   }
-}
-const openAcceptedSubmissionHistory = (): void => {
-  acceptedSubmission.value = null
-  openHistoryTab()
 }
 const openHistoryDetail = async (item: Submission): Promise<void> => {
   historyDetailLoading.value = true
@@ -895,11 +882,6 @@ const quickRun = async (): Promise<void> => {
   }
   await openRunDialog()
 }
-
-const canOfferJudgeCase = (runCase: RunCase): boolean =>
-  canEditJudgeCases.value &&
-  runCase.expected !== undefined &&
-  runCase.status !== 'passed'
 
 const shortcutHint = (actionId: string): string => {
   const action = SHORTCUT_ACTIONS.find((item) => item.id === actionId)
@@ -1495,13 +1477,6 @@ onBeforeUnmount(() => {
                     <div v-if="(item.status === 'passed' || item.status === 'failed') && item.actual !== undefined" class="run-block"><span>实际</span><pre>{{ formatInline(item.actual) }}</pre></div>
                     <div v-if="item.stdout" class="run-block"><span>stdout</span><pre>{{ item.stdout }}</pre></div>
                     <div v-if="item.stderr" class="run-block"><span>stderr</span><pre>{{ item.stderr }}</pre></div>
-                    <FailedCaseSaveControl
-                      v-if="canOfferJudgeCase(item) && problemStore.currentProblem"
-                      :key="`run-${runStore.detail.id}-${item.index}`"
-                      :problem-id="problemStore.currentProblem.id"
-                      :args="item.args"
-                      :expected="item.expected"
-                    />
                     <p v-if="item.truncated" class="run-note">输出超过 64 KB 已截断</p>
                   </div>
                 </template>
@@ -1704,16 +1679,7 @@ onBeforeUnmount(() => {
 
   <AcceptedCelebration
     v-if="acceptedSubmission"
-    :problem-title="acceptedProblemTitle"
-    :language="languageLabel(acceptedSubmission.language)"
-    :test-cases-passed="acceptedSubmission.testCasesPassed"
-    :total-test-cases="acceptedSubmission.totalTestCases"
-    :runtime="acceptedSubmission.runtime"
-    :memory="acceptedSubmission.memory"
-    :has-next="nextProblemId !== null"
     @close="closeAcceptedCelebration"
-    @view-history="openAcceptedSubmissionHistory"
-    @next="goToNextProblemFromCelebration"
   />
 
   <ShortcutDialog v-if="isShortcutDialogOpen" @close="isShortcutDialogOpen = false" />

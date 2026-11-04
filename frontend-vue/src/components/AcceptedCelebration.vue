@@ -1,20 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
-defineProps<{
-  problemTitle: string
-  language: string
-  testCasesPassed: number
-  totalTestCases: number
-  runtime?: string
-  memory?: string
-  hasNext: boolean
-}>()
-
 const emit = defineEmits<{
   close: []
-  viewHistory: []
-  next: []
 }>()
 
 interface ConfettiPiece {
@@ -93,7 +81,6 @@ onBeforeUnmount(() => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="accepted-title"
-        aria-describedby="accepted-description"
         tabindex="-1"
         @keydown.esc.stop="close"
       >
@@ -102,43 +89,7 @@ onBeforeUnmount(() => {
         </button>
 
         <div class="accepted-emblem" aria-hidden="true"><span>✓</span></div>
-        <p class="accepted-eyebrow">Accepted</p>
-        <h2 id="accepted-title">通过全部测试用例</h2>
-        <p id="accepted-description" class="accepted-problem">{{ problemTitle }}</p>
-        <p class="accepted-message">漂亮！这道题已经被你拿下。</p>
-
-        <dl class="accepted-stats">
-          <div>
-            <dt>通过用例</dt>
-            <dd>{{ testCasesPassed }} / {{ totalTestCases }}</dd>
-          </div>
-          <div>
-            <dt>执行用时</dt>
-            <dd>{{ runtime || '—' }}</dd>
-          </div>
-          <div>
-            <dt>内存消耗</dt>
-            <dd>{{ memory || '—' }}</dd>
-          </div>
-          <div>
-            <dt>语言</dt>
-            <dd>{{ language }}</dd>
-          </div>
-        </dl>
-
-        <div class="accepted-actions">
-          <button v-if="hasNext" class="accepted-primary" type="button" @click="emit('next')">
-            挑战下一题 <span aria-hidden="true">→</span>
-          </button>
-          <button v-else class="accepted-primary" type="button" @click="close">
-            继续刷题
-          </button>
-          <button class="accepted-secondary" type="button" @click="emit('viewHistory')">
-            查看提交记录
-          </button>
-        </div>
-
-        <p class="accepted-hint">按 Esc 关闭</p>
+        <p id="accepted-title" class="accepted-eyebrow">Accepted</p>
       </section>
     </div>
   </Teleport>
