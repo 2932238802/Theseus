@@ -6,8 +6,9 @@
     python3 scripts/generate_problem_seed.py --dry-run  # 只校验并打印统计
     python3 scripts/generate_problem_seed.py --check    # 校验现有 seed 文件是否最新
 
-题库由 seed_dev.sql（1001-1003）、seed_problems_15.sql（1101-1115）和本脚本生成的
-82 道题共同组成，合计 100 题。
+seed_dev.sql（1001-1003）、seed_problems_15.sql（1101-1115）和本脚本生成的 82 道题
+构成原有 100 题；另有 `generate_extra_problem_seed.py` 生成 seed_problems_100.sql
+新增 100 题，本地题库合计 200 题。
 
 每道题的 hidden 用例由 `problem_catalog_*.py` 里的参考解算出 expected，
 因此修改题目参数或参考解后重新运行本脚本即可；输出完全确定，可进版本库。

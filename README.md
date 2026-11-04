@@ -70,7 +70,10 @@ cd frontend-vue && npm install && cd ..
 数据库迁移在 API 启动时自动执行。需要种子数据时：
 
 ```bash
+psql "$DATABASE_URL" -f backend-rust/scripts/seed_dev.sql
 psql "$DATABASE_URL" -f backend-rust/scripts/seed_problems_15.sql
+psql "$DATABASE_URL" -f backend-rust/scripts/seed_problems_82.sql
+psql "$DATABASE_URL" -f backend-rust/scripts/seed_problems_100.sql
 psql "$DATABASE_URL" -f backend-rust/scripts/seed_admin.sql   # 仅本地开发
 ```
 

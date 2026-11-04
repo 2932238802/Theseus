@@ -1,7 +1,8 @@
 """题目种子的公共工具：数据结构、类型校验、模板生成与 SQL 输出。
 
-`generate_problem_seed.py` 会读取 EASY / MEDIUM / HARD 三个目录文件（catalog），
-调用这里的校验与渲染逻辑，生成 `seed_problems_82.sql`。
+`generate_problem_seed.py` / `generate_extra_problem_seed.py` 会读取各自的目录文件
+（catalog），调用这里的校验与渲染逻辑，分别生成 `seed_problems_82.sql` 与
+`seed_problems_100.sql`。
 
 设计约束与 `backend-rust/src/judge/run_config.rs` 保持一致：
     - 支持 int / long / double / bool / string / ListNode / TreeNode 及一维、二维数组
@@ -442,12 +443,20 @@ def sql_json(value: Any) -> str:
     return f"$json${text}$json$::jsonb"
 
 
-def render_sql(problems: list[Problem]) -> str:
+def render_sql(
+    problems: list[Problem],
+    *,
+    related_seeds: str = (
+        "与 seed_dev.sql（1001-1003）、seed_problems_15.sql（1101-1115）合计 100 题。"
+    ),
+) -> str:
+    first_id = problems[0].pid
+    last_id = problems[-1].pid
     lines = [
         "-- 仅用于本地/测试环境的题目种子数据。",
-        "-- 使用固定 ID 1116-1197，便于通过 clean_dev.sql 安全清理。",
-        "-- 82 道函数式题目（run_config + 公开用例 + 隐藏 judge_cases），",
-        "-- 与 seed_dev.sql（1001-1003）、seed_problems_15.sql（1101-1115）合计 100 题。",
+        f"-- 使用固定 ID {first_id}-{last_id}，便于通过 clean_dev.sql 安全清理。",
+        f"-- {len(problems)} 道函数式题目（run_config + 公开用例 + 隐藏 judge_cases），",
+        f"-- {related_seeds}",
         "",
         "INSERT INTO problems (",
         "    id, title, description, difficulty, time_limit, memory_limit, tags,",
@@ -497,7 +506,7 @@ def render_sql(problems: list[Problem]) -> str:
             "",
             "SELECT setval(",
             "    pg_get_serial_sequence('problems', 'id'),",
-            "    GREATEST((SELECT COALESCE(MAX(id), 1) FROM problems), 1197)",
+            f"    GREATEST((SELECT COALESCE(MAX(id), 1) FROM problems), {last_id})",
             ");",
             "",
         ]
