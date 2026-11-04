@@ -100,7 +100,12 @@ tags: [场景题, 手撕]
 
 # 只导入题目，去掉面试流程、复盘、待补充与答案
 ./backend-rust/scripts/import_interview.sh --author <用户名> --update --no-answers
+
+# 服务器上没有 psql 客户端时，通过 docker compose 的 postgres 容器写库
+./backend-rust/scripts/import_interview.sh --author <用户名> --docker --update
 ```
+
+服务器执行 `./update.sh` 时会自动导入一次：默认作者取最早的启用管理员，已存在的标题跳过；需要覆盖时在 `deploy/.env` 设置 `INTERVIEW_IMPORT_UPDATE=1`，或手动加 `--update`。
 
 - 标题取文件中的一级标题，也是去重键
 - `--no-answers` 只保留题目与 `**题目**` / `**题意**` 描述；面试流程、复盘、待补充与答案都不导入

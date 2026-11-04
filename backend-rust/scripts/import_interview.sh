@@ -10,8 +10,10 @@
 #   ./backend-rust/scripts/import_interview.sh --author <用户名>
 #   ./backend-rust/scripts/import_interview.sh --author <用户名> --update
 #   ./backend-rust/scripts/import_interview.sh --author <用户名> --update --no-answers
+#   ./backend-rust/scripts/import_interview.sh --author <用户名> --docker
 #
-# 依赖：bash >= 4.2、psql。
+# 依赖：bash >= 4.2、psql；--docker 模式改用 docker compose 的 postgres 容器，
+#       服务器上无需安装 psql 客户端，读取 deploy/.env 里的 POSTGRES_USER/DB。
 # 安全性：只读取本地 Markdown 与 backend-rust/.env，只写 forum_posts。
 # 直接写库会跳过 API 的 Plus 权限与评论流程，仅用于管理员或本地导入。
 
@@ -22,10 +24,13 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 
 INTERVIEW_DIR=${IMPORT_INTERVIEW_DIR:-"$REPO_ROOT/doc/interview"}
 ENV_FILE=${IMPORT_BACKEND_ENV:-"$REPO_ROOT/backend-rust/.env"}
+COMPOSE_FILE=${IMPORT_COMPOSE_FILE:-"$REPO_ROOT/deploy/compose.yaml"}
+COMPOSE_ENV=${IMPORT_COMPOSE_ENV:-"$REPO_ROOT/deploy/.env"}
 AUTHOR=${IMPORT_AUTHOR:-}
 UPDATE=0
 DRY_RUN=0
 NO_ANSWERS=0
+USE_DOCKER=0
 
 CREATED=0
 UPDATED=0
@@ -52,6 +57,7 @@ usage() {
   --dry-run           只解析并打印结果，不连接数据库
   --no-answers        只保留题目，去掉流程、复盘、待补充与答案
   --dir <路径>        面经目录，默认 doc/interview
+  --docker            通过 docker compose 的 postgres 容器写库
   -h, --help          显示帮助
 
 说明：
@@ -99,6 +105,10 @@ while (($#)); do
             INTERVIEW_DIR=$2
             shift 2
             ;;
+        --docker)
+            USE_DOCKER=1
+            shift
+            ;;
         -h | --help)
             usage
             exit 0
@@ -126,6 +136,14 @@ load_env() {
             export "$key=$value"
         fi
     done <"$ENV_FILE"
+}
+
+psql_db() {
+    if ((USE_DOCKER)); then
+        "${COMPOSE[@]}" exec -T postgres psql -U "$PGUSER" -d "$PGDB" "$@"
+    else
+        psql "$DATABASE_URL" "$@"
+    fi
 }
 
 trim() {
@@ -323,7 +341,7 @@ import_file() {
     if ((DRY_RUN)); then
         action=预览
     else
-        if ! existing_id=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -v title="$title" <<'SQL'
+        if ! existing_id=$(psql_db -At -v ON_ERROR_STOP=1 -v title="$title" <<'SQL'
 SELECT id FROM forum_posts
 WHERE board = 'interview' AND title = :'title'
 ORDER BY id
@@ -362,7 +380,7 @@ SQL
     fi
 
     if [[ -n "$existing_id" ]]; then
-        if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+        if ! psql_db -v ON_ERROR_STOP=1 \
             -v post_id="$existing_id" \
             -v author_id="$AUTHOR_ID" \
             -v title="$title" \
@@ -391,7 +409,7 @@ SQL
         fi
         UPDATED=$((UPDATED + 1))
     else
-        if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+        if ! psql_db -v ON_ERROR_STOP=1 \
             -v author_id="$AUTHOR_ID" \
             -v title="$title" \
             -v interview_date="$interview_date" \
@@ -427,21 +445,43 @@ SQL
 }
 
 AUTHOR_ID=""
+PGUSER=${POSTGRES_USER:-theseus}
+PGDB=${POSTGRES_DB:-theseus}
+COMPOSE=()
 if ((!DRY_RUN)); then
     [[ -n "$AUTHOR" ]] || fatal_preflight "请用 --author 指定作者（论坛帖子必须记录作者）"
-    require_cmd psql
-    load_env
-    DATABASE_URL=${DATABASE_URL:-}
-    [[ -n "$DATABASE_URL" ]] || fatal_preflight "未配置 DATABASE_URL"
-    psql "$DATABASE_URL" -At -c 'SELECT 1' >/dev/null 2>&1 || fatal_db "PostgreSQL 不可达（检查 DATABASE_URL）"
-    [[ "$(psql "$DATABASE_URL" -At -c "SELECT to_regclass('public.forum_posts') IS NOT NULL")" == "t" ]] ||
+    if ((USE_DOCKER)); then
+        require_cmd docker
+        [[ -f "$COMPOSE_FILE" ]] || fatal_preflight "缺少 compose 文件：$COMPOSE_FILE"
+        [[ -f "$COMPOSE_ENV" ]] || fatal_preflight "缺少配置文件：$COMPOSE_ENV"
+        ENV_FILE=$COMPOSE_ENV
+        load_env
+        PGUSER=${POSTGRES_USER:-$PGUSER}
+        PGDB=${POSTGRES_DB:-$PGDB}
+        if docker compose version >/dev/null 2>&1; then
+            COMPOSE=(docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_FILE")
+        elif command -v docker-compose >/dev/null 2>&1; then
+            COMPOSE=(docker-compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_FILE")
+        else
+            fatal_preflight "未找到 Docker Compose（docker compose / docker-compose）"
+        fi
+        psql_db -At -c 'SELECT 1' >/dev/null 2>&1 ||
+            fatal_db "postgres 容器不可达（请先启动 deploy/compose.yaml）"
+    else
+        require_cmd psql
+        load_env
+        DATABASE_URL=${DATABASE_URL:-}
+        [[ -n "$DATABASE_URL" ]] || fatal_preflight "未配置 DATABASE_URL"
+        psql_db -At -c 'SELECT 1' >/dev/null 2>&1 || fatal_db "PostgreSQL 不可达（检查 DATABASE_URL）"
+    fi
+    [[ "$(psql_db -At -c "SELECT to_regclass('public.forum_posts') IS NOT NULL")" == "t" ]] ||
         fatal_db "缺少 forum_posts 表，请先启动后端或执行论坛迁移"
-    [[ "$(psql "$DATABASE_URL" -At -c "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'forum_posts' AND column_name = 'board')")" == "t" ]] ||
+    [[ "$(psql_db -At -c "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'forum_posts' AND column_name = 'board')")" == "t" ]] ||
         fatal_db "缺少 board 字段，请先执行迁移 0032"
-    [[ "$(psql "$DATABASE_URL" -At -c "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'forum_posts' AND column_name = 'interview_date')")" == "t" ]] ||
+    [[ "$(psql_db -At -c "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'forum_posts' AND column_name = 'interview_date')")" == "t" ]] ||
         fatal_db "缺少 interview_date 字段，请先执行迁移 0032"
 
-    AUTHOR_ID=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -v author="$AUTHOR" <<'SQL'
+    AUTHOR_ID=$(psql_db -At -v ON_ERROR_STOP=1 -v author="$AUTHOR" <<'SQL'
 SELECT id FROM users WHERE username = :'author' LIMIT 1;
 SQL
     )
@@ -450,6 +490,7 @@ fi
 
 say "面经目录：$INTERVIEW_DIR"
 say "导入板块：面经（interview）"
+((USE_DOCKER)) && say "写库方式：docker compose 的 postgres 容器"
 ((UPDATE)) && say "已存在标题：覆盖更新"
 ((DRY_RUN)) && say "运行模式：预览，不写数据库"
 

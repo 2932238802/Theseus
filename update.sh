@@ -16,6 +16,10 @@
 #     因此脚本只启动新的 backend 来完成增量迁移，成功后再启动 Worker 与前端。
 #   - 迁移成功后会执行 `backend-rust/scripts/patch_problem_images.sql`，把题面
 #     配图等纯数据更新同步到数据库；该脚本幂等，重复执行不会改动无差异的题目。
+#   - 题面配图从 frontend-vue/public/problem-images 只读挂载进前端容器，
+#     git pull 后即时生效；只更新内容时可加 --skip-build 跳过镜像构建。
+#   - 随后把 `doc/interview` 下的面经 Markdown 导入面经板块，已存在标题跳过；
+#     默认作者取最早的启用管理员，可用 INTERVIEW_IMPORT_AUTHOR 指定。
 #   - 迁移失败时脚本退出并打印 `deploy/scripts/restore.sh` 回滚命令，由人工决定是否恢复。
 set -euo pipefail
 
@@ -50,8 +54,9 @@ Theseus 服务器增量更新：备份 -> 运行镜像 -> 构建 -> 先迁移 ->
   4. docker compose build
   5. 停止 backend 与两个 Worker，仅启动新 backend 应用增量迁移
   6. 执行题面配图补丁（backend-rust/scripts/patch_problem_images.sql）
-  7. 启动其余服务
-  8. 核对新增迁移、失败迁移与健康状态
+  7. 导入 doc/interview 面经（需已有管理员账号，已存在标题跳过）
+  8. 启动其余服务
+  9. 核对新增迁移、失败迁移与健康状态
 EOF
 }
 
@@ -339,6 +344,39 @@ if [[ -f "$PATCH_IMAGES" ]]; then
     fi
 fi
 
+# 题面配图随 git pull 更新：前端容器以只读方式挂载该目录，无需重建镜像。
+IMAGE_DIR="$ROOT/frontend-vue/public/problem-images"
+IMAGE_COUNT=$(find "$IMAGE_DIR" -maxdepth 1 -type f \
+    \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' -o -name '*.gif' \) \
+    2>/dev/null | wc -l | tr -d '[:space:]')
+say "题面配图：${IMAGE_COUNT} 张（挂载生效，无需重建镜像）"
+
+# ---------- 5.6 面经导入 ----------
+# doc/interview 是面经的原始来源，不随镜像入库；这里按标题补新增，不覆盖
+# 已有帖子，避免冲掉界面里的编辑。需要强制同步 Markdown 时设置
+# INTERVIEW_IMPORT_UPDATE=1 或手动执行 import_interview.sh --update。
+IMPORT_INTERVIEW="$ROOT/backend-rust/scripts/import_interview.sh"
+INTERVIEW_DIR="$ROOT/doc/interview"
+FIRST_INTERVIEW=$(find "$INTERVIEW_DIR" -type f -name '*.md' ! -name 'README.md' -print -quit 2>/dev/null || true)
+if [[ -x "$IMPORT_INTERVIEW" ]] && [[ -n "$FIRST_INTERVIEW" ]]; then
+    INTERVIEW_AUTHOR=${INTERVIEW_IMPORT_AUTHOR:-}
+    if [[ -z "$INTERVIEW_AUTHOR" ]]; then
+        INTERVIEW_AUTHOR=$(db_psql -tA -c \
+            "SELECT username FROM users WHERE role = 'admin' AND status = 'active' ORDER BY id LIMIT 1" 2>/dev/null || true)
+    fi
+    if [[ -n "$INTERVIEW_AUTHOR" ]]; then
+        say "导入面经（作者：$INTERVIEW_AUTHOR）"
+        import_args=(--author "$INTERVIEW_AUTHOR" --docker)
+        [[ "${INTERVIEW_IMPORT_UPDATE:-0}" == "1" ]] && import_args+=(--update)
+        if ! IMPORT_COMPOSE_FILE="$DEPLOY/compose.yaml" IMPORT_COMPOSE_ENV="$DEPLOY/.env" \
+            "$IMPORT_INTERVIEW" "${import_args[@]}"; then
+            warn "面经导入失败，可手动重试：./backend-rust/scripts/import_interview.sh --author $INTERVIEW_AUTHOR --docker"
+        fi
+    else
+        warn "未找到可用管理员，跳过面经导入（注册并提升管理员后重跑 update.sh）"
+    fi
+fi
+
 # ---------- 6. 启动全部服务 ----------
 say "启动全部服务"
 "${COMPOSE[@]}" up -d
@@ -358,6 +396,22 @@ if command -v curl >/dev/null 2>&1; then
         say "前端响应正常：http://127.0.0.1:${port}/"
     else
         warn "前端未在 5 秒内响应，请检查：${COMPOSE[*]} logs frontend"
+    fi
+    if ((IMAGE_COUNT > 0)); then
+        first_image=$(find "$IMAGE_DIR" -maxdepth 1 -type f \
+            \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' -o -name '*.gif' \) \
+            -print -quit 2>/dev/null || true)
+        image_name=$(basename "$first_image")
+        # 只校验安全文件名；缺图时 nginx 返回 404，旧镜像会回退成 index.html。
+        if [[ -n "$first_image" ]] && [[ "$image_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            image_type=$(curl -fsS --max-time 5 -o /dev/null -w '%{content_type}' \
+                "http://127.0.0.1:${port}/problem-images/${image_name}" || true)
+            if [[ "$image_type" == image/* ]]; then
+                say "题面配图可访问：/problem-images/${image_name}（共 ${IMAGE_COUNT} 张）"
+            else
+                warn "题面配图无法访问（返回 ${image_type:-无响应}），检查挂载：${COMPOSE[*]} exec frontend ls /usr/share/nginx/html/problem-images"
+            fi
+        fi
     fi
 fi
 

@@ -104,7 +104,7 @@ git pull
 ./update.sh
 ```
 
-`update.sh` 会备份数据库与 uploads、检查并（在缺失或定义变化时）重建判题运行镜像、构建服务镜像、先用新 backend 应用增量迁移，确认迁移成功后再执行题面配图补丁（`backend-rust/scripts/patch_problem_images.sql`）、启动 Worker 与前端，并在最后核对健康状态；失败时打印回滚命令。可用 `--skip-build` 复用现有服务镜像、`--skip-runners` 跳过运行镜像检查，或 `--no-backup` 跳过备份（不推荐）。
+`update.sh` 会备份数据库与 uploads、检查并（在缺失或定义变化时）重建判题运行镜像、构建服务镜像、先用新 backend 应用增量迁移，确认迁移成功后执行题面配图补丁（`backend-rust/scripts/patch_problem_images.sql`）并导入 `doc/interview` 面经，再启动 Worker 与前端，最后核对健康状态并抽查配图；失败时打印回滚命令。题面配图目录以只读方式挂载进前端容器，`git pull` 后图片即时生效，不需要重建镜像。可用 `--skip-build` 复用现有服务镜像、`--skip-runners` 跳过运行镜像检查，或 `--no-backup` 跳过备份（不推荐）。
 
 `deploy/.env` 不会被脚本覆盖。升级后若 `.env.example` 新增了配置项，先执行 `deploy/scripts/merge_env.sh --dry-run` 查看缺失项，确认后去掉 `--dry-run` 追加；已有值保持不变，占位符项会提示手工填写。改完 `.env` 后执行 `cd deploy && docker compose up -d` 使配置生效。
 

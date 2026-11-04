@@ -161,6 +161,9 @@ services:
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-8080}:80"
+    volumes:
+      # 题面配图直接读宿主机文件：git pull 后即时生效，无需重建前端镜像。
+      - ../frontend-vue/public/problem-images:/usr/share/nginx/html/problem-images:ro
     depends_on:
       backend:
         condition: service_healthy

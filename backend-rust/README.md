@@ -224,9 +224,12 @@ redis-cli --scan --pattern 'theseus:submit:worker:*'
 ./backend-rust/scripts/import_interview.sh --author <用户名>      # 导入并发布
 ./backend-rust/scripts/import_interview.sh --author <用户名> --update  # 覆盖已存在标题
 ./backend-rust/scripts/import_interview.sh --author <用户名> --update --no-answers  # 只导入题目
+./backend-rust/scripts/import_interview.sh --author <用户名> --docker --update  # 服务器上通过 postgres 容器写库
 ```
 
 - 导入为 `board = 'interview'` 的已发布帖子，作者必填
+- `--docker` 读取 `deploy/.env`，用 `docker compose exec postgres psql` 执行，服务器无需安装 psql
+- 服务器 `./update.sh` 会自动执行一次导入：默认作者取最早的启用管理员，已存在标题跳过
 - `--no-answers` 只保留题目与 `**题目**` / `**题意**` 描述；面试流程、复盘、待补充与答案都不导入
 - 标签取 frontmatter 的 `tags`，自动加入公司，最多 8 个
 - `interview_date` 取 frontmatter 的 `date`，列表与详情优先显示面试时间
@@ -258,7 +261,7 @@ python3 scripts/generate_judge_cases.py --check    # 用参考解逐条复核现
 
 重跑 `seed_problems_15.sql` 会通过 `ON CONFLICT` 把新的 `judge_cases` 更新到已有题目上。
 
-服务器上已有题库的题面配图更新不要靠重跑种子（会覆盖管理端修改），而是在 `scripts/patch_problem_images.sql` 里按题目 ID 追加幂等 `UPDATE`；`update.sh` 每次升级都会自动执行该文件。图片本身放在 `frontend-vue/public/problem-images/`，题目内用 `/problem-images/<文件名>` 引用。
+服务器上已有题库的题面配图更新不要靠重跑种子（会覆盖管理端修改），而是在 `scripts/patch_problem_images.sql` 里按题目 ID 追加幂等 `UPDATE`；`update.sh` 每次升级都会自动执行该文件。图片本身放在 `frontend-vue/public/problem-images/`，题目内用 `/problem-images/<文件名>` 引用；部署时该目录只读挂载到前端容器，`git pull` 后图片立即生效，无需重建前端镜像。
 
 `seed_problems_82.sql` 由 `scripts/generate_problem_seed.py` 生成：题目元数据、公开用例和参考解分别放在 `scripts/problem_catalog_easy.py`（1116-1145）、`problem_catalog_medium.py`（1146-1179）、`problem_catalog_hard.py`（1180-1197），隐藏用例由参考解逐条算出，四种语言模板与 `run_config.rs` 的输出保持一致。修改题目后重新生成并校验：
 
