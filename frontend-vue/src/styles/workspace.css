@@ -831,31 +831,370 @@ body.is-resizing-rows {
   color: var(--color-danger);
 }
 
-.submit-success {
+body.accepted-celebration-open {
+  overflow: hidden;
+}
+
+.accepted-celebration {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--color-success);
-  border-radius: 6px;
-  background: var(--color-success-soft);
+  justify-content: center;
+  padding: clamp(16px, 4vw, 48px);
+  overflow: hidden;
+  background: rgba(12, 18, 14, 0.72);
+  backdrop-filter: blur(8px);
+  animation: accepted-backdrop-in 220ms ease-out both;
+}
+
+.accepted-celebration-glow {
+  position: absolute;
+  width: min(1000px, 120vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-success) 48%, transparent) 0%,
+    color-mix(in srgb, var(--color-success) 18%, transparent) 34%,
+    transparent 68%
+  );
+  filter: blur(10px);
+  animation: accepted-glow-pulse 3.2s ease-in-out infinite;
+}
+
+.accepted-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.accepted-confetti-piece {
+  position: absolute;
+  top: -14vh;
+  display: block;
+  line-height: 1;
+  will-change: transform, opacity;
+  animation-name: accepted-confetti-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.2));
+}
+
+.accepted-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  padding: clamp(28px, 5vw, 42px) clamp(22px, 5vw, 48px) 24px;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--color-success) 42%, var(--color-border));
+  border-radius: 30px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-success-soft) 72%, var(--color-surface)) 0%,
+      var(--color-surface) 42%
+    );
+  box-shadow:
+    0 40px 110px rgba(5, 15, 9, 0.42),
+    0 0 0 1px color-mix(in srgb, var(--color-success) 25%, transparent),
+    inset 0 1px rgba(255, 255, 255, 0.28);
+  outline: none;
+  text-align: center;
+  animation: accepted-dialog-in 520ms cubic-bezier(0.18, 1.25, 0.36, 1) both;
+}
+
+.accepted-dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  font-size: 24px;
+  line-height: 1;
+  transition:
+    color var(--duration),
+    background-color var(--duration);
+}
+
+.accepted-dialog-close:hover {
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  color: var(--color-text);
+}
+
+.accepted-emblem {
+  position: relative;
+  display: grid;
+  width: 104px;
+  height: 104px;
+  place-items: center;
+  margin: 2px auto 18px;
+  border: 3px solid var(--color-success);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 28%,
+    color-mix(in srgb, var(--color-surface) 92%, white) 0%,
+    var(--color-success-soft) 72%
+  );
+  box-shadow:
+    0 0 0 10px color-mix(in srgb, var(--color-success) 14%, transparent),
+    0 18px 42px color-mix(in srgb, var(--color-success) 28%, transparent);
   color: var(--color-success);
+  animation: accepted-emblem-pop 680ms cubic-bezier(0.18, 1.35, 0.36, 1) 100ms both;
+}
+
+.accepted-emblem::after {
+  position: absolute;
+  inset: -17px;
+  border: 1px solid color-mix(in srgb, var(--color-success) 55%, transparent);
+  border-radius: inherit;
+  content: '';
+  animation: accepted-emblem-ring 1.8s ease-out 650ms infinite;
+}
+
+.accepted-emblem span {
+  font-size: 56px;
+  font-weight: 800;
+  line-height: 1;
+  transform: translateY(-3px);
+}
+
+.accepted-eyebrow {
+  color: var(--color-success);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.accepted-dialog h2 {
+  margin-top: 6px;
+  font-size: clamp(28px, 5vw, 38px);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+
+.accepted-problem {
+  margin: 10px auto 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  font-weight: 550;
+}
+
+.accepted-message {
+  margin-top: 5px;
+  color: var(--color-text-muted);
   font-size: 14px;
 }
 
-.submit-success-icon {
+.accepted-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 26px 0 24px;
+  padding: 0;
+}
+
+.accepted-stats > div {
+  min-width: 0;
+  padding: 13px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, var(--color-success));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-bg) 72%, transparent);
+}
+
+.accepted-stats dt {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.accepted-stats dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.accepted-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.accepted-primary,
+.accepted-secondary {
   display: inline-flex;
-  flex: none;
+  min-height: 46px;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--color-success);
-  color: var(--color-surface);
+  gap: 6px;
+  padding: 0 22px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  transition:
+    background-color var(--duration),
+    border-color var(--duration),
+    transform var(--duration);
+}
+
+.accepted-primary {
+  border: 1px solid var(--color-success);
+  background: var(--color-success-soft);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+
+.accepted-primary:hover {
+  background: color-mix(in srgb, var(--color-success) 22%, var(--color-success-soft));
+  transform: translateY(-1px);
+}
+
+.accepted-secondary {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.accepted-secondary:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.accepted-hint {
+  margin-top: 18px;
+  color: var(--color-text-muted);
   font-size: 11px;
-  line-height: 1;
+}
+
+@keyframes accepted-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes accepted-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes accepted-emblem-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.45) rotate(-18deg);
+  }
+  70% {
+    transform: scale(1.08) rotate(3deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+}
+
+@keyframes accepted-emblem-ring {
+  from {
+    opacity: 0.7;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.28);
+  }
+}
+
+@keyframes accepted-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.58;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes accepted-confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -12vh, 0) rotate(0) scale(0.7);
+  }
+  8% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.9;
+    transform: translate3d(var(--confetti-drift), 118vh, 0)
+      rotate(var(--confetti-spin)) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .accepted-dialog {
+    padding: 30px 20px 22px;
+    border-radius: 24px;
+  }
+
+  .accepted-emblem {
+    width: 88px;
+    height: 88px;
+  }
+
+  .accepted-emblem span {
+    font-size: 46px;
+  }
+
+  .accepted-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .accepted-actions {
+    flex-direction: column;
+  }
+
+  .accepted-primary,
+  .accepted-secondary {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accepted-celebration,
+  .accepted-dialog,
+  .accepted-emblem,
+  .accepted-emblem::after,
+  .accepted-celebration-glow {
+    animation: none;
+  }
+
+  .accepted-confetti {
+    display: none;
+  }
 }
 
 .editor-actions {

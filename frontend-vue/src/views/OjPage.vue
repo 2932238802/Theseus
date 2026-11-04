@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
+import AcceptedCelebration from '../components/AcceptedCelebration.vue'
 import AiAssistantPanel from '../components/AiAssistantPanel.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 import FailedCaseSaveControl from '../components/FailedCaseSaveControl.vue'
@@ -115,6 +116,8 @@ let historyRequestSequence = 0
 const isRunDialogOpen = ref(false)
 const isShortcutDialogOpen = ref(false)
 const isPlusDialogOpen = ref(false)
+const acceptedSubmission = ref<Submission | null>(null)
+const acceptedProblemTitle = ref('')
 const runMode = ref<RunMode>('examples')
 const runInput = ref('')
 const runInputError = ref('')
@@ -558,6 +561,8 @@ const loadPage = async (): Promise<void> => {
   activeOutputTab.value = 'submit'
   problemTab.value = 'description'
   isRunDialogOpen.value = false
+  acceptedSubmission.value = null
+  acceptedProblemTitle.value = ''
   if (contestId.value) {
     assignment.value = null
     assignmentError.value = ''
@@ -595,6 +600,16 @@ const loadNeighbors = async (id: number): Promise<void> => {
 const goToProblem = async (id: number | null): Promise<void> => {
   if (id === null) return
   await router.push({ name: 'problem', params: { id } })
+}
+
+const closeAcceptedCelebration = (): void => {
+  acceptedSubmission.value = null
+}
+
+const goToNextProblemFromCelebration = (): void => {
+  const id = nextProblemId.value
+  acceptedSubmission.value = null
+  void goToProblem(id)
 }
 
 const openRandomProblem = async (): Promise<void> => {
@@ -680,7 +695,8 @@ const submitCode = async (): Promise<void> => {
       contestId.value ?? undefined,
     )
     if (final?.status === 'Accepted') {
-      toast.success('通过全部测试用例')
+      acceptedProblemTitle.value = problemStore.currentProblem.title
+      acceptedSubmission.value = final
     }
     if (final && historyLoaded.value) void loadHistory(1)
   } catch {
@@ -719,6 +735,10 @@ const openHistoryTab = (): void => {
   if (authStore.isAuthenticated && !historyLoaded.value && !historyLoading.value) {
     void loadHistory(1)
   }
+}
+const openAcceptedSubmissionHistory = (): void => {
+  acceptedSubmission.value = null
+  openHistoryTab()
 }
 const openHistoryDetail = async (item: Submission): Promise<void> => {
   historyDetailLoading.value = true
@@ -925,6 +945,7 @@ const isTypingTarget = (target: EventTarget | null): boolean => {
 
 const onShortcutKeydown = (event: KeyboardEvent): void => {
   if (event.defaultPrevented || event.isComposing || event.repeat) return
+  if (acceptedSubmission.value) return
   const inEditor =
     event.target instanceof HTMLElement && Boolean(event.target.closest('.monaco-editor'))
   // AI 面板的输入框也是输入目标；关闭面板的快捷键需要在这里放行，
@@ -1494,7 +1515,7 @@ onBeforeUnmount(() => {
               <p v-else-if="!runStore.isRunning" class="output-placeholder">运行代码后将在这里显示结果</p>
             </template>
             <template v-else-if="activeOutputTab === 'submit'">
-              <template v-if="submissionStore.latest"><div v-if="isAccepted" class="submit-success" role="status"><span class="submit-success-icon" aria-hidden="true">✓</span><strong>{{ submissionStore.latest.message }}</strong></div><p v-else>{{ submissionStore.latest.message }}</p><dl><div v-if="submissionStore.latest.totalTestCases"><dt>通过用例</dt><dd>{{ submissionStore.latest.testCasesPassed }} / {{ submissionStore.latest.totalTestCases }}</dd></div><div v-if="submissionStore.latest.runtime"><dt>执行用时</dt><dd>{{ submissionStore.latest.runtime }}</dd></div><div v-if="submissionStore.latest.memory"><dt>内存消耗</dt><dd>{{ submissionStore.latest.memory }}</dd></div></dl>
+              <template v-if="submissionStore.latest"><p>{{ submissionStore.latest.message }}</p><dl><div v-if="submissionStore.latest.totalTestCases"><dt>通过用例</dt><dd>{{ submissionStore.latest.testCasesPassed }} / {{ submissionStore.latest.totalTestCases }}</dd></div><div v-if="submissionStore.latest.runtime"><dt>执行用时</dt><dd>{{ submissionStore.latest.runtime }}</dd></div><div v-if="submissionStore.latest.memory"><dt>内存消耗</dt><dd>{{ submissionStore.latest.memory }}</dd></div></dl>
                 <div v-if="submissionStore.latest.compileOutput" class="run-block"><span>编译输出</span><pre>{{ submissionStore.latest.compileOutput }}</pre></div>
                 <template v-if="latestFailedCase">
                   <div class="run-block"><span>失败用例 #{{ latestFailedCase.index + 1 }} · 输入</span><pre>{{ formatInline(latestFailedCase.args) }}</pre></div>
@@ -1675,6 +1696,20 @@ onBeforeUnmount(() => {
       </footer>
     </section>
   </div>
+
+  <AcceptedCelebration
+    v-if="acceptedSubmission"
+    :problem-title="acceptedProblemTitle"
+    :language="languageLabel(acceptedSubmission.language)"
+    :test-cases-passed="acceptedSubmission.testCasesPassed"
+    :total-test-cases="acceptedSubmission.totalTestCases"
+    :runtime="acceptedSubmission.runtime"
+    :memory="acceptedSubmission.memory"
+    :has-next="nextProblemId !== null"
+    @close="closeAcceptedCelebration"
+    @view-history="openAcceptedSubmissionHistory"
+    @next="goToNextProblemFromCelebration"
+  />
 
   <ShortcutDialog v-if="isShortcutDialogOpen" @close="isShortcutDialogOpen = false" />
 </template>
