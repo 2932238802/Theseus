@@ -166,6 +166,7 @@ export const mapExamples = (value: unknown): ProblemExample[] => {
     input: typeof example.input === 'string' ? example.input : String(example.input ?? ''),
     output: typeof example.output === 'string' ? example.output : String(example.output ?? ''),
     explanation: typeof example.explanation === 'string' ? example.explanation : undefined,
+    image: typeof example.image === 'string' && example.image.trim() ? example.image.trim() : undefined,
   }))
 }
 

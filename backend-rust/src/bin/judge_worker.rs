@@ -1305,14 +1305,62 @@ fn build_cases(row: &CodeRunRow, config: &RunConfig) -> Result<Vec<CasePlan>, St
     Ok(vec![(args, None)])
 }
 
+/// 进程没有写出结果文件时，用退出码和 stderr 还原更具体的原因。
+/// 段错误等信号通常 stderr 为空，此时退出码是唯一线索。
+fn describe_missing_result(outcome: &SandboxOutcome) -> String {
+    let base = match outcome.exit_code {
+        Some(139) => "程序发生段错误（SIGSEGV），常见原因是空指针、数组越界或递归过深".to_owned(),
+        Some(134) => "程序被终止（SIGABRT），可能是未捕获异常、断言失败或内存分配失败".to_owned(),
+        Some(136) => "程序发生算术异常（SIGFPE），例如整数除以零".to_owned(),
+        Some(135) => "程序发生总线错误（SIGBUS）".to_owned(),
+        Some(132) => "程序触发非法指令（SIGILL）".to_owned(),
+        Some(143) => "程序被终止（SIGTERM）".to_owned(),
+        Some(code) if code > 128 => format!("程序被信号终止（信号 {}）", code - 128),
+        Some(0) => "程序正常退出但没有生成结果文件，可能是入口函数未按约定返回".to_owned(),
+        Some(code) => format!("程序异常退出（退出码 {code}）"),
+        None => "运行未生成结果文件".to_owned(),
+    };
+    match stderr_summary(&outcome.stderr) {
+        Some(line) => format!("{base}：{line}"),
+        None => base,
+    }
+}
+
+/// 从 stderr 取一行最能说明问题的文本：异常的头部行或尾部行。
+fn stderr_summary(stderr: &str) -> Option<String> {
+    let lines: Vec<&str> = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let first = *lines.first()?;
+    let last = *lines.last()?;
+    // Python 的 traceback 首行固定是 Traceback...，真正的原因在最后一行；
+    // 其它语言的异常、panic 信息通常在首行。
+    let chosen = if first.starts_with("Traceback (most recent call last)") {
+        last
+    } else {
+        first
+    };
+    Some(truncate_chars(chosen, 200))
+}
+
+fn truncate_chars(value: &str, limit: usize) -> String {
+    if value.chars().count() <= limit {
+        return value.to_owned();
+    }
+    let mut truncated: String = value.chars().take(limit).collect();
+    truncated.push('…');
+    truncated
+}
+
 fn build_case_result(
     index: i32,
     args: &[Value],
     expected: &Option<Value>,
     outcome: &SandboxOutcome,
     config: &RunConfig,
-) -> (RunCaseResult, bool, Option<String>) {
-    let runtime_ms = outcome
+) -> (RunCaseResult, bool, Option<String>) {    let runtime_ms = outcome
         .result
         .as_ref()
         .map(|result| result.runtime_ms)
@@ -1353,7 +1401,7 @@ fn build_case_result(
                         .unwrap_or_else(|| "运行时错误".to_owned()),
                 ),
             ),
-            None => ("runtime_error", Some("运行未生成结果文件".to_owned())),
+            None => ("runtime_error", Some(describe_missing_result(outcome))),
         }
     };
     let matched = expected.as_ref().map(|_| case_status == "passed");

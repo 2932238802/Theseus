@@ -1492,7 +1492,7 @@ onBeforeUnmount(() => {
                     <header><span>示例 {{ item.index + 1 }}</span><span :class="['case-status', item.status]">{{ RUN_CASE_STATUS_LABELS[item.status] }}</span></header>
                     <div class="run-block"><span>输入</span><pre>{{ formatArgs(item.args, runConfig?.params) }}</pre></div>
                     <div class="run-block"><span>期望</span><pre>{{ formatInline(item.expected) }}</pre></div>
-                    <div v-if="item.actual !== undefined" class="run-block"><span>实际</span><pre>{{ formatInline(item.actual) }}</pre></div>
+                    <div v-if="(item.status === 'passed' || item.status === 'failed') && item.actual !== undefined" class="run-block"><span>实际</span><pre>{{ formatInline(item.actual) }}</pre></div>
                     <div v-if="item.stdout" class="run-block"><span>stdout</span><pre>{{ item.stdout }}</pre></div>
                     <div v-if="item.stderr" class="run-block"><span>stderr</span><pre>{{ item.stderr }}</pre></div>
                     <FailedCaseSaveControl
