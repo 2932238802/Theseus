@@ -41,10 +41,16 @@ pub struct ProblemResponse {
     pub accept_count: i32,
     pub status: Option<String>,
     pub favorited: bool,
+    pub can_edit_judge_cases: bool,
 }
 
 impl ProblemRow {
-    pub fn response(self, status: Option<String>, favorited: bool) -> ProblemResponse {
+    pub fn response(
+        self,
+        status: Option<String>,
+        favorited: bool,
+        can_edit_judge_cases: bool,
+    ) -> ProblemResponse {
         ProblemResponse {
             id: self.id,
             number: self.number,
@@ -64,6 +70,7 @@ impl ProblemRow {
             accept_count: self.accept_count,
             status,
             favorited,
+            can_edit_judge_cases,
         }
     }
 }

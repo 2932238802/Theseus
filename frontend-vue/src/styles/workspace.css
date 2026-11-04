@@ -715,6 +715,44 @@ body.is-resizing-rows {
   font-size: 12px;
 }
 
+.judge-case-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.judge-case-save label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.judge-case-save input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--color-accent);
+}
+
+.judge-case-save .teaching-secondary-button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.judge-case-save .form-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .case-status.passed {
   color: var(--color-success);
 }

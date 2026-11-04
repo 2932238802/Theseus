@@ -63,6 +63,8 @@ export interface Problem {
   submitCount: number
   acceptCount: number
   favorited: boolean
+  /** 当前登录用户是否为题目作者或管理员，可维护隐藏测试用例。 */
+  canEditJudgeCases?: boolean
 }
 
 export interface SubmissionCaseResult {

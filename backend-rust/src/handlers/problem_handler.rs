@@ -4,6 +4,7 @@ use axum::{
     http::HeaderMap,
     response::IntoResponse,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{FromRow, PgPool, Postgres, QueryBuilder};
 
@@ -25,6 +26,7 @@ use crate::{
         ProblemNeighborsResponse, ProblemRequest, ProblemResponse, ProblemReviewRequest,
         ProblemRow, StatsResponse,
     },
+    models::run::PublicCase,
     services::{
         audit_service::{self, AuditContext, AuditRecord},
         notification_service,
@@ -63,6 +65,7 @@ struct ProblemWithStatusRow {
     acceptance_rate: f64,
     submit_count: i32,
     accept_count: i32,
+    created_by: Option<i32>,
     status: Option<String>,
     favorited: bool,
 }
@@ -76,8 +79,22 @@ struct ReviewProblemRow {
     judge_cases: Option<Value>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AddJudgeCaseRequest {
+    pub args: Vec<Value>,
+    pub expected: Value,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AddJudgeCaseResponse {
+    pub added: bool,
+    pub total: usize,
+}
+
 impl ProblemWithStatusRow {
-    fn response(self) -> ProblemResponse {
+    fn response(self, can_edit_judge_cases: bool) -> ProblemResponse {
+        let status = self.status;
+        let favorited = self.favorited;
         ProblemRow {
             id: self.id,
             number: self.number,
@@ -96,7 +113,7 @@ impl ProblemWithStatusRow {
             accept_count: self.accept_count,
             favorited: self.favorited,
         }
-        .response(self.status, self.favorited)
+        .response(status, favorited, can_edit_judge_cases)
     }
 }
 
@@ -129,7 +146,7 @@ pub async fn list(
         size,
         problems: problems
             .into_iter()
-            .map(ProblemWithStatusRow::response)
+            .map(|problem| problem.response(false))
             .collect(),
     }))
 }
@@ -162,11 +179,10 @@ pub async fn get(
     if id <= 0 {
         return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
     }
-    let user_id = optional_authenticate(&state.pool, &headers, &state.config)
-        .await
-        .map(|user| user.id);
+    let user = optional_authenticate(&state.pool, &headers, &state.config).await;
+    let user_id = user.as_ref().map(|user| user.id);
     let row = sqlx::query_as::<_, ProblemWithStatusRow>(
-        "SELECT p.id, (SELECT COUNT(*) FROM problems ranked WHERE ranked.review_status = 'approved' AND ranked.id <= p.id) AS number, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status, EXISTS (SELECT 1 FROM favorites f WHERE f.problem_id = p.id AND f.user_id = $2) AS favorited FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = $2 WHERE p.id = $1 AND p.review_status = 'approved'",
+        "SELECT p.id, (SELECT COUNT(*) FROM problems ranked WHERE ranked.review_status = 'approved' AND ranked.id <= p.id) AS number, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, p.created_by, ups.status, EXISTS (SELECT 1 FROM favorites f WHERE f.problem_id = p.id AND f.user_id = $2) AS favorited FROM problems p LEFT JOIN user_problem_status ups ON ups.problem_id = p.id AND ups.user_id = $2 WHERE p.id = $1 AND p.review_status = 'approved'",
     )
     .bind(id)
     .bind(user_id)
@@ -174,7 +190,10 @@ pub async fn get(
     .await
     .map_err(AppError::Database)?
     .ok_or_else(|| AppError::NotFound("题目不存在".to_owned()))?;
-    Ok(ok(row.response()))
+    let can_edit_judge_cases = user
+        .as_ref()
+        .is_some_and(|user| user.is_admin() || row.created_by == Some(user.id));
+    Ok(ok(row.response(can_edit_judge_cases)))
 }
 
 /// 答题页的上一题 / 下一题：题库顺序就是已审核题目的 id 升序。
@@ -480,6 +499,97 @@ pub async fn update_mine(
     }))
 }
 
+/// Appends a failed case to the problem's hidden judging set. This is limited
+/// to the problem author and administrators because hidden cases affect all
+/// future submissions. Duplicate cases, including public cases, are ignored.
+pub async fn add_judge_case(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+    Json(request): Json<AddJudgeCaseRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user = authenticate(&state.pool, &headers, &state.config).await?;
+    if id <= 0 {
+        return Err(AppError::BadRequest("题目 ID 无效".to_owned()));
+    }
+    let context = AuditContext::from_headers(&headers);
+    let mut transaction = state.pool.begin().await.map_err(AppError::Database)?;
+    let row = sqlx::query_as::<_, (String, Option<i32>, Option<Value>, Option<Value>)>(
+        "SELECT title, created_by, run_config, judge_cases FROM problems WHERE id = $1 FOR UPDATE",
+    )
+    .bind(id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or_else(|| AppError::NotFound("题目不存在".to_owned()))?;
+    let (title, created_by, run_config_value, judge_cases_value) = row;
+    if !user.is_admin() && created_by != Some(user.id) {
+        return Err(AppError::ForbiddenWith(
+            "只有题目作者或管理员可以修改测试用例".to_owned(),
+        ));
+    }
+    let run_config = validate_run_config(
+        run_config_value
+            .as_ref()
+            .ok_or_else(|| AppError::BadRequest("该题尚未配置评测参数".to_owned()))?,
+    )?;
+    let mut hidden_cases = match judge_cases_value.as_ref().filter(|value| !value.is_null()) {
+        Some(value) => validate_judge_cases(&run_config, value)?,
+        None => Vec::new(),
+    };
+    let case = PublicCase {
+        args: request.args,
+        expected: request.expected,
+    };
+    let candidate =
+        json!(
+            [
+                serde_json::to_value(&case)
+                    .map_err(|error| AppError::Internal(error.to_string()))?
+            ]
+        );
+    validate_judge_cases(&run_config, &candidate)?;
+    let already_exists = hidden_cases
+        .iter()
+        .chain(run_config.public_cases.iter())
+        .any(|existing| existing.args == case.args && existing.expected == case.expected);
+    if already_exists {
+        transaction.commit().await.map_err(AppError::Database)?;
+        return Ok(ok(AddJudgeCaseResponse {
+            added: false,
+            total: hidden_cases.len(),
+        }));
+    }
+    hidden_cases.push(case);
+    let updated_cases = serde_json::to_value(&hidden_cases)
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    validate_judge_cases(&run_config, &updated_cases)?;
+    let total = hidden_cases.len();
+    sqlx::query(
+        "UPDATE problems SET judge_cases = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+    )
+    .bind(&updated_cases)
+    .bind(id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(AppError::Database)?;
+    audit_service::record_tx(
+        &mut transaction,
+        &user,
+        &context,
+        AuditRecord::new(
+            "problem.judge_cases.add",
+            "problem",
+            Some(i64::from(id)),
+            format!("向题目《{title}》新增 1 条隐藏测试用例"),
+        )
+        .after(json!({ "judge_cases_total": total })),
+    )
+    .await?;
+    transaction.commit().await.map_err(AppError::Database)?;
+    Ok(ok(AddJudgeCaseResponse { added: true, total }))
+}
+
 pub async fn admin_get(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -768,7 +878,7 @@ async fn fetch_problem_page(
 
     let offset = (page.saturating_sub(1) as i64) * i64::from(size);
     let mut builder = QueryBuilder::<Postgres>::new(
-        "WITH ranked AS (SELECT id, ROW_NUMBER() OVER (ORDER BY id ASC) AS number FROM problems WHERE review_status = 'approved') SELECT p.id, ranked.number, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, ups.status, EXISTS (SELECT 1 FROM favorites f WHERE f.problem_id = p.id AND f.user_id = ",
+        "WITH ranked AS (SELECT id, ROW_NUMBER() OVER (ORDER BY id ASC) AS number FROM problems WHERE review_status = 'approved') SELECT p.id, ranked.number, p.title, p.description, p.difficulty, p.time_limit, p.memory_limit, p.tags, p.examples, p.test_cases, p.code_template, p.run_config, p.acceptance_rate, p.submit_count, p.accept_count, p.created_by, ups.status, EXISTS (SELECT 1 FROM favorites f WHERE f.problem_id = p.id AND f.user_id = ",
     );
     builder.push_bind(user_id);
     builder.push(

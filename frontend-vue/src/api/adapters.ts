@@ -43,6 +43,7 @@ export interface BackendProblem {
   accept_count: number
   status: string | null
   favorited?: boolean
+  can_edit_judge_cases?: boolean
 }
 
 export interface BackendProblemList {
@@ -248,6 +249,7 @@ export const mapProblem = (problem: BackendProblem): Problem => ({
   submitCount: problem.submit_count,
   acceptCount: problem.accept_count,
   favorited: problem.favorited === true,
+  canEditJudgeCases: problem.can_edit_judge_cases === true,
 })
 
 const mapFailedCase = (value: unknown): SubmissionCaseResult | undefined => {

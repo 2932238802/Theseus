@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import AiAssistantPanel from '../components/AiAssistantPanel.vue'
 import CodeEditor from '../components/CodeEditor.vue'
+import FailedCaseSaveControl from '../components/FailedCaseSaveControl.vue'
 import ShortcutDialog from '../components/ShortcutDialog.vue'
 import ProblemDiscussionPanel from '../components/ProblemDiscussionPanel.vue'
 import ProblemNotePanel from '../components/ProblemNotePanel.vue'
@@ -35,7 +36,7 @@ import {
 } from '../utils/constants'
 import { SHORTCUT_ACTIONS, displayShortcut, matchesShortcut, resolveBinding } from '../utils/shortcuts'
 import type { Language, Submission } from '../types/oj'
-import type { RunMode } from '../types/run'
+import type { RunCase, RunMode } from '../types/run'
 import { formatArgs, formatInline } from '../utils/format'
 import { useContestEvents } from '../utils/contestEvents'
 import { inspectPaste } from '../utils/pasteInspection'
@@ -294,6 +295,9 @@ const runDisabledReason = computed(() => {
   return ''
 })
 const hasPublicCases = computed(() => (runConfig.value?.publicCases.length ?? 0) > 0)
+const canEditJudgeCases = computed(
+  () => contestId.value === null && problemStore.currentProblem?.canEditJudgeCases === true,
+)
 const runButtonLabel = computed(() => {
   if (!runStore.isRunning) return '运行'
   const current = runStore.status?.status
@@ -866,6 +870,11 @@ const quickRun = async (): Promise<void> => {
   }
   await openRunDialog()
 }
+
+const canOfferJudgeCase = (runCase: RunCase): boolean =>
+  canEditJudgeCases.value &&
+  runCase.expected !== undefined &&
+  runCase.status !== 'passed'
 
 const shortcutHint = (actionId: string): string => {
   const action = SHORTCUT_ACTIONS.find((item) => item.id === actionId)
@@ -1460,6 +1469,13 @@ onBeforeUnmount(() => {
                     <div v-if="item.actual !== undefined" class="run-block"><span>实际</span><pre>{{ formatInline(item.actual) }}</pre></div>
                     <div v-if="item.stdout" class="run-block"><span>stdout</span><pre>{{ item.stdout }}</pre></div>
                     <div v-if="item.stderr" class="run-block"><span>stderr</span><pre>{{ item.stderr }}</pre></div>
+                    <FailedCaseSaveControl
+                      v-if="canOfferJudgeCase(item) && problemStore.currentProblem"
+                      :key="`run-${runStore.detail.id}-${item.index}`"
+                      :problem-id="problemStore.currentProblem.id"
+                      :args="item.args"
+                      :expected="item.expected"
+                    />
                     <p v-if="item.truncated" class="run-note">输出超过 64 KB 已截断</p>
                   </div>
                 </template>
@@ -1486,6 +1502,13 @@ onBeforeUnmount(() => {
                   <div v-if="latestFailedCase.actual !== null" class="run-block"><span>实际</span><pre>{{ formatInline(latestFailedCase.actual) }}</pre></div>
                   <div v-if="latestFailedCase.stdout" class="run-block"><span>stdout</span><pre>{{ latestFailedCase.stdout }}</pre></div>
                   <div v-if="latestFailedCase.stderr" class="run-block"><span>stderr</span><pre>{{ latestFailedCase.stderr }}</pre></div>
+                  <FailedCaseSaveControl
+                    v-if="canEditJudgeCases && latestFailedCase.expected !== undefined && problemStore.currentProblem"
+                    :key="`submit-${submissionStore.latest?.id ?? 'latest'}-${latestFailedCase.index}`"
+                    :problem-id="problemStore.currentProblem.id"
+                    :args="latestFailedCase.args"
+                    :expected="latestFailedCase.expected"
+                  />
                 </template>
               </template>
               <p v-else class="output-placeholder">提交代码后将在这里显示评测结果</p>
@@ -1591,6 +1614,13 @@ onBeforeUnmount(() => {
             <div v-if="historyDetail.failedCase.actual !== null" class="run-block"><span>实际</span><pre>{{ formatInline(historyDetail.failedCase.actual) }}</pre></div>
             <div v-if="historyDetail.failedCase.stdout" class="run-block"><span>stdout</span><pre>{{ historyDetail.failedCase.stdout }}</pre></div>
             <div v-if="historyDetail.failedCase.stderr" class="run-block"><span>stderr</span><pre>{{ historyDetail.failedCase.stderr }}</pre></div>
+            <FailedCaseSaveControl
+              v-if="canEditJudgeCases && historyDetail.failedCase.expected !== undefined && problemStore.currentProblem"
+              :key="`history-${historyDetail.id}-${historyDetail.failedCase.index}`"
+              :problem-id="problemStore.currentProblem.id"
+              :args="historyDetail.failedCase.args"
+              :expected="historyDetail.failedCase.expected"
+            />
           </template>
           <div class="history-code-block">
             <div class="history-code-heading">

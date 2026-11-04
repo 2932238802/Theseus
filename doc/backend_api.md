@@ -63,6 +63,7 @@ cargo run
 | GET | `/api/problems/random` | 否 | 随机返回一道已通过审核的题目 `{problem_id}` |
 | GET | `/api/problems/tags` | 否 | 已审核题目的去重标签数组 |
 | GET | `/api/problems/{id}` | 可选 | 已审核题目详情，登录时 `favorited` 表示是否已收藏 |
+| POST | `/api/problems/{id}/judge-cases` | 题目作者 / 管理员 | 将一条失败用例追加到隐藏测试用例；请求 `{args,expected}`，自动去重并返回 `{added,total}` |
 | GET | `/api/problems/{id}/neighbors` | 否 | 答题页上一题/下一题：`{total,prev_id,next_id}`，顺序为已审核题目 id 升序 |
 | POST | `/api/problems/{id}/favorite` | 用户 | 收藏题目 |
 | DELETE | `/api/problems/{id}/favorite` | 用户 | 取消收藏题目 |
@@ -190,6 +191,8 @@ cargo run
 非法 `sort`/`order` 返回 400。登录失败（用户不存在或密码错误）返回 401 与 `用户名或密码错误`。
 
 题目列表与详情额外返回 `number`：按已发布题目的数据库 `id` 升序连续编号的题号（1、2、3…），用于题库展示；`id` 仍是路由与判题使用的数据库主键。
+
+题目详情额外返回 `can_edit_judge_cases`：当前登录用户为题目作者或管理员时为 `true`，前端据此在失败用例旁展示「加入测试用例」控件；比赛题目不展示。追加接口只允许新增、不覆盖已有隐藏用例，并复用 `validate_judge_cases` 校验参数与返回类型。
 
 ### 个人出题
 

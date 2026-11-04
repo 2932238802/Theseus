@@ -71,6 +71,23 @@ export const fetchProblemNeighbors = async (id: number): Promise<ProblemNeighbor
   }
 }
 
+export interface AddJudgeCaseResult {
+  added: boolean
+  total: number
+}
+
+export const addJudgeCase = async (
+  problemId: number,
+  args: unknown,
+  expected: unknown,
+): Promise<AddJudgeCaseResult> =>
+  unwrap(
+    http.post<ApiEnvelope<AddJudgeCaseResult>>(`/problems/${problemId}/judge-cases`, {
+      args,
+      expected,
+    }),
+  )
+
 export const fetchTags = async (): Promise<string[]> => {
   return unwrap(http.get<ApiEnvelope<string[]>>('/problems/tags'))
 }

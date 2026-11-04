@@ -419,6 +419,10 @@ pub fn router(state: AppState) -> Router {
             get(draft_handler::get).put(draft_handler::save),
         )
         .route(
+            "/api/problems/{id}/judge-cases",
+            axum::routing::post(problem_handler::add_judge_case),
+        )
+        .route(
             "/api/problems/{id}/note",
             get(note_handler::get).put(note_handler::save),
         )
