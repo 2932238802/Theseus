@@ -397,6 +397,18 @@ if command -v curl >/dev/null 2>&1; then
     else
         warn "前端未在 5 秒内响应，请检查：${COMPOSE[*]} logs frontend"
     fi
+    if [[ ",${COMPOSE_PROFILES:-}," == *",observability,"* ]]; then
+        if curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/ready"; then
+            say "Prometheus 就绪：http://127.0.0.1:${PROMETHEUS_PORT:-9090}"
+        else
+            warn "Prometheus 未就绪，请检查：${COMPOSE[*]} logs prometheus"
+        fi
+        if curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:${GRAFANA_PORT:-3001}/api/health"; then
+            say "Grafana 就绪：http://127.0.0.1:${GRAFANA_PORT:-3001}"
+        else
+            warn "Grafana 未就绪，请检查：${COMPOSE[*]} logs grafana"
+        fi
+    fi
     if ((IMAGE_COUNT > 0)); then
         first_image=$(find "$IMAGE_DIR" -maxdepth 1 -type f \
             \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' -o -name '*.gif' \) \

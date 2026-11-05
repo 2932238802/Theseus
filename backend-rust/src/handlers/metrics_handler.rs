@@ -93,6 +93,21 @@ async fn append_queue_metrics(body: &mut String, state: &AppState) {
         ),
     ];
 
+    append_header(
+        body,
+        "theseus_judge_queue_enabled",
+        "gauge",
+        "Whether each judge queue is enabled, regardless of Redis availability.",
+    );
+    for (kind, _, _, enabled) in queues {
+        append_gauge(
+            body,
+            "theseus_judge_queue_enabled",
+            &[("queue", kind)],
+            if enabled { 1.0 } else { 0.0 },
+        );
+    }
+
     let Some(mut conn) = state.redis.clone() else {
         append_header(
             body,

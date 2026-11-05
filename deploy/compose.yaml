@@ -20,6 +20,16 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    # 预加载 pg_stat_statements，供 deploy/scripts/pg_stats.sh 采集慢查询。
+    # 扩展本身仍需执行一次 CREATE EXTENSION，见脚本 enable 子命令。
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.max=1000
+      - -c
+      - pg_stat_statements.track=all
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-theseus}
       POSTGRES_USER: ${POSTGRES_USER:-theseus}
@@ -171,7 +181,73 @@ services:
         condition: service_started
     logging: *default-logging
 
+  # ---- 可观测性（可选）----
+  # 启用方式：在 deploy/.env 中加入 COMPOSE_PROFILES=observability，
+  # 或临时使用 docker compose --profile observability up -d。
+  # 三个端口都只绑定本机，公网访问请走 SSH 隧道或自行加反代与鉴权。
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["observability"]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+      - --web.listen-address=0.0.0.0:9090
+    volumes:
+      - ./observability/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    logging: *default-logging
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    profiles: ["observability"]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
+    env_file: .env
+    environment:
+      # 复用后端邮件配置；未设置 ALERT_EMAIL_TO 时不生成 email_configs。
+      SMTP_SMARTHOST: ${EMAIL_SMTP_HOST:-}:${EMAIL_SMTP_PORT:-587}
+      SMTP_FROM: ${EMAIL_FROM:-}
+      SMTP_USERNAME: ${EMAIL_SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      SMTP_REQUIRE_TLS: ${EMAIL_SMTP_TLS:-true}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    volumes:
+      - ./observability/alertmanager/entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    profiles: ["observability"]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/theseus-overview.json
+    volumes:
+      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    depends_on:
+      - prometheus
+    logging: *default-logging
+
 volumes:
   pgdata:
   redisdata:
   uploads:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:

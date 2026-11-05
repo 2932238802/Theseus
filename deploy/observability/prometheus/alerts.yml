@@ -1,0 +1,119 @@
+# Theseus 告警规则。
+# 指标定义见 doc/2611051_可观测性落地方案.md 与 backend-rust/src/handlers/metrics_handler.rs。
+# 告警经同网络内的 Alertmanager 分组，再投递到邮件或通用 webhook。
+
+groups:
+  - name: theseus-availability
+    rules:
+      - alert: TheseusBackendDown
+        expr: up{job="theseus-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Theseus API 不可达
+          description: Prometheus 已连续 1 分钟无法抓取 {{ $labels.instance }} 的 /metrics，请检查 backend 容器与 /readyz
+
+      - alert: TheseusAlertmanagerDown
+        expr: up{job="alertmanager"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Alertmanager 不可达
+          description: Prometheus 连续 2 分钟无法抓取 alertmanager:9093，告警可能无法投递
+
+      - alert: TheseusHigh5xxRate
+        expr: |
+          sum(rate(theseus_http_requests_total{status="5xx"}[5m]))
+            /
+          clamp_min(sum(rate(theseus_http_requests_total[5m])), 0.001) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: API 5xx 比例超过 1%
+          description: 最近 5 分钟 5xx 占比 {{ $value | humanizePercentage }}，检查 backend 日志与数据库连接
+
+      - alert: TheseusHighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(theseus_http_request_duration_seconds_bucket[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: API P95 延迟超过 1 秒
+          description: 最近 10 分钟全局 P95 为 {{ $value }} 秒，检查慢查询、判题队列与连接池水位
+
+  - name: theseus-judge
+    rules:
+      - alert: TheseusJudgeWorkerDown
+        expr: theseus_judge_worker_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 判题 Worker 心跳丢失（{{ $labels.kind }}）
+          description: 队列 {{ $labels.kind }} 连续 2 分钟没有存活心跳，任务会持续积压
+
+      - alert: TheseusJudgeMetricsMissing
+        expr: (theseus_judge_queue_enabled == 1) unless on (queue) theseus_judge_stream_length
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 判题队列指标不可读（{{ $labels.queue }}）
+          description: 队列 {{ $labels.queue }} 已启用但 5 分钟没有 Stream 指标，通常是 Redis 连接异常
+
+      - alert: TheseusJudgeBacklog
+        expr: theseus_judge_stream_length{queue=~"run|submit|anticheat"} > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 判题队列积压（{{ $labels.queue }}）
+          description: 队列 {{ $labels.queue }} 连续 10 分钟超过 50 条，检查 Worker 并发与运行镜像
+
+      - alert: TheseusJudgePendingHigh
+        expr: theseus_judge_stream_pending{queue=~"run|submit"} > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 判题任务长时间未确认（{{ $labels.queue }}）
+          description: 队列 {{ $labels.queue }} 连续 10 分钟有超过 20 条已投递未 ACK 的消息，检查 Worker 卡死与超时配置
+
+      - alert: TheseusJudgeDeadLetters
+        expr: theseus_judge_dead_letters{queue=~"run|submit|anticheat"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 判题死信队列非空（{{ $labels.queue }}）
+          description: 队列 {{ $labels.queue }} 存在重试超限的任务，需要人工排查后清理
+
+  - name: theseus-runtime
+    rules:
+      - alert: TheseusDbPoolSaturated
+        expr: |
+          theseus_db_pool_connections{state="size"}
+            /
+          clamp_min(theseus_db_pool_connections{state="max"}, 1) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 数据库连接池接近上限
+          description: 连接池使用率连续 10 分钟超过 90%，检查慢查询并评估 DB_MAX_CONNECTIONS
+
+      - alert: TheseusMatchmakingErrors
+        expr: increase(theseus_contest_match_errors_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: 排位匹配批次出错
+          description: 最近 10 分钟匹配批次出现 {{ $value }} 次错误，检查 contest_service 日志

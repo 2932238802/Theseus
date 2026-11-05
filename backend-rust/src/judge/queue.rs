@@ -129,11 +129,13 @@ async fn read_one_field(
                         "ignoring queue message without numeric id"
                     );
                     let _: i64 = conn
-                        .xack(stream, group, &[entry.id])
+                        .xack(stream, group, std::slice::from_ref(&entry.id))
                         .await
                         .map_err(|error| {
                             AppError::Internal(format!("Redis 丢弃无效任务失败: {error}"))
                         })?;
+                    let _: Result<i64, _> =
+                        conn.xdel(stream, std::slice::from_ref(&entry.id)).await;
                 }
             }
         }
@@ -151,6 +153,13 @@ pub async fn ack(
         .xack(stream, group, &[message_id])
         .await
         .map_err(|error| AppError::Internal(format!("Redis 确认任务失败: {error}")))?;
+    // 每个判题 Stream 只有一个消费组，确认后删除条目不会影响其他消费者。
+    // 不删除时 XLEN 会随历史任务单调增长，队列积压指标与 Stream 内存都无法反映真实待处理量。
+    // 先 XACK 再 XDEL：即使删除失败，任务也不会被重复投递。
+    let deleted: Result<i64, _> = conn.xdel(stream, &[message_id]).await;
+    if let Err(error) = deleted {
+        tracing::warn!(stream, message_id, %error, "删除已确认的队列条目失败");
+    }
     Ok(())
 }
 

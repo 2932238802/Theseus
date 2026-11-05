@@ -1360,7 +1360,8 @@ fn build_case_result(
     expected: &Option<Value>,
     outcome: &SandboxOutcome,
     config: &RunConfig,
-) -> (RunCaseResult, bool, Option<String>) {    let runtime_ms = outcome
+) -> (RunCaseResult, bool, Option<String>) {
+    let runtime_ms = outcome
         .result
         .as_ref()
         .map(|result| result.runtime_ms)

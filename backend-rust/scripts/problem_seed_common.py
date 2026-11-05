@@ -47,6 +47,47 @@ class Problem:
     memory_limit: int = 256
 
 
+def make_problem(
+    *,
+    pid: int,
+    title: str,
+    difficulty: str,
+    tags: list[str],
+    description: str,
+    function: str,
+    params: list[tuple[str, str]],
+    returns: str,
+    solver: Callable[..., Any],
+    public: list[list[Any]],
+    hidden: list[list[Any]],
+    compare: dict[str, Any] | None = None,
+    time_limit: int = 1000,
+    memory_limit: int = 256,
+) -> Problem:
+    """构造题目，并用参考解直接算出公开用例的期望输出。
+
+    批量目录文件（`problem_catalog_b*_*.py`）统一复用这个辅助函数，
+    避免每个文件重复一遍 `expected_public` 的计算逻辑。
+    """
+    return Problem(
+        pid=pid,
+        title=title,
+        difficulty=difficulty,
+        tags=tags,
+        description=description,
+        function=function,
+        params=params,
+        returns=returns,
+        solver=solver,
+        public=public,
+        expected_public=[solver(*args) for args in public],
+        hidden=hidden,
+        compare=compare or {"mode": "exact"},
+        time_limit=time_limit,
+        memory_limit=memory_limit,
+    )
+
+
 # ── 树 / 链表工具（参考解使用） ────────────────────────────────────
 
 
