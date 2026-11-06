@@ -240,7 +240,7 @@ redis-cli --scan --pattern 'theseus:submit:worker:*'
 
 ## 开发种子数据
 
-仅用于本地/测试环境。五个种子脚本合计写入 400 道题：`seed_dev.sql` 写入固定 ID 1001-1003 的三道题；`seed_problems_15.sql` 写入固定 ID 1101-1115 的 15 道题（6 道简单、6 道中等、3 道困难）；`seed_problems_82.sql` 写入固定 ID 1116-1197 的 82 道题（30 道简单、34 道中等、18 道困难）；`seed_problems_100.sql` 写入固定 ID 1200-1299 的 100 道题（35 道简单、45 道中等、20 道困难）；`seed_problems_batch1.sql` 写入固定 ID 1300-1499 的 200 道题（75 道简单、85 道中等、40 道困难）。每题都带 `run_config`、公开用例、隐藏 `judge_cases` 和四种语言的代码模板，可直接用于运行与提交评测。`seed_admin.sql` 创建管理员账号 `admin`（密码 `admin`，邮箱 `admin@theseus.local`，邮箱已验证）；脚本幂等，已存在的账号不会被覆盖：
+仅用于本地/测试环境。七个种子脚本合计写入 1000 道题：`seed_dev.sql` 写入固定 ID 1001-1003 的三道题；`seed_problems_15.sql` 写入固定 ID 1101-1115 的 15 道题（6 道简单、6 道中等、3 道困难）；`seed_problems_82.sql` 写入固定 ID 1116-1197 的 82 道题（30 道简单、34 道中等、18 道困难）；`seed_problems_100.sql` 写入固定 ID 1200-1299 的 100 道题（35 道简单、45 道中等、20 道困难）；`seed_problems_batch1.sql` 至 `seed_problems_batch4.sql` 分别写入固定 ID 1300-1499、1500-1699、1700-1899、1900-2099 的 200 道题，每批均为 75 道简单、85 道中等、40 道困难。每题都带 `run_config`、公开用例、隐藏 `judge_cases` 和四种语言的代码模板，可直接用于运行与提交评测。`seed_admin.sql` 创建管理员账号 `admin`（密码 `admin`，邮箱 `admin@theseus.local`，邮箱已验证）；脚本幂等，已存在的账号不会被覆盖：
 
 ```bash
 psql "$DATABASE_URL" -f scripts/seed_admin.sql
@@ -249,6 +249,9 @@ psql "$DATABASE_URL" -f scripts/seed_problems_15.sql
 psql "$DATABASE_URL" -f scripts/seed_problems_82.sql
 psql "$DATABASE_URL" -f scripts/seed_problems_100.sql
 psql "$DATABASE_URL" -f scripts/seed_problems_batch1.sql
+psql "$DATABASE_URL" -f scripts/seed_problems_batch2.sql
+psql "$DATABASE_URL" -f scripts/seed_problems_batch3.sql
+psql "$DATABASE_URL" -f scripts/seed_problems_batch4.sql
 psql "$DATABASE_URL" -f scripts/clean_dev.sql  # 清理全部固定 ID 种子题
 ```
 
@@ -280,12 +283,13 @@ python3 scripts/generate_extra_problem_seed.py            # 重写 seed_problems
 python3 scripts/generate_extra_problem_seed.py --check    # 校验现有文件是否需要更新
 ```
 
-`seed_problems_batch1.sql` 由 `scripts/generate_bulk_problem_seed.py --batch 1` 生成：新增的 200 道题按难度拆成六个目录文件——`problem_catalog_b1_easy_1.py`（1300-1337，38 道）、`problem_catalog_b1_easy_2.py`（1338-1374，37 道）、`problem_catalog_b1_medium_1.py`（1375-1416，42 道）、`problem_catalog_b1_medium_2.py`（1417-1459，43 道）、`problem_catalog_b1_hard_1.py`（1460-1479，20 道）、`problem_catalog_b1_hard_2.py`（1480-1499，20 道）。生成前会校验 ID 连续、批次内标题不重复且不与既有 200 题（seed_dev、15、82、100）重名，并用参考解逐条计算隐藏用例：
+`seed_problems_batch1.sql` 至 `seed_problems_batch4.sql` 由 `scripts/generate_bulk_problem_seed.py --batch 1|2|3|4` 生成。每批 200 道题按难度拆成六个目录文件：第一批为 `problem_catalog_b1_easy_1.py`（1300-1337，38 道）、`problem_catalog_b1_easy_2.py`（1338-1374，37 道）、`problem_catalog_b1_medium_1.py`（1375-1416，42 道）、`problem_catalog_b1_medium_2.py`（1417-1459，43 道）、`problem_catalog_b1_hard_1.py`（1460-1479，20 道）、`problem_catalog_b1_hard_2.py`（1480-1499，20 道）；第二至第四批分别对应 `problem_catalog_b2_*`、`problem_catalog_b3_*`、`problem_catalog_b4_*`，ID 区间为 1500-1699、1700-1899、1900-2099，各文件数量与第一批相同。生成前会校验 ID 连续、批次内标题不重复且不与既有 200 题及其它批次重名，并用参考解逐条计算隐藏用例：
 
 ```bash
-python3 scripts/generate_bulk_problem_seed.py --batch 1 --dry-run  # 校验定义与参考解，打印统计
-python3 scripts/generate_bulk_problem_seed.py --batch 1            # 重写 seed_problems_batch1.sql
-python3 scripts/generate_bulk_problem_seed.py --batch 1 --check    # 校验现有文件是否需要更新
+# 将 4 换成 1、2、3 即可生成对应批次
+python3 scripts/generate_bulk_problem_seed.py --batch 4 --dry-run  # 校验定义与参考解，打印统计
+python3 scripts/generate_bulk_problem_seed.py --batch 4            # 重写 seed_problems_batch4.sql
+python3 scripts/generate_bulk_problem_seed.py --batch 4 --check    # 校验现有文件是否需要更新
 ```
 
 管理员账号仅用于本地开发/测试，部署到公网前必须修改密码或删除该账号。日常角色调整请使用 `/admin/users`，由接口执行“学生退出组织、教师归档自有组织、最后一个管理员保护”等校验。

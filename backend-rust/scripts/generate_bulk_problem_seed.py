@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """生成批量题库种子 SQL。
 
-当前支持第一批：1300-1499 共 200 道新增函数式题目。
+当前支持第一批（1300-1499）、第二批（1500-1699）、第三批（1700-1899）与第四批（1900-2099），每批 200 道新增函数式题目。
 
 用法：
-    python3 scripts/generate_bulk_problem_seed.py            # 重写 seed_problems_batch1.sql
-    python3 scripts/generate_bulk_problem_seed.py --dry-run  # 只校验并打印统计
-    python3 scripts/generate_bulk_problem_seed.py --check    # 校验现有 seed 文件是否最新
+    python3 scripts/generate_bulk_problem_seed.py --batch 1            # 重写 seed_problems_batch1.sql
+    python3 scripts/generate_bulk_problem_seed.py --batch 2            # 重写 seed_problems_batch2.sql
+    python3 scripts/generate_bulk_problem_seed.py --batch 3            # 重写 seed_problems_batch3.sql
+    python3 scripts/generate_bulk_problem_seed.py --batch 4            # 重写 seed_problems_batch4.sql
+    python3 scripts/generate_bulk_problem_seed.py --batch 4 --dry-run  # 只校验并打印统计
+    python3 scripts/generate_bulk_problem_seed.py --batch 4 --check    # 校验现有 seed 文件是否最新
 
 题库由原有 200 题（seed_dev.sql、seed_problems_15.sql、seed_problems_82.sql、
-seed_problems_100.sql）与本脚本生成的第一批 200 题共同组成，合计 400 题。
+seed_problems_100.sql）与四批新增题共同组成，合计 1000 题。
 """
 
 from __future__ import annotations
@@ -26,6 +29,24 @@ import problem_catalog_b1_hard_1
 import problem_catalog_b1_hard_2
 import problem_catalog_b1_medium_1
 import problem_catalog_b1_medium_2
+import problem_catalog_b2_easy_1
+import problem_catalog_b2_easy_2
+import problem_catalog_b2_hard_1
+import problem_catalog_b2_hard_2
+import problem_catalog_b2_medium_1
+import problem_catalog_b2_medium_2
+import problem_catalog_b3_easy_1
+import problem_catalog_b3_easy_2
+import problem_catalog_b3_hard_1
+import problem_catalog_b3_hard_2
+import problem_catalog_b3_medium_1
+import problem_catalog_b3_medium_2
+import problem_catalog_b4_easy_1
+import problem_catalog_b4_easy_2
+import problem_catalog_b4_hard_1
+import problem_catalog_b4_hard_2
+import problem_catalog_b4_medium_1
+import problem_catalog_b4_medium_2
 from problem_catalog_easy import PROBLEMS as BASE_EASY
 from problem_catalog_extra_easy import PROBLEMS as EXTRA_EASY
 from problem_catalog_extra_hard import PROBLEMS as EXTRA_HARD
@@ -64,6 +85,62 @@ BATCHES = {
             "合计 400 题。"
         ),
     },
+    2: {
+        "first_id": 1500,
+        "last_id": 1699,
+        "seed_path": SCRIPT_DIR / "seed_problems_batch2.sql",
+        "modules": (
+            problem_catalog_b2_easy_1,
+            problem_catalog_b2_easy_2,
+            problem_catalog_b2_medium_1,
+            problem_catalog_b2_medium_2,
+            problem_catalog_b2_hard_1,
+            problem_catalog_b2_hard_2,
+        ),
+        "related_seeds": (
+            "与 seed_dev.sql（1001-1003）、seed_problems_15.sql（1101-1115）、"
+            "seed_problems_82.sql（1116-1197）、seed_problems_100.sql（1200-1299）、"
+            "seed_problems_batch1.sql（1300-1499）合计 600 题。"
+        ),
+    },
+    3: {
+        "first_id": 1700,
+        "last_id": 1899,
+        "seed_path": SCRIPT_DIR / "seed_problems_batch3.sql",
+        "modules": (
+            problem_catalog_b3_easy_1,
+            problem_catalog_b3_easy_2,
+            problem_catalog_b3_medium_1,
+            problem_catalog_b3_medium_2,
+            problem_catalog_b3_hard_1,
+            problem_catalog_b3_hard_2,
+        ),
+        "related_seeds": (
+            "与 seed_dev.sql（1001-1003）、seed_problems_15.sql（1101-1115）、"
+            "seed_problems_82.sql（1116-1197）、seed_problems_100.sql（1200-1299）、"
+            "seed_problems_batch1.sql（1300-1499）、seed_problems_batch2.sql（1500-1699）"
+            "合计 800 题。"
+        ),
+    },
+    4: {
+        "first_id": 1900,
+        "last_id": 2099,
+        "seed_path": SCRIPT_DIR / "seed_problems_batch4.sql",
+        "modules": (
+            problem_catalog_b4_easy_1,
+            problem_catalog_b4_easy_2,
+            problem_catalog_b4_medium_1,
+            problem_catalog_b4_medium_2,
+            problem_catalog_b4_hard_1,
+            problem_catalog_b4_hard_2,
+        ),
+        "related_seeds": (
+            "与 seed_dev.sql（1001-1003）、seed_problems_15.sql（1101-1115）、"
+            "seed_problems_82.sql（1116-1197）、seed_problems_100.sql（1200-1299）、"
+            "seed_problems_batch1.sql（1300-1499）、seed_problems_batch2.sql（1500-1699）、"
+            "seed_problems_batch3.sql（1700-1899）合计 1000 题。"
+        ),
+    },
 }
 
 
@@ -99,6 +176,11 @@ def load_problems(batch: int) -> tuple[list[Problem], dict]:
             title.replace("''", "'")
             for _, title in re.findall(r"\n    (\d+),\n    '((?:[^']|'')*)',", text)
         )
+    for other_batch, other_config in BATCHES.items():
+        if other_batch == batch:
+            continue
+        for module in other_config["modules"]:
+            base_titles.update(problem.title for problem in module.PROBLEMS)
     overlaps = [title for title in titles if title in base_titles]
     if overlaps:
         raise SystemExit(f"新增题目与原有题库重名：{overlaps}")

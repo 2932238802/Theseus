@@ -75,6 +75,9 @@ psql "$DATABASE_URL" -f backend-rust/scripts/seed_problems_15.sql
 psql "$DATABASE_URL" -f backend-rust/scripts/seed_problems_82.sql
 psql "$DATABASE_URL" -f backend-rust/scripts/seed_problems_100.sql
 psql "$DATABASE_URL" -f backend-rust/scripts/seed_problems_batch1.sql
+psql "$DATABASE_URL" -f backend-rust/scripts/seed_problems_batch2.sql
+psql "$DATABASE_URL" -f backend-rust/scripts/seed_problems_batch3.sql
+psql "$DATABASE_URL" -f backend-rust/scripts/seed_problems_batch4.sql
 psql "$DATABASE_URL" -f backend-rust/scripts/seed_admin.sql   # 仅本地开发
 ```
 
