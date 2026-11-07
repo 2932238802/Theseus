@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -80,3 +84,78 @@ jobs:
           node-version: 22
       - name: node --check
         run: node --input-type=module --check < deploy/load/k6-theseus.js
+
+  images:
+    name: publish ${{ matrix.image }}
+    needs: [backend, frontend, scripts, load-scripts]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: backend
+            context: backend-rust
+            target: ""
+          - image: lsp
+            context: backend-rust
+            target: lsp
+          - image: frontend
+            context: frontend-vue
+            target: ""
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve image prefix
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "prefix=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # GHA layer cache alone does not export RUN cache mounts.
+      - uses: actions/cache@v4
+        if: matrix.image != 'frontend'
+        with:
+          path: .buildkit-cache
+          key: cargo-buildkit-${{ runner.os }}-${{ matrix.image }}-${{ hashFiles('backend-rust/Cargo.lock', 'backend-rust/Dockerfile') }}-${{ github.sha }}
+          restore-keys: |
+            cargo-buildkit-${{ runner.os }}-${{ matrix.image }}-${{ hashFiles('backend-rust/Cargo.lock', 'backend-rust/Dockerfile') }}-
+      - uses: reproducible-containers/buildkit-cache-dance@v3
+        if: matrix.image != 'frontend'
+        with:
+          cache-map: |
+            {
+              ".buildkit-cache/registry": {"target": "/usr/local/cargo/registry", "id": "theseus-cargo-registry"},
+              ".buildkit-cache/git": {"target": "/usr/local/cargo/git", "id": "theseus-cargo-git"},
+              ".buildkit-cache/target": {"target": "/src/target", "id": "theseus-cargo-target-amd64"}
+            }
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.image.outputs.prefix }}/${{ matrix.image }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            CARGO_BUILD_JOBS=2
+            VITE_API_BASE_URL=/api
+            VITE_SUBMIT_JUDGE_ENABLED=true
+          cache-from: type=gha,scope=images-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=images-${{ matrix.image }}
+      - name: Deployment reference
+        env:
+          PREFIX: ${{ steps.image.outputs.prefix }}
+          SHA: ${{ github.sha }}
+        run: |
+          printf '### %s image published\n\n`%s/%s:%s`\n\nManual deploy only; no server was changed.\n' \
+            '${{ matrix.image }}' "$PREFIX" '${{ matrix.image }}' "$SHA" >> "$GITHUB_STEP_SUMMARY"

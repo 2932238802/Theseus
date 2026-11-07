@@ -3,7 +3,8 @@
 # 更新后核对新增迁移与健康状态；失败时打印回滚命令，不自动覆盖数据库。
 #
 # 用法：
-#   ./update.sh                  # 完整更新（推荐）
+#   ./update.sh                  # 配置 IMAGE_PREFIX 后拉取 CI 镜像，否则兼容本机构建
+#   ./update.sh --build          # 本机构建备用方式
 #   ./update.sh --skip-build     # 不重新构建服务镜像，仅重启并应用镜像内已有迁移
 #   ./update.sh --skip-runners   # 跳过判题运行镜像的检查与重建
 #   ./update.sh --no-backup      # 跳过更新前备份（不推荐）
@@ -27,6 +28,8 @@ ROOT=$(cd "$(dirname "$0")" && pwd)
 DEPLOY="$ROOT/deploy"
 
 DO_BUILD=1
+IMAGE_MODE=""
+REQUESTED_TAG=""
 DO_BACKUP=1
 DO_RUNNERS=1
 
@@ -42,6 +45,9 @@ Theseus 服务器增量更新：备份 -> 运行镜像 -> 构建 -> 先迁移 ->
   ./update.sh [选项]
 
 选项：
+  --pull           拉取 CI 镜像（配置 IMAGE_PREFIX 后的默认方式）
+  --build          本机构建，使用 theseus/*:latest 作为备用方式
+  --tag SHA        指定镜像版本，必须与当前仓库 HEAD 的完整 SHA 一致
   --skip-build     跳过服务镜像构建，使用现有镜像（镜像内没有新迁移时不会更新数据库）
   --skip-runners   跳过判题运行镜像的检查与重建
   --no-backup      跳过更新前备份（不推荐）
@@ -51,7 +57,7 @@ Theseus 服务器增量更新：备份 -> 运行镜像 -> 构建 -> 先迁移 ->
   1. 记录当前迁移版本，对比仓库 migrations/ 列出待应用迁移
   2. 调用 deploy/scripts/backup.sh 备份数据库与 uploads
   3. 检查判题运行镜像，缺失或定义有变化时重新构建
-  4. docker compose build
+  4. 拉取 CI 镜像或 docker compose build（--build）
   5. 停止 backend 与两个 Worker，仅启动新 backend 应用增量迁移
   6. 执行题面配图补丁（backend-rust/scripts/patch_problem_images.sql）
   7. 导入 doc/interview 面经（需已有管理员账号，已存在标题跳过）
@@ -62,7 +68,10 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --skip-build) DO_BUILD=0 ;;
+        --pull) [[ -z "$IMAGE_MODE" ]] || die "构建模式不能重复指定"; IMAGE_MODE=pull ;;
+        --build) [[ -z "$IMAGE_MODE" ]] || die "构建模式不能重复指定"; IMAGE_MODE=build ;;
+        --tag) shift; [[ $# -gt 0 && -n "$1" ]] || die "--tag 缺少版本"; REQUESTED_TAG=$1 ;;
+        --skip-build) [[ -z "$IMAGE_MODE" ]] || die "构建模式不能重复指定"; IMAGE_MODE=existing; DO_BUILD=0 ;;
         --skip-runners) DO_RUNNERS=0 ;;
         --no-backup) DO_BACKUP=0 ;;
         -h|--help) usage; exit 0 ;;
@@ -88,6 +97,25 @@ set -a
 # shellcheck disable=SC1091
 source .env
 set +a
+
+# 镜像与仓库代码必须同版：迁移、题面补丁及挂载内容都来自当前 checkout。
+if [[ -z "$IMAGE_MODE" ]]; then
+    if [[ -n "${IMAGE_PREFIX:-}" ]]; then IMAGE_MODE=pull; else IMAGE_MODE=build; fi
+fi
+if [[ "$IMAGE_MODE" == pull ]]; then
+    [[ -n "${IMAGE_PREFIX:-}" ]] || die "拉取模式需要在 deploy/.env 配置 IMAGE_PREFIX=ghcr.io/owner/repository"
+    [[ "$IMAGE_PREFIX" =~ ^ghcr\.io/[a-z0-9._/-]+$ ]] || die "IMAGE_PREFIX 必须是全小写 GHCR 路径，不包含标签"
+    head_sha=$(git -C "$ROOT" rev-parse HEAD)
+    export IMAGE_TAG=${REQUESTED_TAG:-$head_sha}
+    [[ "$IMAGE_TAG" == "$head_sha" ]] || die "镜像 SHA 必须与当前 HEAD 一致，请先 checkout 对应版本再部署"
+    [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=normal)" ]] || die "拉取模式要求干净的工作区，避免代码与镜像版本不一致"
+    export IMAGE_PREFIX
+elif [[ "$IMAGE_MODE" == build ]]; then
+    [[ -z "$REQUESTED_TAG" ]] || die "--tag 仅用于 --pull 模式"
+    export IMAGE_PREFIX=theseus IMAGE_TAG=latest
+else
+    [[ -z "$REQUESTED_TAG" ]] || die "--tag 仅用于 --pull 模式"
+fi
 
 PGUSER=${POSTGRES_USER:-theseus}
 PGDB=${POSTGRES_DB:-theseus}
@@ -162,6 +190,8 @@ print_rollback() {
         echo "  未创建更新前备份（--no-backup），请手动检查数据库。"
     fi
     echo "  ${COMPOSE[*]} up -d"
+    echo "  镜像与代码必须同版：记录旧部署 SHA，checkout 旧提交后使用对应 SHA 镜像"
+    echo "  切回旧镜像不会撤销数据库迁移；先确认兼容性，再决定是否恢复备份"
     echo "  注意：恢复会回到更新前备份，更新期间产生的写入会丢失。"
 }
 
@@ -242,6 +272,16 @@ ensure_runner_images() {
     say "判题运行镜像构建完成（$(tr -d '[:space:]' <"$RUNNER_STATE")）"
 }
 
+# 拉取失败在任何停服或数据库变更前退出。
+if [[ "$IMAGE_MODE" == pull ]]; then
+    say "拉取 CI 镜像：${IMAGE_PREFIX}:${IMAGE_TAG}"
+    "${COMPOSE[@]}" pull backend frontend lsp || die "拉取失败，未停止服务；检查版本是否已发布及 GHCR 登录权限"
+    for service in backend frontend lsp; do
+        revision=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "${IMAGE_PREFIX}/${service}:${IMAGE_TAG}")
+        [[ "$revision" == "$IMAGE_TAG" ]] || die "${service} 镜像 revision 与目标 SHA 不一致，已中止"
+    done
+fi
+
 # ---------- 1. 更新前检查 ----------
 git_head=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)
 say "更新前检查（当前提交：$git_head）"
@@ -299,11 +339,13 @@ fi
 ensure_runner_images
 
 # ---------- 4. 构建服务镜像 ----------
-if ((DO_BUILD)); then
+if [[ "$IMAGE_MODE" == build ]]; then
     say "构建服务镜像（复用 Cargo 依赖与增量编译缓存）"
     DOCKER_BUILDKIT=1 "${COMPOSE[@]}" build || fail_update "镜像构建失败，服务保持原样；请确认已安装 Docker Buildx 并支持 BuildKit"
-else
+elif [[ "$IMAGE_MODE" == existing ]]; then
     warn "--skip-build：使用现有镜像"
+else
+    say "CI 镜像已就绪，跳过本机服务镜像编译"
 fi
 
 # ---------- 5. 应用增量迁移 ----------
@@ -311,7 +353,7 @@ say "停止 backend 与 Worker，保留 postgres/redis"
 "${COMPOSE[@]}" stop backend judge-worker anticheat-worker
 
 say "启动 backend 以应用增量迁移（最多等待 240 秒）"
-"${COMPOSE[@]}" up -d --no-deps backend
+"${COMPOSE[@]}" up -d --no-build --no-deps backend
 if ! wait_backend 240; then
     fail_update "backend 未在 240 秒内变为 healthy，迁移可能失败"
 fi
@@ -379,7 +421,7 @@ fi
 
 # ---------- 6. 启动全部服务 ----------
 say "启动全部服务"
-"${COMPOSE[@]}" up -d
+"${COMPOSE[@]}" up -d --no-build
 
 if ! wait_backend 120; then
     fail_update "重启后 backend 未恢复 healthy"
@@ -427,6 +469,17 @@ if command -v curl >/dev/null 2>&1; then
     fi
 fi
 
+if [[ "$IMAGE_MODE" != existing ]]; then
+    # 只更新非敏感镜像选择；保留其余 .env 配置和注释。
+    env_tmp=$(mktemp "$DEPLOY/.env.images.XXXXXX")
+    chmod --reference="$DEPLOY/.env" "$env_tmp"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        case "$line" in IMAGE_PREFIX=*|IMAGE_TAG=*) continue ;; esac
+        printf '%s\n' "$line"
+    done < "$DEPLOY/.env" > "$env_tmp"
+    printf '\nIMAGE_PREFIX=%s\nIMAGE_TAG=%s\n' "$IMAGE_PREFIX" "$IMAGE_TAG" >> "$env_tmp"
+    mv "$env_tmp" "$DEPLOY/.env"
+fi
 say "更新完成（提交：$git_head）"
 if [[ -n "$DB_DUMP" ]]; then
     echo "    更新前备份：$DB_DUMP"
