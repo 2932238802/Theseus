@@ -1,5 +1,8 @@
+# syntax=docker/dockerfile:1
+
 # Theseus 后端镜像：API、判题 Worker、防作弊 Worker 共用同一镜像，由 compose 指定 command。
 FROM rust:1-slim-bookworm AS builder
+ARG TARGETARCH
 # 默认单任务编译：2 GB 内存的服务器上并发编译容易 OOM，可通过 build arg 覆盖。
 ARG CARGO_BUILD_JOBS=1
 # 中国大陆服务器可传 https://rsproxy.cn/index/ 加速 crate 下载。
@@ -17,7 +20,13 @@ COPY Cargo.toml Cargo.lock ./
 COPY migrations ./migrations
 COPY src ./src
 
-RUN cargo build --release --bins \
+# 缓存跨源码更新保留；backend 与 lsp 共用 builder 时串行访问，避免并发写入。
+# release 默认不启用 Rust 增量编译，显式开启以复用本项目的编译中间结果。
+# 必须在同一个 RUN 内把产物复制到 /out：cache mount 不会进入镜像层。
+RUN --mount=type=cache,id=theseus-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=theseus-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=theseus-cargo-target-${TARGETARCH},target=/src/target,sharing=locked \
+    CARGO_INCREMENTAL=1 cargo build --release --locked --bins \
     && mkdir -p /out \
     && cp target/release/backend-rust \
           target/release/judge_worker \

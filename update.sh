@@ -300,8 +300,8 @@ ensure_runner_images
 
 # ---------- 4. 构建服务镜像 ----------
 if ((DO_BUILD)); then
-    say "构建服务镜像"
-    "${COMPOSE[@]}" build || fail_update "镜像构建失败，服务保持原样"
+    say "构建服务镜像（复用 Cargo 依赖与增量编译缓存）"
+    DOCKER_BUILDKIT=1 "${COMPOSE[@]}" build || fail_update "镜像构建失败，服务保持原样；请确认已安装 Docker Buildx 并支持 BuildKit"
 else
     warn "--skip-build：使用现有镜像"
 fi
