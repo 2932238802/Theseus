@@ -37,8 +37,21 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
+      - name: Verify RSA is not enabled on any target
+        run: |
+          set -euo pipefail
+          # SQLx's optional MySQL backend retains rsa in Cargo.lock even though
+          # this application enables PostgreSQL only. Fail if it becomes active.
+          dependents=$(cargo tree --locked --target all --invert rsa --prefix none)
+          if [[ -n "$dependents" ]]; then
+            printf '%s\n' "$dependents"
+            echo 'RSA is now active; remove the advisory exception and reassess.' >&2
+            exit 1
+          fi
       - name: cargo audit（依赖漏洞）
-        run: cargo audit
+        # RUSTSEC-2023-0071 has no fix; rsa is an unused SQLx MySQL optional
+        # dependency in the lockfile, guarded by the all-target check above.
+        run: cargo audit --ignore RUSTSEC-2023-0071
 
   frontend:
     name: frontend (build)
