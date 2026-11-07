@@ -1,3 +1,4 @@
+export type ForumScope = 'all' | 'following' | 'school'
 export type ForumTagCode = 'general' | 'help' | 'solution' | 'discussion' | 'announcement'
 export type ForumBoard = 'general' | 'interview'
 export type ForumSort = 'latest' | 'hot'
@@ -44,10 +45,12 @@ export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
 }
 
 export interface ForumAuthor {
+  id: number | null
   displayName: string
   isAnonymous: boolean
   isSelf: boolean
   isPlus: boolean
+  isFollowing: boolean
 }
 
 export interface ForumProblemRef {
@@ -149,6 +152,7 @@ export interface ForumPostListQuery {
   q?: string
   sort?: ForumSort
   mine?: boolean
+  scope?: ForumScope
 }
 
 export interface ForumPostPayload {

@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Theseus · 关注与动态预览</title>
+<style>
+:root {
+  --color-primary: #3f3f52;
+  --color-primary-ink: #f4f4f6;
+  --color-accent: #4a4a5c;
+  --color-accent-hover: #2e2e3d;
+  --color-accent-soft: #dedee5;
+  --color-accent-ink: #f4f4f6;
+  --color-bg: #e9e9ee;
+  --color-surface: #f7f7f9;
+  --color-text: #24242c;
+  --color-text-secondary: #454552;
+  --color-text-muted: #6e6e7d;
+  --color-border: #c3c4cc;
+  --color-border-strong: #83848f;
+  --color-success: #3d7456;
+  --color-success-soft: #e4ece7;
+  --color-warning: #82602a;
+  --color-warning-soft: #f1e9db;
+  --color-danger: #9c4141;
+  --color-danger-soft: #f2e5e5;
+  --color-danger-ink: #f4f4f6;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "SFMono-Regular", monospace;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(24, 24, 32, 0.06);
+  --shadow-md: 0 12px 32px rgba(24, 24, 32, 0.1), 0 2px 8px rgba(24, 24, 32, 0.05);
+  --duration: 150ms;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --color-primary: #f2f2f2;
+  --color-primary-ink: #1c1c1c;
+  --color-accent: #b3b6bd;
+  --color-accent-hover: #f2f2f2;
+  --color-accent-soft: #3f3f52;
+  --color-accent-ink: #1c1c1c;
+  --color-bg: #1c1c1c;
+  --color-surface: #38384a;
+  --color-text: #f2f2f2;
+  --color-text-secondary: #b3b6bd;
+  --color-text-muted: #a5a5b2;
+  --color-border: #4b4b5c;
+  --color-border-strong: #b3b6bd;
+  --color-success: #8fc7a6;
+  --color-success-soft: #23392d;
+  --color-warning: #d9b36c;
+  --color-warning-soft: #3a2f1e;
+  --color-danger: #e08c8c;
+  --color-danger-soft: #3d2424;
+  --color-danger-ink: #1c1c1c;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body { min-width: 320px; min-height: 100vh; margin: 0; }
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+a { color: var(--color-accent); text-decoration: none; }
+button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
+input, select, textarea { color: var(--color-text); font: inherit; }
+input::placeholder { color: var(--color-text-muted); }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* Header ------------------------------------------------------------------ */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  height: 64px;
+  align-items: center;
+  gap: var(--space-xl);
+  padding: 0 max(var(--space-lg), calc((100vw - 1200px) / 2));
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.brand { display: inline-flex; flex: 0 0 auto; align-items: center; gap: var(--space-sm); color: var(--color-text); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.brand-mark { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-accent-ink); font-size: 15px; font-weight: 600; line-height: 1; }
+.main-nav { display: flex; align-self: stretch; gap: var(--space-lg); }
+.main-nav > a { display: flex; height: 64px; align-items: center; gap: 4px; border-bottom: 2px solid transparent; color: var(--color-text-secondary); font-size: 14px; font-weight: 500; }
+.main-nav > a:hover { color: var(--color-text); }
+.main-nav > a.is-active { border-bottom-color: var(--color-accent); color: var(--color-text); }
+.nav-caret { width: 0; height: 0; border-top: 4px solid currentColor; border-right: 4px solid transparent; border-left: 4px solid transparent; opacity: 0.55; }
+.nav-right { display: flex; align-items: center; gap: var(--space-md); margin-left: auto; }
+.nav-search { display: flex; width: clamp(180px, 18vw, 250px); height: 40px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
+.nav-search svg { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: var(--color-text-muted); stroke-width: 1.6; }
+.nav-search input { width: 100%; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; font-size: 13px; }
+.icon-button { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: var(--radius-sm); color: var(--color-text-secondary); }
+.icon-button:hover { background: var(--color-bg); color: var(--color-text); }
+.icon-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.avatar-button { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border: 1px solid var(--color-border); border-radius: 50%; background: var(--color-primary); color: var(--color-primary-ink); font-size: 14px; font-weight: 600; }
+
+/* Common ------------------------------------------------------------------ */
+
+.page-shell { width: min(1200px, 100%); margin: 0 auto; padding: var(--space-2xl) var(--space-lg); }
+.forum-page { width: min(980px, 100%); }
+.primary-button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: var(--space-sm); padding: 0 var(--space-md); border: 1px solid var(--color-accent); border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-accent-ink); font-size: 14px; font-weight: 500; transition: background-color var(--duration), border-color var(--duration); }
+.primary-button:hover { border-color: var(--color-accent-hover); background: var(--color-accent-hover); }
+.teaching-secondary-button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; padding: 0 var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); font-size: 14px; font-weight: 500; }
+.teaching-secondary-button:hover { border-color: var(--color-border-strong); background: var(--color-bg); }
+.teaching-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; background: var(--color-bg); color: var(--color-text-secondary); font-size: 12px; white-space: nowrap; }
+.teaching-subtle { color: var(--color-text-muted); font-size: 13px; }
+.screen { display: none; }
+.screen.is-active { display: block; }
+
+/* Preview dock ------------------------------------------------------------ */
+
+.preview-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 94%, transparent);
+  color: var(--color-primary-ink);
+  box-shadow: var(--shadow-md);
+  transform: translateX(-50%);
+  backdrop-filter: blur(8px);
+}
+.preview-dock-label { padding: 0 10px; font-size: 12px; opacity: 0.65; white-space: nowrap; }
+.preview-dock button { min-height: 32px; padding: 0 14px; border-radius: 999px; color: inherit; font-size: 13px; opacity: 0.72; white-space: nowrap; transition: background var(--duration), opacity var(--duration); }
+.preview-dock button:hover { opacity: 1; }
+.preview-dock button.is-active { background: var(--color-primary-ink); color: var(--color-primary); font-weight: 600; opacity: 1; }
+.preview-dock-hint { padding: 0 10px 0 4px; font-size: 11px; opacity: 0.55; white-space: nowrap; }
+
+/* Forum toolbar ----------------------------------------------------------- */
+
+.forum-toolbar { display: grid; gap: var(--space-md); margin-bottom: var(--space-lg); padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.forum-toolbar-row { display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap; }
+.forum-sort-tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--radius-sm); background: var(--color-bg); }
+.forum-sort-tabs button { min-height: 32px; padding: 0 var(--space-md); border-radius: 6px; color: var(--color-text-secondary); font-size: 13px; font-weight: 500; }
+.forum-sort-tabs button:hover { color: var(--color-text); }
+.forum-sort-tabs button.active { background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-sm); }
+.forum-search { position: relative; display: flex; min-width: 220px; max-width: 360px; flex: 1; align-items: center; }
+.forum-search svg { position: absolute; left: 11px; width: 16px; height: 16px; fill: none; stroke: var(--color-text-muted); stroke-width: 1.7; }
+.forum-search input { width: 100%; height: 38px; padding: 0 var(--space-md) 0 36px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); font-size: 13px; }
+.forum-search input:focus { border-color: var(--color-accent); outline: none; }
+.forum-compose-button { flex: 0 0 auto; margin-left: auto; white-space: nowrap; }
+.forum-board-tabs { display: inline-flex; gap: var(--space-sm); }
+.forum-board-tab { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; padding: 0 var(--space-lg); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-secondary); font-size: 14px; font-weight: 500; }
+.forum-board-tab:hover { border-color: var(--color-border-strong); color: var(--color-text); }
+.forum-board-tab.active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent); }
+.nav-vip-badge { display: inline-flex; min-height: 18px; align-items: center; padding: 0 6px; border-radius: 999px; background: var(--color-warning-soft); color: var(--color-warning); font-size: 10px; font-weight: 700; line-height: 1; }
+
+/* Scope tabs (new) -------------------------------------------------------- */
+
+.forum-scope-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  flex-wrap: wrap;
+}
+.forum-scope-label { color: var(--color-text-muted); font-size: 12px; font-weight: 500; letter-spacing: 0.02em; }
+.forum-scope-tabs { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
+.forum-scope-tab { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; padding: 0 14px; border-radius: 6px; color: var(--color-text-secondary); font-size: 13px; font-weight: 500; transition: background var(--duration), color var(--duration); }
+.forum-scope-tab:hover { color: var(--color-text); }
+.forum-scope-tab.is-active { background: var(--color-accent); color: var(--color-accent-ink); }
+.scope-count { display: inline-flex; min-width: 19px; height: 18px; align-items: center; justify-content: center; padding: 0 5px; border-radius: 999px; background: var(--color-bg); color: var(--color-text-muted); font-size: 11px; font-weight: 600; line-height: 1; }
+.forum-scope-tab.is-active .scope-count { background: color-mix(in srgb, var(--color-accent-ink) 22%, transparent); color: var(--color-accent-ink); }
+.forum-scope-context { display: inline-flex; align-items: center; gap: var(--space-md); margin-left: auto; color: var(--color-text-muted); font-size: 12px; }
+.forum-scope-context[hidden] { display: none; }
+.forum-scope-manage { color: var(--color-accent); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.forum-scope-manage:hover { text-decoration: underline; }
+.forum-tag-row { gap: var(--space-sm); }
+.forum-filter-pill { min-height: 30px; padding: 0 12px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 13px; }
+.forum-filter-pill:hover { border-color: var(--color-border-strong); color: var(--color-text); }
+.forum-filter-pill.active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent); font-weight: 500; }
+.clear-filter { padding: 4px 6px; color: var(--color-text-muted); font-size: 12px; }
+.clear-filter:hover { color: var(--color-accent); }
+
+/* Post cards -------------------------------------------------------------- */
+
+.forum-feed { display: grid; gap: var(--space-md); }
+.forum-post-list { display: grid; gap: var(--space-md); }
+.forum-post-card { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); transition: border-color var(--duration), box-shadow var(--duration); }
+.forum-post-card:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-sm); }
+.forum-post-card-main { display: grid; gap: var(--space-sm); padding: var(--space-lg); }
+.forum-post-card-topline { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; }
+.forum-post-card-title { color: var(--color-text); font-size: 18px; font-weight: 600; line-height: 1.4; }
+.forum-post-card-title:hover { color: var(--color-accent); }
+.forum-tag { display: inline-flex; min-height: 22px; align-items: center; padding: 0 8px; border-radius: 999px; background: var(--color-bg); color: var(--color-text-secondary); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.forum-post-card-excerpt { color: var(--color-text-secondary); font-size: 13px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.forum-post-card-meta { display: flex; align-items: center; gap: var(--space-sm); color: var(--color-text-muted); font-size: 12px; flex-wrap: wrap; }
+.post-author { color: var(--color-text-secondary); font-weight: 500; }
+.post-relation { display: inline-flex; min-height: 18px; align-items: center; padding: 0 7px; border-radius: 999px; font-size: 10px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.post-relation.is-following { background: var(--color-success-soft); color: var(--color-success); }
+.post-relation.is-school { background: var(--color-accent-soft); color: var(--color-accent); }
+.follow-mini { min-height: 26px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 999px; color: var(--color-text-secondary); font-size: 12px; }
+.follow-mini:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.follow-mini.is-following { border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-border)); background: var(--color-success-soft); color: var(--color-success); }
+.forum-post-card-stats { display: inline-flex; gap: var(--space-md); margin-left: auto; }
+.empty-state { padding: var(--space-2xl) var(--space-lg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); text-align: center; }
+.empty-state p { color: var(--color-text-secondary); font-size: 14px; }
+.empty-state .primary-button { margin-top: var(--space-md); }
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); color: var(--color-text-muted); font-size: 12px; }
+.pagination > div { display: flex; align-items: center; gap: var(--space-sm); }
+.pagination button { min-height: 30px; padding: 0 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-secondary); font-size: 12px; }
+
+/* Profile ----------------------------------------------------------------- */
+
+.profile-hero { display: flex; align-items: center; gap: var(--space-lg); padding: var(--space-lg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.profile-avatar { display: flex; width: 88px; height: 88px; flex: 0 0 auto; align-items: center; justify-content: center; border: 2px solid var(--color-border); border-radius: 50%; background: var(--color-primary); color: var(--color-primary-ink); font-size: 32px; font-weight: 600; line-height: 1; }
+.profile-identity { min-width: 0; flex: 1; }
+.profile-identity h1 { font-size: 26px; font-weight: 650; overflow-wrap: anywhere; }
+.profile-identity > p { margin-top: 4px; color: var(--color-text-secondary); font-size: 14px; overflow-wrap: anywhere; }
+.profile-badges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin-top: var(--space-sm); }
+.profile-hero-actions { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: var(--space-sm); }
+.profile-reputation { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid currentColor; border-radius: 999px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+.profile-reputation.is-good { background: var(--color-success-soft); color: var(--color-success); }
+.profile-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: var(--space-md); overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.profile-stats article,
+.profile-stat-card { min-height: 120px; padding: var(--space-lg); border-right: 1px solid var(--color-border); text-align: left; }
+.profile-stats > :last-child { border-right: 0; }
+.profile-stats strong { display: block; font-size: 28px; font-weight: 600; line-height: 1.2; }
+.profile-stats small { font-size: 14px; }
+.profile-stats span { display: block; margin-top: var(--space-xs); color: var(--color-text-secondary); font-size: 12px; }
+.profile-stat-card { width: 100%; background: transparent; transition: background var(--duration); }
+.profile-stat-card:hover { background: var(--color-bg); }
+.profile-stat-card .stat-arrow { display: inline-flex; align-items: center; gap: 2px; margin-top: 6px; color: var(--color-accent); font-size: 11px; font-weight: 500; }
+.profile-stat-card.is-new { box-shadow: inset 0 0 0 2px var(--color-accent); border-radius: 6px; }
+.profile-stat-card.is-new:hover { background: var(--color-accent-soft); }
+.profile-recent { margin-top: var(--space-xl); }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-md); }
+.section-heading h2 { font-size: 20px; font-weight: 600; line-height: 1.4; }
+.submission-list { overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.submission-list article { display: grid; min-height: 52px; grid-template-columns: 1fr 100px 120px 170px; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-md); border-bottom: 1px solid var(--color-border); font-size: 14px; }
+.submission-list article:last-child { border-bottom: 0; }
+.submission-list a { min-width: 0; overflow: hidden; color: var(--color-text); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.submission-list a:hover { color: var(--color-accent); }
+.submission-list article > span:not(.result-status), .submission-list time { color: var(--color-text-secondary); font-size: 12px; }
+.result-status { display: inline-flex; align-items: center; justify-self: start; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.result-status.accepted { background: var(--color-success-soft); color: var(--color-success); }
+.result-status.failed { background: var(--color-danger-soft); color: var(--color-danger); }
+
+/* Dialogs ----------------------------------------------------------------- */
+
+.modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: var(--space-md); background: rgba(28, 28, 28, 0.55); }
+.modal-backdrop[hidden] { display: none; }
+.run-dialog { width: min(640px, 100%); max-height: calc(100vh - 32px); overflow: auto; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: 0 20px 50px rgba(28, 28, 28, 0.2); }
+.run-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); padding: var(--space-lg) var(--space-lg) 0; }
+.run-dialog h2 { font-size: 20px; }
+.run-dialog header p { margin-top: 2px; color: var(--color-text-secondary); font-size: 13px; }
+.run-dialog > header > button { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 6px; color: var(--color-text-secondary); font-size: 22px; line-height: 1; }
+.run-dialog > header > button:hover { background: var(--color-bg); color: var(--color-text); }
+.run-dialog-body { padding: var(--space-lg); }
+
+.following-dialog { width: min(520px, 100%); }
+.following-list { display: grid; margin: 0; padding: 0; list-style: none; }
+.following-list li { display: flex; align-items: center; gap: var(--space-md); padding: 12px 0; border-top: 1px solid var(--color-border); }
+.following-list li:first-child { border-top: 0; }
+.following-avatar { display: flex; width: 40px; height: 40px; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 50%; background: var(--color-accent-soft); color: var(--color-accent); font-size: 15px; font-weight: 600; }
+.following-info { display: grid; min-width: 0; flex: 1; gap: 1px; }
+.following-info strong { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.following-info small { color: var(--color-text-muted); font-size: 12px; }
+.following-actions { display: flex; align-items: center; gap: var(--space-sm); }
+.following-actions .teaching-badge { background: var(--color-bg); }
+
+/* Account settings dialog ------------------------------------------------- */
+
+.profile-settings-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 64px); }
+.profile-settings-layout { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: var(--space-lg); min-height: 380px; }
+.profile-settings-nav { display: flex; flex-direction: column; gap: 2px; padding-right: var(--space-md); border-right: 1px solid var(--color-border); }
+.profile-settings-nav button { padding: 8px 10px; border-radius: var(--radius-sm); color: var(--color-text-secondary); font-size: 13px; text-align: left; }
+.profile-settings-nav button:hover { background: var(--color-bg); color: var(--color-text); }
+.profile-settings-nav button.is-active { background: var(--color-accent-soft); color: var(--color-accent); font-weight: 600; }
+.profile-settings-nav button.is-danger { color: var(--color-danger); }
+.profile-settings-panel { min-width: 0; }
+.settings-panel-head { display: grid; gap: 6px; padding-bottom: var(--space-md); border-bottom: 1px solid var(--color-border); }
+.settings-panel-head h3 { font-size: 18px; }
+.settings-panel-head p { color: var(--color-text-secondary); font-size: 13px; }
+.privacy-card { display: flex; align-items: center; justify-content: space-between; gap: var(--space-lg); margin-top: var(--space-lg); padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.privacy-card-info { display: grid; gap: 4px; }
+.privacy-card-info strong { font-size: 14px; font-weight: 600; }
+.privacy-card-info small { color: var(--color-text-muted); font-size: 12px; line-height: 1.6; }
+.settings-toggle { flex: 0 0 auto; min-height: 34px; padding: 0 14px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.settings-toggle:hover { border-color: var(--color-border-strong); color: var(--color-text); }
+.settings-toggle.is-on { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); }
+.privacy-note { margin-top: var(--space-md); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-sm); background: var(--color-bg); color: var(--color-text-muted); font-size: 12px; line-height: 1.7; }
+.saved-mark { display: inline-flex; align-items: center; gap: 4px; margin-left: var(--space-sm); color: var(--color-success); font-size: 12px; font-weight: 500; opacity: 0; transition: opacity var(--duration); }
+.saved-mark.is-visible { opacity: 1; }
+
+/* Toast ------------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 84px;
+  z-index: 130;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-ink);
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+  transform: translate(-50%, 8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration), transform var(--duration);
+}
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 768px) {
+  .site-header { gap: var(--space-md); padding: 0 var(--space-md); }
+  .main-nav { display: none; }
+  .nav-search { display: none; }
+  .page-shell { padding: var(--space-xl) var(--space-md); }
+  .profile-hero { flex-wrap: wrap; }
+  .profile-hero-actions { flex-direction: row; align-items: center; }
+  .profile-stats { grid-template-columns: repeat(2, 1fr); }
+  .profile-stats > :nth-child(2n) { border-right: 0; }
+  .submission-list article { grid-template-columns: 1fr auto auto; gap: var(--space-sm); }
+  .submission-list time { display: none; }
+  .profile-settings-layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-md); min-height: 0; }
+  .profile-settings-nav { flex-direction: row; gap: var(--space-xs); padding: 0 0 var(--space-sm); overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--color-border); }
+  .profile-settings-nav button { flex: 0 0 auto; white-space: nowrap; }
+  .preview-dock { max-width: calc(100vw - 24px); overflow-x: auto; }
+  .preview-dock-hint { display: none; }
+}
+
+@media (max-width: 480px) {
+  .forum-scope-context { margin-left: 0; }
+  .forum-post-card-stats { width: 100%; margin-left: 0; }
+  .profile-stats { grid-template-columns: 1fr; }
+  .profile-stats > :nth-child(2n) { border-right: 1px solid var(--color-border); }
+  .profile-stats > :last-child { border-right: 0; }
+}
+</style>
+</head>
+<body data-screen="forum">
+
+<header class="site-header">
+  <a class="brand" href="#" aria-label="Theseus 首页">
+    <span class="brand-mark" aria-hidden="true">T</span>
+    <span class="brand-name">Theseus</span>
+  </a>
+  <nav class="main-nav" aria-label="主导航">
+    <a href="#">题库</a>
+    <a href="#" class="is-active">论坛</a>
+    <a href="#">学习 <span class="nav-caret" aria-hidden="true"></span></a>
+    <a href="#">校园 <span class="nav-caret" aria-hidden="true"></span></a>
+    <a href="#">商店 <span class="nav-caret" aria-hidden="true"></span></a>
+    <a href="#">个人 <span class="nav-caret" aria-hidden="true"></span></a>
+  </nav>
+  <div class="nav-right">
+    <label class="nav-search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
+      <input type="search" placeholder="搜索" aria-label="全站搜索">
+    </label>
+    <button class="icon-button" type="button" aria-label="通知">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></svg>
+    </button>
+    <span class="avatar-button" aria-hidden="true">L</span>
+  </div>
+</header>
+
+<!-- Screen: forum ------------------------------------------------------- -->
+<main class="screen is-active" id="screen-forum">
+  <div class="forum-page page-shell">
+    <section class="forum-toolbar" aria-label="论坛筛选">
+      <div class="forum-toolbar-row">
+        <div class="forum-sort-tabs" role="tablist" aria-label="排序">
+          <button type="button" role="tab" aria-selected="true" class="active">最新</button>
+          <button type="button" role="tab" aria-selected="false">热门</button>
+        </div>
+        <label class="forum-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
+          <input type="search" maxlength="100" placeholder="搜索标题或正文" aria-label="搜索帖子">
+        </label>
+        <button class="primary-button forum-compose-button" type="button">发帖 <span aria-hidden="true">→</span></button>
+      </div>
+
+      <div class="forum-board-tabs" role="tablist" aria-label="板块">
+        <button type="button" role="tab" aria-selected="true" class="forum-board-tab active">综合</button>
+        <button type="button" role="tab" aria-selected="false" class="forum-board-tab">面经 <span class="nav-vip-badge">VIP</span></button>
+      </div>
+
+      <div class="forum-scope-row">
+        <span class="forum-scope-label">动态范围</span>
+        <div class="forum-scope-tabs" role="tablist" aria-label="动态范围">
+          <button type="button" role="tab" class="forum-scope-tab is-active" data-scope="all" aria-selected="true">全部</button>
+          <button type="button" role="tab" class="forum-scope-tab" data-scope="following" aria-selected="false">关注的人 <span class="scope-count">8</span></button>
+          <button type="button" role="tab" class="forum-scope-tab" data-scope="school" aria-selected="false">同校的人 <span class="scope-count">36</span></button>
+        </div>
+        <span class="forum-scope-context" id="scope-context" hidden>
+          <span id="scope-hint"></span>
+          <a href="#" class="forum-scope-manage" id="manage-following" hidden>管理关注 →</a>
+        </span>
+      </div>
+
+      <div class="forum-toolbar-row forum-tag-row">
+        <button type="button" class="forum-filter-pill active">全部</button>
+        <button type="button" class="forum-filter-pill">综合</button>
+        <button type="button" class="forum-filter-pill">求助</button>
+        <button type="button" class="forum-filter-pill">题解</button>
+        <button type="button" class="forum-filter-pill">讨论</button>
+        <button type="button" class="forum-filter-pill">公告</button>
+      </div>
+    </section>
+
+    <section class="forum-feed" aria-live="polite">
+      <div class="forum-post-list" id="forum-posts"></div>
+      <div class="pagination" id="forum-pagination">
+        <span id="pagination-label">显示 1–4 / 4</span>
+        <div>
+          <button type="button" disabled>← 上一页</button>
+          <span>1 / 1</span>
+          <button type="button" disabled>下一页 →</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- Screen: profile ----------------------------------------------------- -->
+<main class="screen" id="screen-profile">
+  <div class="profile-page page-shell">
+    <section class="profile-hero">
+      <div class="profile-avatar" aria-hidden="true">L</div>
+      <div class="profile-identity">
+        <h1>losangelous</h1>
+        <p>losangelous@example.com</p>
+        <div class="profile-badges">
+          <span class="teaching-badge">学生</span>
+          <span class="teaching-badge">邮箱已验证</span>
+          <span class="teaching-badge">高二 · 附中</span>
+          <span class="teaching-badge">加入于 2025-09-01</span>
+        </div>
+      </div>
+      <div class="profile-hero-actions">
+        <span class="profile-reputation is-good">信誉分 98.5</span>
+        <button class="teaching-secondary-button" type="button">账号设置</button>
+      </div>
+    </section>
+
+    <section class="profile-stats">
+      <article><strong>214</strong><span>通过题目</span></article>
+      <article><strong>389</strong><span>总提交数</span></article>
+      <article><strong>55<small>%</small></strong><span>通过率</span></article>
+      <article><strong>267</strong><span>已尝试题目</span></article>
+      <article><strong>3</strong><span>活跃组织</span></article>
+      <article><strong>12</strong><span>连续通过天数</span></article>
+      <button class="profile-stat-card is-new" type="button" id="open-following">
+        <strong id="following-count">8</strong>
+        <span>关注的人</span>
+        <span class="stat-arrow">点击查看 →</span>
+      </button>
+    </section>
+
+    <section class="profile-recent">
+      <div class="section-heading"><h2>最近提交</h2></div>
+      <div class="submission-list">
+        <article><a href="#">最长递增子序列</a><span>Python</span><span class="result-status accepted">Accepted</span><time>2026-11-06 21:14</time></article>
+        <article><a href="#">二分查找边界</a><span>C++</span><span class="result-status failed">Wrong Answer</span><time>2026-11-06 20:52</time></article>
+        <article><a href="#">区间合并</a><span>Java</span><span class="result-status accepted">Accepted</span><time>2026-11-05 19:37</time></article>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- Screen: privacy ----------------------------------------------------- -->
+<main class="screen" id="screen-privacy">
+  <div class="modal-backdrop">
+    <section class="run-dialog profile-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <header>
+        <div>
+          <h2 id="settings-title">账号设置</h2>
+          <p>losangelous@example.com</p>
+        </div>
+        <button type="button" aria-label="关闭">×</button>
+      </header>
+      <div class="run-dialog-body">
+        <div class="profile-settings-layout">
+          <nav class="profile-settings-nav" aria-label="账号设置分类">
+            <button type="button">用户名</button>
+            <button type="button">年级</button>
+            <button type="button">邮箱</button>
+            <button type="button">密码</button>
+            <button type="button">第三方账号</button>
+            <button type="button">通知偏好</button>
+            <button type="button" class="is-active">隐私</button>
+            <button type="button">设备会话</button>
+            <button type="button">徽章展示</button>
+            <button type="button" class="is-danger">注销账号</button>
+          </nav>
+
+          <div class="profile-settings-panel">
+            <div class="settings-panel-head">
+              <h3>隐私 <span class="saved-mark" id="saved-mark">✓ 已保存</span></h3>
+              <p>控制其他人在动态里能看到你多少</p>
+            </div>
+
+            <div class="privacy-card">
+              <div class="privacy-card-info">
+                <strong>隐藏我的动态</strong>
+                <small>开启后 关注你的人和同班同学将无法在动态里看到你的帖子</small>
+              </div>
+              <button class="settings-toggle" type="button" id="privacy-toggle" aria-pressed="false">已关闭</button>
+            </div>
+
+            <p class="privacy-note">
+              你自己仍可正常查看和发布动态
+              <br>
+              匿名帖保持匿名 不受此设置影响
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- Following dialog ---------------------------------------------------- -->
+<div class="modal-backdrop" id="following-modal" hidden>
+  <section class="run-dialog following-dialog" role="dialog" aria-modal="true" aria-labelledby="following-title">
+    <header>
+      <div>
+        <h2 id="following-title">关注的人</h2>
+        <p>他们的新动态会出现在论坛的关注流里</p>
+      </div>
+      <button type="button" aria-label="关闭" id="close-following">×</button>
+    </header>
+    <div class="run-dialog-body">
+      <ul class="following-list" id="following-list"></ul>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="preview-dock" role="toolbar" aria-label="预览界面切换">
+  <span class="preview-dock-label">预览</span>
+  <button type="button" data-screen="forum" class="is-active">论坛动态</button>
+  <button type="button" data-screen="profile">个人关注</button>
+  <button type="button" data-screen="privacy">隐私设置</button>
+  <button type="button" id="theme-toggle">深色</button>
+  <span class="preview-dock-hint">点击切换</span>
+</div>
+
+<script>
+const POSTS = [
+  {
+    id: 1,
+    title: '动态规划不是玄学：从记忆化到滚动数组',
+    excerpt: '把状态转移写清楚之后 剩下的只是空间优化 分享我整理的三道入门题和一张对照表',
+    author: '林小满',
+    followed: true,
+    school: true,
+    tag: '题解',
+    time: '2 小时前',
+    likes: 38,
+    favorites: 12,
+    comments: 9,
+    views: 426,
+  },
+  {
+    id: 2,
+    title: '求问这道二分边界为什么死循环',
+    excerpt: 'l 和 r 的更新条件总感觉哪里不对 已经调了一个晚上了 附上了代码和错误输入',
+    author: '陈默',
+    followed: false,
+    school: true,
+    tag: '求助',
+    time: '5 小时前',
+    likes: 6,
+    favorites: 1,
+    comments: 14,
+    views: 208,
+  },
+  {
+    id: 3,
+    title: 'NOIP 2025 赛后复盘与心态调整',
+    excerpt: '第二题卡在细节上丢了 40 分 记录一下考场上的取舍 也写给明年的自己',
+    author: '周予安',
+    followed: true,
+    school: false,
+    tag: '讨论',
+    time: '昨天 21:40',
+    likes: 52,
+    favorites: 20,
+    comments: 18,
+    views: 731,
+  },
+  {
+    id: 4,
+    title: '高二组队打 Codeforces 的日常',
+    excerpt: '每周三晚上固定训练 两个人负责不同题型 分享我们的分工和补题节奏',
+    author: '许知远',
+    followed: false,
+    school: true,
+    tag: '综合',
+    time: '昨天 16:05',
+    likes: 11,
+    favorites: 3,
+    comments: 4,
+    views: 150,
+  },
+]
+
+const FOLLOWING = [
+  { name: '林小满', initial: '林', meta: '高二 · 与你同校 · 关注于 2026-09-12' },
+  { name: '周予安', initial: '周', meta: '高一 · 关注于 2026-10-03' },
+  { name: '沈亦舟', initial: '沈', meta: '高二 · 与你同校 · 关注于 2026-10-18' },
+  { name: '顾清和', initial: '顾', meta: '高三 · 关注于 2026-10-21' },
+  { name: '苏叶', initial: '苏', meta: '高一 · 与你同校 · 关注于 2026-10-29' },
+  { name: '陆时雨', initial: '陆', meta: '高二 · 关注于 2026-11-01' },
+  { name: '江映白', initial: '江', meta: '高三 · 关注于 2026-11-03' },
+  { name: '温故', initial: '温', meta: '高一 · 与你同校 · 关注于 2026-11-05' },
+]
+
+let scope = 'all'
+const toastEl = document.getElementById('toast')
+let toastTimer
+
+function showToast(text) {
+  window.clearTimeout(toastTimer)
+  toastEl.textContent = text
+  toastEl.classList.add('is-visible')
+  toastTimer = window.setTimeout(() => toastEl.classList.remove('is-visible'), 1800)
+}
+
+function relationOf(post) {
+  if (scope === 'following') return ''
+  if (scope === 'school') return post.school ? '同校' : ''
+  return post.school ? '同校' : ''
+}
+
+function visiblePosts() {
+  if (scope === 'following') return POSTS.filter((post) => post.followed)
+  if (scope === 'school') return POSTS.filter((post) => post.school)
+  return POSTS
+}
+
+function renderPosts() {
+  const list = document.getElementById('forum-posts')
+  const posts = visiblePosts()
+  if (!posts.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <p>关注的人还没有发布动态</p>
+        <button type="button" class="primary-button" data-scope-jump="all">去看全部动态</button>
+      </div>`
+    document.getElementById('forum-pagination').hidden = true
+    return
+  }
+
+  list.innerHTML = posts.map((post) => {
+    const relation = relationOf(post)
+    const relationHtml = relation
+      ? `<span class="post-relation ${relation === '已关注' ? 'is-following' : 'is-school'}">${relation}</span>`
+      : ''
+    const followHtml = `<button type="button" class="follow-mini ${post.followed ? 'is-following' : ''}" data-follow="${post.id}">${post.followed ? '已关注' : '＋ 关注'}</button>`
+    return `
+      <article class="forum-post-card">
+        <div class="forum-post-card-main">
+          <div class="forum-post-card-topline">
+            <a class="forum-post-card-title" href="#">${post.title}</a>
+            <span class="forum-tag">${post.tag}</span>
+          </div>
+          <p class="forum-post-card-excerpt">${post.excerpt}</p>
+          <div class="forum-post-card-meta">
+            <span class="post-author">${post.author}</span>
+            ${relationHtml}
+            ${followHtml}
+            <span aria-hidden="true">·</span>
+            <time>${post.time}</time>
+            <span class="forum-post-card-stats">
+              <span title="点赞">♥ ${post.likes}</span>
+              <span title="收藏">★ ${post.favorites}</span>
+              <span title="评论">💬 ${post.comments}</span>
+              <span title="浏览">👁 ${post.views}</span>
+            </span>
+          </div>
+        </div>
+      </article>`
+  }).join('')
+
+  const pagination = document.getElementById('forum-pagination')
+  pagination.hidden = scope !== 'all'
+  if (scope === 'all') {
+    document.getElementById('pagination-label').textContent = `显示 1–${posts.length} / ${posts.length}`
+  }
+}
+
+function renderFollowingList() {
+  const list = document.getElementById('following-list')
+  list.innerHTML = FOLLOWING.map((person, index) => `
+    <li>
+      <span class="following-avatar" aria-hidden="true">${person.initial}</span>
+      <div class="following-info">
+        <strong>${person.name}</strong>
+        <small>${person.meta}</small>
+      </div>
+      <div class="following-actions">
+        <span class="teaching-badge">学生</span>
+        <button type="button" class="follow-mini is-following" data-unfollow="${index}">已关注</button>
+      </div>
+    </li>`).join('')
+}
+
+function setScope(next) {
+  scope = next
+  document.querySelectorAll('.forum-scope-tab').forEach((tab) => {
+    const active = tab.dataset.scope === next
+    tab.classList.toggle('is-active', active)
+    tab.setAttribute('aria-selected', String(active))
+  })
+
+  const context = document.getElementById('scope-context')
+  const hint = document.getElementById('scope-hint')
+  const manage = document.getElementById('manage-following')
+  if (next === 'all') {
+    context.hidden = true
+  } else if (next === 'following') {
+    context.hidden = false
+    hint.textContent = '只看你关注的人发布的帖子'
+    manage.hidden = false
+  } else {
+    context.hidden = false
+    hint.textContent = '只看与你同校的人发布的帖子'
+    manage.hidden = true
+  }
+
+  renderPosts()
+}
+
+function showScreen(name) {
+  document.body.dataset.screen = name
+  document.querySelectorAll('.screen').forEach((screen) => {
+    screen.classList.toggle('is-active', screen.id === `screen-${name}`)
+  })
+  document.querySelectorAll('.preview-dock [data-screen]').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.screen === name)
+  })
+  if (name !== 'profile') closeFollowing()
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function openFollowing() {
+  document.getElementById('following-modal').hidden = false
+  document.body.style.overflow = 'hidden'
+}
+
+function closeFollowing() {
+  document.getElementById('following-modal').hidden = true
+  document.body.style.overflow = ''
+}
+
+/* Events ------------------------------------------------------------------ */
+
+document.querySelectorAll('.preview-dock [data-screen]').forEach((button) => {
+  button.addEventListener('click', () => showScreen(button.dataset.screen))
+})
+
+document.querySelectorAll('.forum-scope-tab').forEach((tab) => {
+  tab.addEventListener('click', () => setScope(tab.dataset.scope))
+})
+
+document.getElementById('forum-posts').addEventListener('click', (event) => {
+  const followButton = event.target.closest('[data-follow]')
+  if (followButton) {
+    const post = POSTS.find((item) => item.id === Number(followButton.dataset.follow))
+    if (!post) return
+    post.followed = !post.followed
+    showToast(post.followed ? `已关注 ${post.author}` : `已取消关注 ${post.author}`)
+    renderPosts()
+    return
+  }
+  const jump = event.target.closest('[data-scope-jump]')
+  if (jump) setScope(jump.dataset.scopeJump)
+})
+
+document.getElementById('manage-following').addEventListener('click', (event) => {
+  event.preventDefault()
+  showScreen('profile')
+  openFollowing()
+})
+
+document.getElementById('open-following').addEventListener('click', openFollowing)
+document.getElementById('close-following').addEventListener('click', closeFollowing)
+document.getElementById('following-modal').addEventListener('click', (event) => {
+  if (event.target === event.currentTarget) closeFollowing()
+})
+
+document.getElementById('following-list').addEventListener('click', (event) => {
+  const unfollow = event.target.closest('[data-unfollow]')
+  if (unfollow) {
+    const person = FOLLOWING[Number(unfollow.dataset.unfollow)]
+    const isFollowing = unfollow.classList.toggle('is-following')
+    unfollow.textContent = isFollowing ? '已关注' : '关注'
+    showToast(isFollowing ? `已关注 ${person.name}` : `已取消关注 ${person.name}`)
+    return
+  }
+})
+
+document.getElementById('privacy-toggle').addEventListener('click', (event) => {
+  const button = event.currentTarget
+  const on = button.classList.toggle('is-on')
+  button.setAttribute('aria-pressed', String(on))
+  button.textContent = on ? '已开启' : '已关闭'
+  const mark = document.getElementById('saved-mark')
+  mark.classList.add('is-visible')
+  window.setTimeout(() => mark.classList.remove('is-visible'), 1600)
+})
+
+document.getElementById('theme-toggle').addEventListener('click', (event) => {
+  const dark = document.documentElement.dataset.theme === 'dark'
+  document.documentElement.dataset.theme = dark ? '' : 'dark'
+  event.currentTarget.textContent = dark ? '深色' : '浅色'
+})
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeFollowing()
+})
+
+renderFollowingList()
+setScope('all')
+
+const previewParams = new URLSearchParams(window.location.search)
+const previewScreen = previewParams.get('screen')
+if (previewScreen && ['forum', 'profile', 'privacy'].includes(previewScreen)) {
+  showScreen(previewScreen)
+}
+if (previewParams.get('following') === '1') {
+  showScreen('profile')
+  openFollowing()
+}
+if (previewParams.get('theme') === 'dark') {
+  document.documentElement.dataset.theme = 'dark'
+  document.getElementById('theme-toggle').textContent = '浅色'
+}
+const previewScope = previewParams.get('scope')
+if (previewScope && ['all', 'following', 'school'].includes(previewScope)) {
+  setScope(previewScope)
+}
+</script>
+</body>
+</html>

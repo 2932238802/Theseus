@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { toErrorMessage } from '../api/client'
+import { followUser, unfollowUser, fetchFeedCounts } from '../api/social'
 import {
   deleteForumComment,
   deleteForumPost,
@@ -21,8 +22,10 @@ import type {
   ForumPostListQuery,
   ForumPostSummary,
   ForumReply,
+  ForumScope,
   ForumSort,
 } from '../types/forum'
+import type { FeedCounts } from '../types/social'
 
 export const useForumStore = defineStore('forum', () => {
   const posts = ref<ForumPostSummary[]>([])
@@ -31,6 +34,7 @@ export const useForumStore = defineStore('forum', () => {
   const error = ref('')
   const query = ref<ForumPostListQuery>({ page: 1, size: 20, sort: 'latest' })
   const facets = ref<ForumInterviewFacets>({ companies: [], roles: [] })
+  const feedCounts = ref<FeedCounts>({ following: 0, school: 0 })
 
   const currentPost = ref<ForumPostDetail | null>(null)
   const postLoading = ref(false)
@@ -130,7 +134,42 @@ export const useForumStore = defineStore('forum', () => {
 
   const setMine = (mine: boolean): void => {
     query.value.mine = mine
+    if (mine) query.value.scope = undefined
     applyFilters()
+  }
+
+  const setScope = (scope: ForumScope): void => {
+    if ((query.value.scope ?? 'all') === scope) return
+    query.value.scope = scope === 'all' ? undefined : scope
+    if (scope !== 'all') query.value.mine = undefined
+    applyFilters()
+  }
+
+  const loadFeedCounts = async (): Promise<void> => {
+    try {
+      feedCounts.value = await fetchFeedCounts()
+    } catch {
+      feedCounts.value = { following: 0, school: 0 }
+    }
+  }
+
+  const toggleAuthorFollow = async (post: ForumPostSummary): Promise<void> => {
+    const author = post.author
+    if (!author.id || author.isSelf || author.isAnonymous) return
+    const next = !author.isFollowing
+    author.isFollowing = next
+    try {
+      const following = next ? await followUser(author.id) : await unfollowUser(author.id)
+      author.isFollowing = following
+      if (!following && query.value.scope === 'following') {
+        posts.value = posts.value.filter((item) => item.id !== post.id)
+        total.value = Math.max(0, total.value - 1)
+      }
+    } catch (exception) {
+      author.isFollowing = !next
+      throw exception
+    }
+    void loadFeedCounts()
   }
 
   const setPage = (page: number): void => {
@@ -276,6 +315,7 @@ export const useForumStore = defineStore('forum', () => {
     error,
     query,
     facets,
+    feedCounts,
     pageCount,
     currentPost,
     postLoading,
@@ -296,6 +336,9 @@ export const useForumStore = defineStore('forum', () => {
     setSort,
     setSearch,
     setMine,
+    setScope,
+    loadFeedCounts,
+    toggleAuthorFollow,
     setPage,
     resetQuery,
     loadPost,

@@ -5,6 +5,7 @@ import { FORUM_TAG_LABELS } from '../types/forum'
 import { formatForumTime } from '../utils/forum'
 
 defineProps<{ post: ForumPostSummary }>()
+const emit = defineEmits<{ 'toggle-follow': [post: ForumPostSummary] }>()
 </script>
 
 <template>
@@ -37,6 +38,14 @@ defineProps<{ post: ForumPostSummary }>()
           {{ post.author.displayName }}<template v-if="post.author.isSelf">（我）</template>
         </span>
         <span v-if="post.author.isPlus" class="forum-plus-badge">Plus</span>
+        <button
+          v-if="post.author.id && !post.author.isSelf && !post.author.isAnonymous"
+          type="button"
+          :class="['forum-follow-button', { 'is-following': post.author.isFollowing }]"
+          @click.stop.prevent="emit('toggle-follow', post)"
+        >
+          {{ post.author.isFollowing ? '已关注' : '＋ 关注' }}
+        </button>
         <span aria-hidden="true">·</span>
         <time v-if="post.interviewDate" :datetime="post.interviewDate">面试 {{ post.interviewDate }}</time>
         <time v-else :datetime="post.createdAt">{{ formatForumTime(post.createdAt) }}</time>

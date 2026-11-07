@@ -26,5 +26,6 @@ pub mod ranking_service;
 pub mod run_service;
 pub mod season_service;
 pub mod similarity;
+pub mod social_service;
 pub mod submission_service;
 pub mod wrong_problem_service;

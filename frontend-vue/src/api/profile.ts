@@ -28,6 +28,7 @@ interface BackendAnalytics {
     accepted_submissions: number
     acceptance_rate: number
     active_classes: number
+    following_count: number
     streak_days: number
     checkin_streak: number
     reputation_score: number
@@ -143,6 +144,7 @@ export const fetchAnalytics = async (days = 30): Promise<ProfileAnalytics> => {
       acceptedSubmissions: data.summary.accepted_submissions,
       acceptanceRate: data.summary.acceptance_rate,
       activeClasses: data.summary.active_classes,
+      followingCount: data.summary.following_count,
       streakDays: data.summary.streak_days,
       checkinStreak: data.summary.checkin_streak,
       reputationScore: data.summary.reputation_score,

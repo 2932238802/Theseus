@@ -118,7 +118,6 @@
   display: inline-flex;
   gap: var(--space-sm);
 }
-
 .forum-board-tab {
   display: inline-flex;
   align-items: center;
@@ -143,6 +142,59 @@
   border-color: var(--color-accent);
   background: var(--color-accent-soft);
   color: var(--color-accent);
+}
+
+.forum-scope-row {
+  gap: var(--space-md);
+}
+
+.forum-scope-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.forum-scope-tabs button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 6px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color var(--duration), color var(--duration);
+}
+
+.forum-scope-tabs button:hover {
+  color: var(--color-text);
+}
+
+.forum-scope-tabs button.active {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.forum-scope-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  text-align: center;
+}
+
+.forum-scope-hint {
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .forum-locked {
@@ -409,6 +461,35 @@
 .forum-author-anonymous {
   color: var(--color-text-secondary);
   font-style: italic;
+}
+
+.forum-follow-button {
+  position: relative;
+  z-index: 3;
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: auto;
+  transition: border-color var(--duration), background-color var(--duration), color var(--duration);
+}
+
+.forum-follow-button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.forum-follow-button.is-following {
+  border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border));
+  background: var(--color-success-soft);
+  color: var(--color-success);
 }
 
 .forum-feed-loading {

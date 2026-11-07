@@ -94,7 +94,13 @@ cargo run
 | DELETE | `/api/profile` | 用户 | 注销账号并匿名化 |
 | POST | `/api/profile/avatar` | 用户 | 上传头像（multipart） |
 | DELETE | `/api/profile/avatar` | 用户 | 删除头像 |
-| GET | `/api/profile/analytics` | 用户 | 个人学习分析，含信誉分与连续签到天数 |
+| GET | `/api/profile/analytics` | 用户 | 个人学习分析，含信誉分、连续签到天数与关注人数 |
+| GET | `/api/profile/following` | 用户 | 当前用户关注的人，含年级、Plus、是否同校与关注时间 |
+| POST | `/api/users/{id}/follow` | 用户 | 关注用户，需已验证邮箱，重复调用幂等 |
+| DELETE | `/api/users/{id}/follow` | 用户 | 取消关注，重复调用幂等 |
+| GET | `/api/profile/privacy` | 用户 | 读取社交动态隐私设置 |
+| PUT | `/api/profile/privacy` | 用户 | 更新社交动态隐私设置 `{hide_activity_from_social}` |
+| GET | `/api/forum/feed-counts` | 用户 | 关注的人与同校的人数量，用于论坛动态范围标签 |
 | GET | `/api/profile/preferences` | 用户 | 当前用户的个性化偏好 |
 | PUT | `/api/profile/preferences` | 用户 | 批量写入个性化偏好 |
 | DELETE | `/api/profile/preferences` | 用户 | 清空当前用户全部偏好 |
@@ -444,6 +450,17 @@ Content-Type: application/json
 - `GET /api/profile/notification-preferences` 返回 `{email,email_verified,preferences:[{category,channel,enabled}]}`，未保存过的类别返回代码里的默认值
 - `PUT /api/profile/notification-preferences` 请求 `{"preferences":[{"category":"forum","enabled":true}]}`，可一次提交多项，返回与 GET 相同的完整偏好；`category` 取 `class|assignment|forum|account|contest|announcement`
 - 偏好只控制邮件渠道，站内信始终接收；通知邮件只发送到已验证的邮箱，后台邮件循环每轮把待处理通知转入发件箱，用户关闭某类别后该类别不再产生新邮件
+
+### 关注与社交动态
+
+- `GET /api/forum/posts` 新增 `scope` 参数，取 `all`（默认）、`following`、`school`；后两者需要登录，并按动态范围过滤帖子与总数
+- `following` 返回当前用户关注的人发布的已发布帖子；`school` 返回与当前用户共享活跃组织的用户发布的帖子。组织成员、组织创建者与其学生都视为同校
+- 已归档组织的成员关系不参与同校计算
+- `hide_activity_from_social=true` 的用户不会出现在他人的关注/同校动态流中，本人仍可看到自己的帖子；公开的 `all` 流不受影响
+- `GET /api/profile/following` 返回 `{total,users:[{id,username,grade,role,avatar_url,is_plus,is_same_school,followed_at}]}`，只包含状态正常的账号
+- 关注状态同时下发在论坛公开作者的 `id` 与 `is_following` 字段；匿名作者不返回 `id`
+- `GET /api/profile/privacy` 与 `PUT /api/profile/privacy` 返回 `{hide_activity_from_social}`，PUT 请求体 `{"hide_activity_from_social":true}`
+- `GET /api/forum/feed-counts` 返回 `{following,school}`，已排除隐藏动态的用户与当前用户本人
 
 ## 商店与 Plus Theseus 接口
 

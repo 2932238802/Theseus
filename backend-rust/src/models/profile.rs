@@ -68,6 +68,7 @@ pub struct AnalyticsSummary {
     pub accepted_submissions: i64,
     pub acceptance_rate: f64,
     pub active_classes: i64,
+    pub following_count: i64,
     pub streak_days: i64,
     pub checkin_streak: i64,
     pub reputation_score: f64,

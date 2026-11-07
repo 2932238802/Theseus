@@ -19,13 +19,10 @@ import {
   startOAuth,
   unbindOAuth,
 } from '../api/oauth'
-import {
-  fetchNotificationPreferences,
-  updateNotificationPreferences,
-  type NotificationPreference,
-  type NotificationPreferences,
-} from '../api/notifications'
+import { fetchNotificationPreferences, updateNotificationPreferences, type NotificationPreference, type NotificationPreferences } from '../api/notifications'
+import { fetchPrivacy, updatePrivacy } from '../api/social'
 import { useAuthStore } from '../store/auth'
+import type { PrivacySettings } from '../types/social'
 import type { ProfileBadge } from '../types/profile'
 import type { OAuthBinding, OAuthProvider } from '../types/oauth'
 
@@ -48,6 +45,8 @@ const badges = ref<ProfileBadge[]>([])
 const badgesLoading = ref(true)
 const notificationPrefs = ref<NotificationPreferences | null>(null)
 const notificationPrefsLoading = ref(true)
+const privacy = ref<PrivacySettings | null>(null)
+const privacyLoading = ref(true)
 const oauthBindings = ref<OAuthBinding[]>([])
 const oauthProviders = ref<OAuthProvider[]>([])
 const oauthLoading = ref(true)
@@ -61,6 +60,7 @@ const activeSection = ref<
   | 'password'
   | 'oauth'
   | 'notifications'
+  | 'privacy'
   | 'sessions'
   | 'badges'
   | 'danger'
@@ -72,6 +72,7 @@ const sections = [
   { key: 'password', label: '密码' },
   { key: 'oauth', label: '第三方账号' },
   { key: 'notifications', label: '通知偏好' },
+  { key: 'privacy', label: '隐私' },
   { key: 'sessions', label: '设备会话' },
   { key: 'badges', label: '徽章展示' },
   { key: 'danger', label: '注销账号' },
@@ -216,8 +217,34 @@ const toggleNotificationPreference = async (
   }
 }
 
-const loadOAuth = async (): Promise<void> => {
-  oauthLoading.value = true
+const loadPrivacy = async (): Promise<void> => {
+  privacyLoading.value = true
+  try {
+    privacy.value = await fetchPrivacy()
+  } catch (exception: unknown) {
+    error.value = toErrorMessage(exception)
+  } finally {
+    privacyLoading.value = false
+  }
+}
+
+const togglePrivacy = async (): Promise<void> => {
+  if (!privacy.value || busy.value) return
+  const next = !privacy.value.hideActivityFromSocial
+  busy.value = 'privacy'
+  error.value = ''
+  try {
+    privacy.value = await updatePrivacy(next)
+    toast.success(next ? '已隐藏你的动态' : '已恢复展示你的动态')
+  } catch (exception: unknown) {
+    error.value = toErrorMessage(exception)
+    privacy.value = { ...privacy.value }
+  } finally {
+    busy.value = ''
+  }
+}
+
+const loadOAuth = async (): Promise<void> => {  oauthLoading.value = true
   try {
     const [bindings, providers] = await Promise.all([
       fetchOAuthBindings(),
@@ -255,6 +282,7 @@ const disconnectGithub = (): void => {
 onMounted(() => {
   void loadBadges()
   void loadNotificationPrefs()
+  void loadPrivacy()
   void loadOAuth()
   if (route.query.oauth === 'bound') {
     toast.success('GitHub 账号已绑定')
@@ -464,6 +492,29 @@ const removeAccount = (): void => {
               </label>
             </li>
           </ul>
+        </section>
+
+        <section v-show="activeSection === 'privacy'" class="teaching-grade-form">
+          <h3>隐私</h3>
+          <p v-if="privacyLoading" class="teaching-subtle">加载中</p>
+          <ul v-else class="profile-badge-settings">
+            <li>
+              <div>
+                <strong>隐藏我的动态</strong>
+                <small>开启后 关注你的人和同校的人将无法在动态里看到你的帖子</small>
+              </div>
+              <label class="profile-badge-toggle">
+                <input
+                  type="checkbox"
+                  :checked="privacy?.hideActivityFromSocial ?? false"
+                  :disabled="busy === 'privacy'"
+                  @change="togglePrivacy"
+                />
+                <span>隐藏</span>
+              </label>
+            </li>
+          </ul>
+          <p class="teaching-subtle">你仍然可以正常浏览论坛 匿名帖不受影响</p>
         </section>
 
         <section v-show="activeSection === 'sessions'" class="teaching-grade-form">

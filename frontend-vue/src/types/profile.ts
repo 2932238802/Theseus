@@ -5,6 +5,7 @@ export interface ProfileAnalyticsSummary {
   acceptedSubmissions: number
   acceptanceRate: number
   activeClasses: number
+  followingCount: number
   streakDays: number
   checkinStreak: number
   reputationScore: number

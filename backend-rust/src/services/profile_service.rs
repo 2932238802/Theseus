@@ -370,6 +370,14 @@ pub async fn analytics(
         .map_err(AppError::Database)?,
         _ => 0,
     };
+    let following_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM user_follows uf JOIN users u ON u.id = uf.following_id \
+         WHERE uf.follower_id = $1 AND u.status = 'active'",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::Database)?;
 
     let days_with_accepted: Vec<NaiveDate> = sqlx::query_scalar(
         "SELECT DISTINCT (submitted_at AT TIME ZONE 'UTC')::date
@@ -503,6 +511,7 @@ pub async fn analytics(
             accepted_submissions,
             acceptance_rate,
             active_classes,
+            following_count,
             streak_days,
             checkin_streak,
             reputation_score,

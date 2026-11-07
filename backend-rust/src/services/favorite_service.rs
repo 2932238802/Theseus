@@ -234,6 +234,7 @@ pub async fn list_comment_favorites(
                     &row.author_username,
                     row.is_anonymous,
                     row.author_is_plus,
+                    false,
                     Some(user_id),
                 ),
                 created_at: row.created_at,

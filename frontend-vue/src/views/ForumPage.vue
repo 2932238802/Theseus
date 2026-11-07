@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { toErrorMessage } from '../api/client'
 import ForumPostCard from '../components/ForumPostCard.vue'
 import NavBar from '../components/NavBar.vue'
 import { useAuthStore } from '../store/auth'
 import { useForumStore } from '../store/forum'
-import { FORUM_BOARDS, FORUM_TAGS } from '../types/forum'
+import { FORUM_BOARDS, FORUM_TAGS, type ForumPostSummary, type ForumScope } from '../types/forum'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,6 +18,7 @@ let searchTimer: number | undefined
 const board = computed(() => forumStore.query.board ?? 'general')
 const isInterview = computed(() => board.value === 'interview')
 const locked = computed(() => forumStore.error.includes('Plus'))
+const scope = computed<ForumScope>(() => forumStore.query.scope ?? 'all')
 
 const totalStart = computed(() =>
   forumStore.total ? (forumStore.query.page - 1) * forumStore.query.size + 1 : 0,
@@ -31,7 +33,8 @@ const hasFilters = computed(
         forumStore.query.company ||
         forumStore.query.role ||
         forumStore.query.q ||
-        forumStore.query.mine,
+        forumStore.query.mine ||
+        forumStore.query.scope,
     ),
 )
 
@@ -65,6 +68,22 @@ const selectBoard = (next: 'general' | 'interview'): void => {
   forumStore.setBoard(next)
 }
 
+const selectScope = (next: ForumScope): void => {
+  if (next !== 'all' && !authStore.isAuthenticated) {
+    void router.push({ name: 'login', query: { redirect: '/forum' } })
+    return
+  }
+  forumStore.setScope(next)
+}
+
+const onToggleFollow = async (post: ForumPostSummary): Promise<void> => {
+  try {
+    await forumStore.toggleAuthorFollow(post)
+  } catch (exception: unknown) {
+    forumStore.error = toErrorMessage(exception)
+  }
+}
+
 watch(
   board,
   (value) => {
@@ -82,6 +101,7 @@ onMounted(() => {
   }
   void forumStore.loadPosts()
   void forumStore.loadFacets()
+  if (authStore.isAuthenticated) void forumStore.loadFeedCounts()
 })
 
 onBeforeUnmount(() => window.clearTimeout(searchTimer))
@@ -151,6 +171,46 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
         </button>
       </div>
 
+      <div class="forum-toolbar-row forum-scope-row">
+        <div class="forum-scope-tabs" role="tablist" aria-label="动态范围">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="scope === 'all'"
+            :class="{ active: scope === 'all' }"
+            @click="selectScope('all')"
+          >
+            全部
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="scope === 'following'"
+            :class="{ active: scope === 'following' }"
+            @click="selectScope('following')"
+          >
+            关注的人
+            <span v-if="forumStore.feedCounts.following" class="forum-scope-count">
+              {{ forumStore.feedCounts.following }}
+            </span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="scope === 'school'"
+            :class="{ active: scope === 'school' }"
+            @click="selectScope('school')"
+          >
+            同校的人
+            <span v-if="forumStore.feedCounts.school" class="forum-scope-count">
+              {{ forumStore.feedCounts.school }}
+            </span>
+          </button>
+        </div>
+        <span v-if="scope === 'following'" class="forum-scope-hint">只看你关注的人发布的帖子</span>
+        <span v-else-if="scope === 'school'" class="forum-scope-hint">只看与你同校的人发布的帖子</span>
+      </div>
+
       <div class="forum-toolbar-row forum-tag-row">
         <template v-if="!isInterview">
           <button
@@ -217,10 +277,17 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
         <span v-for="item in 3" :key="item" class="skeleton-line"></span>
       </div>
       <div v-else-if="!locked && forumStore.posts.length" class="forum-post-list">
-        <ForumPostCard v-for="post in forumStore.posts" :key="post.id" :post="post" />
+        <ForumPostCard
+          v-for="post in forumStore.posts"
+          :key="post.id"
+          :post="post"
+          @toggle-follow="onToggleFollow"
+        />
       </div>
       <div v-else-if="!locked && !forumStore.error" class="empty-state">
-        <p>{{ hasFilters ? '没有匹配的帖子 试试调整筛选条件' : isInterview ? '还没有面经' : '还没有帖子 来发第一帖' }}</p>
+        <p v-if="scope === 'following'">你关注的人还没有发帖 去关注更多同学</p>
+        <p v-else-if="scope === 'school'">你的同校同学还没有发帖</p>
+        <p v-else>{{ hasFilters ? '没有匹配的帖子 试试调整筛选条件' : isInterview ? '还没有面经' : '还没有帖子 来发第一帖' }}</p>
         <RouterLink v-if="!hasFilters" class="primary-button" :to="isInterview ? '/forum/new?board=interview' : '/forum/new'">去发帖</RouterLink>
       </div>
 

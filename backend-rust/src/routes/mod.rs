@@ -24,7 +24,7 @@ use crate::{
         favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
         lsp_handler, metrics_handler, note_handler, notification_handler, oauth_handler,
         plus_handler, preference_handler, problem_handler, profile_handler, ranking_handler,
-        run_handler, submission_handler, wrong_problem_handler, ws_handler,
+        run_handler, social_handler, submission_handler, wrong_problem_handler, ws_handler,
     },
 };
 
@@ -81,6 +81,15 @@ pub fn router(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max(3 * 1024 * 1024)),
         )
         .route("/api/profile/analytics", get(profile_handler::analytics))
+        .route("/api/profile/following", get(social_handler::following))
+        .route(
+            "/api/profile/privacy",
+            get(social_handler::privacy).put(social_handler::update_privacy),
+        )
+        .route(
+            "/api/users/{id}/follow",
+            post(social_handler::follow).delete(social_handler::unfollow),
+        )
         .route(
             "/api/profile/preferences",
             get(preference_handler::get)
@@ -484,6 +493,7 @@ pub fn router(state: AppState) -> Router {
             get(forum_handler::interview_facets),
         )
         .route("/api/forum/favorites", get(forum_handler::favorites))
+        .route("/api/forum/feed-counts", get(social_handler::feed_counts))
         .route(
             "/api/forum/comments/{id}/favorite",
             post(favorite_handler::favorite_comment).delete(favorite_handler::unfavorite_comment),

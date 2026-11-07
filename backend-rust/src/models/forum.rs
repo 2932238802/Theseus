@@ -33,10 +33,14 @@ pub fn is_known_report_reason(value: &str) -> bool {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PublicAuthor {
+    /// Only exposed for non-anonymous content so the follow button can target
+    /// the author without leaking anonymous identities.
+    pub id: Option<i32>,
     pub display_name: String,
     pub is_anonymous: bool,
     pub is_self: bool,
     pub is_plus: bool,
+    pub is_following: bool,
 }
 
 impl PublicAuthor {
@@ -47,26 +51,32 @@ impl PublicAuthor {
         username: &str,
         is_anonymous: bool,
         is_plus: bool,
+        is_following: bool,
         viewer_id: Option<i32>,
     ) -> Self {
+        let is_self = viewer_id == Some(author_id);
         Self {
+            id: (!is_anonymous).then_some(author_id),
             display_name: if is_anonymous {
                 "匿名同学".to_owned()
             } else {
                 username.to_owned()
             },
             is_anonymous,
-            is_self: viewer_id == Some(author_id),
+            is_self,
             is_plus: !is_anonymous && is_plus,
+            is_following: !is_anonymous && !is_self && is_following,
         }
     }
 
     pub fn hidden() -> Self {
         Self {
+            id: None,
             display_name: "已隐藏".to_owned(),
             is_anonymous: false,
             is_self: false,
             is_plus: false,
+            is_following: false,
         }
     }
 }
@@ -121,6 +131,7 @@ pub struct ForumPostListQuery {
     pub q: Option<String>,
     pub sort: Option<String>,
     pub mine: Option<bool>,
+    pub scope: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -547,6 +558,7 @@ pub struct ForumPostRow {
     pub author_id: i32,
     pub author_username: String,
     pub author_is_plus: bool,
+    pub author_followed: bool,
     pub board: String,
     pub title: String,
     pub body_md: String,
@@ -601,6 +613,7 @@ impl ForumPostRow {
                 &self.author_username,
                 self.is_anonymous,
                 self.author_is_plus,
+                self.author_followed,
                 viewer_id,
             ),
             problem,
@@ -755,6 +768,7 @@ impl ForumCommentRow {
                 &self.author_username,
                 self.is_anonymous,
                 self.author_is_plus,
+                false,
                 viewer_id,
             ),
             is_tombstone: false,
@@ -796,6 +810,7 @@ impl ForumCommentRow {
                     &self.author_username,
                     self.is_anonymous,
                     self.author_is_plus,
+                    false,
                     viewer_id,
                 )
             },

@@ -17,6 +17,7 @@ pub mod profile;
 pub mod ranking;
 pub mod run;
 pub mod season;
+pub mod social;
 pub mod submission;
 pub mod teaching;
 pub mod user;

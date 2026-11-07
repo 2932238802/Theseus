@@ -74,6 +74,23 @@
   font-size: 12px;
 }
 
+.profile-stat-action {
+  cursor: pointer;
+  transition: background-color var(--duration);
+}
+
+.profile-stat-action:hover,
+.profile-stat-action:focus-visible {
+  background: var(--color-accent-soft);
+  outline: none;
+}
+
+.profile-stats .profile-stat-action-hint {
+  margin-top: 2px;
+  color: var(--color-accent);
+  font-size: 11px;
+}
+
 .recent-section {
   margin-top: var(--space-xl);
 }

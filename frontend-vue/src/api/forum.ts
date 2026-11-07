@@ -51,10 +51,12 @@ const hiddenReason = (value: unknown): 'moderation' | 'report_threshold' | null 
 const mapAuthor = (value: unknown) => {
   const item = record(value)
   return {
+    id: nullableNumber(item.id),
     displayName: text(item.display_name, '匿名同学'),
     isAnonymous: bool(item.is_anonymous),
     isSelf: bool(item.is_self),
     isPlus: bool(item.is_plus),
+    isFollowing: bool(item.is_following),
   }
 }
 
@@ -245,6 +247,7 @@ const listParams = (query: ForumPostListQuery): Record<string, string | number |
   if (query.q) params.q = query.q
   if (query.sort) params.sort = query.sort
   if (query.mine) params.mine = true
+  if (query.scope && query.scope !== 'all') params.scope = query.scope
   return params
 }
 

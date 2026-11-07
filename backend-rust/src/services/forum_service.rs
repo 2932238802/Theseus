@@ -455,13 +455,94 @@ async fn ensure_report_limit(
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FeedScope {
+    All,
+    Following,
+    School,
+}
+
+fn parse_feed_scope(value: Option<&str>) -> Result<FeedScope, AppError> {
+    match value.unwrap_or("all") {
+        "all" => Ok(FeedScope::All),
+        "following" => Ok(FeedScope::Following),
+        "school" => Ok(FeedScope::School),
+        _ => Err(AppError::BadRequest("不支持的动态范围".to_owned())),
+    }
+}
+
+/// Restricts a feed to authors the viewer follows, or to users sharing an
+/// active class with the viewer. Users who hid their activity from social
+/// feeds are excluded unless they are the viewer.
+fn push_social_scope_filter(
+    builder: &mut QueryBuilder<'_, Postgres>,
+    scope: FeedScope,
+    viewer_id: i32,
+) {
+    match scope {
+        FeedScope::All => return,
+        FeedScope::Following => {
+            builder
+                .push(
+                    " AND fp.author_id IN (SELECT uf.following_id FROM user_follows uf \
+                     WHERE uf.follower_id = ",
+                )
+                .push_bind(viewer_id)
+                .push(")");
+        }
+        FeedScope::School => {
+            builder
+                .push(
+                    " AND fp.author_id IN (\
+                     SELECT cm2.user_id FROM class_members cm1 \
+                     JOIN classes c ON c.id = cm1.class_id AND c.archived_at IS NULL \
+                     JOIN class_members cm2 ON cm2.class_id = cm1.class_id \
+                     AND cm2.status = 'active' \
+                     WHERE cm1.user_id = ",
+                )
+                .push_bind(viewer_id)
+                .push(
+                    " AND cm1.status = 'active' \
+                     UNION \
+                     SELECT c.owner_id FROM class_members cm1 \
+                     JOIN classes c ON c.id = cm1.class_id AND c.archived_at IS NULL \
+                     WHERE cm1.user_id = ",
+                )
+                .push_bind(viewer_id)
+                .push(
+                    " AND cm1.status = 'active' \
+                     UNION \
+                     SELECT cm2.user_id FROM classes c \
+                     JOIN class_members cm2 ON cm2.class_id = c.id \
+                     AND cm2.status = 'active' \
+                     WHERE c.owner_id = ",
+                )
+                .push_bind(viewer_id)
+                .push(" AND c.archived_at IS NULL)");
+        }
+    }
+    builder
+        .push(" AND (fp.author_id = ")
+        .push_bind(viewer_id)
+        .push(
+            " OR NOT EXISTS (SELECT 1 FROM users pu \
+             WHERE pu.id = fp.author_id AND pu.hide_activity_from_social))",
+        );
+}
+
 /// Shared SELECT for public post projections. Callers must bind `viewer_id`
-/// twice (for `liked` and `favorited`) before appending `FROM ...`.
+/// three times (for `liked`, `favorited` and `author_followed`) before
+/// appending `FROM ...`.
 fn push_public_post_select(builder: &mut QueryBuilder<'_, Postgres>, viewer_id: Option<i32>) {
     builder.push(
         "SELECT fp.id, fp.author_id, u.username AS author_username, \
          EXISTS (SELECT 1 FROM plus_memberships pm WHERE pm.user_id = fp.author_id \
-         AND pm.expires_at > CURRENT_TIMESTAMP) AS author_is_plus, fp.board, fp.title, \
+         AND pm.expires_at > CURRENT_TIMESTAMP) AS author_is_plus, \
+         EXISTS (SELECT 1 FROM user_follows uf WHERE uf.follower_id = ",
+    );
+    builder.push_bind(viewer_id);
+    builder.push(
+        " AND uf.following_id = fp.author_id) AS author_followed, fp.board, fp.title, \
          fp.body_md, fp.tags, fp.interview_date, fp.company, fp.role, fp.view_count, \
          fp.accepted_comment_id, fp.problem_id, p.title AS problem_title, \
          p.difficulty AS problem_difficulty, \
@@ -500,6 +581,12 @@ pub async fn list_posts(
         Some(viewer_id.ok_or(AppError::Unauthorized)?)
     } else {
         None
+    };
+    let scope = parse_feed_scope(query.scope.as_deref())?;
+    let scope_viewer = if scope == FeedScope::All {
+        None
+    } else {
+        Some(viewer_id.ok_or(AppError::Unauthorized)?)
     };
     let board = normalize_board(query.board.as_deref())?;
     if board == BOARD_INTERVIEW {
@@ -584,6 +671,9 @@ pub async fn list_posts(
             .push_bind(pattern)
             .push(" ESCAPE '\\')");
     }
+    if let Some(scope_viewer) = scope_viewer {
+        push_social_scope_filter(&mut builder, scope, scope_viewer);
+    }
     if sort == "hot" {
         builder.push(
             " ORDER BY fp.is_pinned DESC, \
@@ -642,6 +732,9 @@ pub async fn list_posts(
             .push(" ESCAPE '\\' OR fp.body_md ILIKE ")
             .push_bind(pattern)
             .push(" ESCAPE '\\')");
+    }
+    if let Some(scope_viewer) = scope_viewer {
+        push_social_scope_filter(&mut count_builder, scope, scope_viewer);
     }
     let total: i64 = count_builder
         .build_query_scalar()
@@ -1499,6 +1592,7 @@ pub async fn create_comment(
             &username,
             request.is_anonymous,
             is_plus,
+            false,
             Some(user.id),
         ),
         created_at,

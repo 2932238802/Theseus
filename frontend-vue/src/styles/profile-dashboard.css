@@ -501,6 +501,95 @@
   max-height: calc(100vh - 64px);
 }
 
+/* Following dialog --------------------------------------------------------- */
+
+.following-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.following-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.following-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.following-list li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.following-avatar {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.following-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.following-identity {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.following-identity strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.following-identity small {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.following-unfollow-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--color-success) 45%, var(--color-border));
+  border-radius: 999px;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  font-size: 12px;
+  font-weight: 500;
+  transition: border-color var(--duration), background-color var(--duration), color var(--duration);
+}
+
+.following-unfollow-button:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
 .profile-settings-layout {
   display: grid;
   grid-template-columns: 168px minmax(0, 1fr);

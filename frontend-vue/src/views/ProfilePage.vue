@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import AvatarUploader from '../components/AvatarUploader.vue'
 import AccountSettingsDialog from '../components/AccountSettingsDialog.vue'
+import FollowingDialog from '../components/FollowingDialog.vue'
 import ProfileAnalytics from '../components/ProfileAnalytics.vue'
 import { toErrorMessage } from '../api/client'
 import { fetchAnalytics, fetchBadges } from '../api/profile'
@@ -38,6 +39,7 @@ const analyticsError = ref('')
 const badges = ref<ProfileBadge[]>([])
 const earnedBadges = computed(() => badges.value.filter((badge) => badge.earned))
 const showSettings = ref(route.query.settings === 'account')
+const showFollowing = ref(false)
 
 const roleLabel = computed(() => {
   if (authStore.isTeacher) return '教师'
@@ -144,6 +146,11 @@ const selectTab = (tab: 'submissions' | 'runs'): void => {
   }
 }
 
+const closeFollowing = (): void => {
+  showFollowing.value = false
+  void loadAnalytics()
+}
+
 onMounted(() => {
   void loadAnalytics()
   void loadBadges()
@@ -200,6 +207,18 @@ onMounted(() => {
       <article><strong>{{ analytics?.summary.attemptedProblems ?? 0 }}</strong><span>已尝试题目</span></article>
       <article><strong>{{ analytics?.summary.activeClasses ?? 0 }}</strong><span>活跃组织</span></article>
       <article><strong>{{ analytics?.summary.streakDays ?? 0 }}</strong><span>连续通过天数</span></article>
+      <article
+        class="profile-stat-action"
+        role="button"
+        tabindex="0"
+        @click="showFollowing = true"
+        @keydown.enter.prevent="showFollowing = true"
+        @keydown.space.prevent="showFollowing = true"
+      >
+        <strong>{{ analytics?.summary.followingCount ?? 0 }}</strong>
+        <span>关注的人</span>
+        <small class="profile-stat-action-hint">点击查看 →</small>
+      </article>
     </section>
 
     <section v-if="earnedBadges.length" class="profile-badge-section" aria-label="我的徽章">
@@ -281,6 +300,7 @@ onMounted(() => {
   </main>
 
   <AccountSettingsDialog v-if="showSettings" @close="closeSettings" />
+  <FollowingDialog v-if="showFollowing" @close="closeFollowing" />
 
   <div v-if="selectedSubmission" class="modal-backdrop" @click.self="closeSubmissionDetail">
     <section class="run-dialog run-record-dialog" role="dialog" aria-modal="true" aria-labelledby="submission-record-title">
