@@ -67,8 +67,12 @@ cargo run
 | GET | `/api/problems/{id}/neighbors` | 否 | 答题页上一题/下一题：`{total,prev_id,next_id}`，顺序为已审核题目 id 升序 |
 | POST | `/api/problems/{id}/favorite` | 用户 | 收藏题目 |
 | DELETE | `/api/problems/{id}/favorite` | 用户 | 取消收藏题目 |
-| GET | `/api/problems/{id}/draft` | 用户 | 读取云端草稿，查询参数 `language`，返回 `{draft:{language,code,updated_at}\|null}` |
-| PUT | `/api/problems/{id}/draft` | 用户 | 保存云端草稿 `{language,code}`；`code` 为空或全空白时删除草稿 |
+| GET | `/api/problems/{id}/draft` | 用户 | 兼容接口，读取该语言最近一份有内容的解法，查询参数 `language`，返回 `{draft:{language,code,updated_at}\|null}` |
+| PUT | `/api/problems/{id}/draft` | 用户 | 兼容接口，写回该语言最近使用的解法 `{language,code}`；`code` 为空或全空白时清空并返回 `{draft:null}` |
+| GET | `/api/problems/{id}/solutions` | 用户 | 列出本人该题解法 `{max,solutions}`，首次进入自动创建空解法 |
+| POST | `/api/problems/{id}/solutions` | 用户 | 新建解法 `{name?,language,code?}`，最多 5 份 |
+| PUT | `/api/problems/{id}/solutions/{solution_id}` | 用户 | 更新解法 `{name?,language?,code?}` |
+| DELETE | `/api/problems/{id}/solutions/{solution_id}` | 用户 | 删除解法，至少保留 1 份 |
 | GET | `/api/problems/{id}/note` | 用户 | 读取本人题目笔记，返回 `{note:{body_md,updated_at}\|null}` |
 | PUT | `/api/problems/{id}/note` | 用户 | 保存本人题目笔记 `{body_md}`；内容为空或全空白时删除笔记 |
 | GET | `/api/stats` | 否 | `{total_problems,total_submissions,accepted_submissions}` |
@@ -82,7 +86,7 @@ cargo run
 | PUT | `/api/admin/problems/{id}` | 管理员 | 更新题目 |
 | DELETE | `/api/admin/problems/{id}` | 管理员 | 删除题目 |
 | GET | `/api/submissions` | 用户 | 当前用户提交列表；管理员当前可传 `user_id`，角色迁移后该分支移除 |
-| POST | `/api/submissions` | 用户 | 创建提交，返回 `{submission_id,status,message}` |
+| POST | `/api/submissions` | 用户 | 创建提交，返回 `{submission_id,status,message}`；请求体可选 `solution_id` 关联本人解法 |
 | GET | `/api/submissions/{id}` | 用户 | 提交详情；本人或作业 owner 教师可读 |
 | GET | `/api/auth/me` | 用户 | 当前用户资料，含头像、待验证邮箱、注册时间 |
 | PUT | `/api/profile/username` | 用户 | 修改用户名 |
@@ -886,11 +890,116 @@ WebSocket 文本帧直接承载 LSP JSON-RPC 消息。连接建立后网关先�
 
 服务端使用 OpenAI 兼容的 `/chat/completions` 接口，配置项为 `AI_ENABLED`、`AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL`、`AI_MAX_TOKENS`、`AI_DAILY_LIMIT`；未配置 Key 时功能关闭。
 
-## 题目草稿接口
+## 一题多解接口
 
-- `GET /api/problems/{id}/draft?language=cpp` 需要登录，`language` 取 `cpp|java|python|javascript`；只对已审核题目开放，返回 `{draft: {language, code, updated_at} | null}`。
-- `PUT /api/problems/{id}/draft` 需要登录，请求体 `{language, code}`；`code` 上限 256 KB，超过返回参数错误；`code` 为空或全空白时删除该题该语言的草稿，返回 `{draft: null}`。
-- 草稿按「用户 + 题目 + 语言」唯一，重复保存为覆盖写入并刷新 `updated_at`；题目取消审核后读取和保存均返回不可见错误。
+设计见 `doc/2611071_一题多解设计方案.md`
+
+### 列出解法
+
+```http
+GET /api/problems/{id}/solutions?language=cpp
+Authorization: Bearer <token>
+```
+
+```json
+{
+  "max": 5,
+  "solutions": [
+    {
+      "id": 12,
+      "slot": 1,
+      "name": "解法 1",
+      "language": "cpp",
+      "code": "int solve() { return 0; }",
+      "created_at": "2026-11-07T06:00:00Z",
+      "updated_at": "2026-11-07T06:30:00Z",
+      "last_submission": {
+        "id": 88,
+        "status": "accepted",
+        "test_cases_passed": 10,
+        "total_test_cases": 10,
+        "runtime": 12,
+        "memory": 3072,
+        "submitted_at": "2026-11-07T06:31:00Z"
+      }
+    }
+  ]
+}
+```
+
+- 需要登录，只对已审核题目开放
+- `language` 只在首次进入、尚无解法时决定默认解法语言
+- 没有解法时自动创建空解法 1，前端无需区分未初始化状态
+- `last_submission` 优先取该解法的通过记录，其次取最近一次提交，没有提交时为 `null`
+
+### 新建解法
+
+```http
+POST /api/problems/{id}/solutions
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+```json
+{
+  "name": "二分",
+  "language": "python",
+  "code": ""
+}
+```
+
+- `name` 可省略，默认「解法 N」
+- 达到 5 份返回 409 `最多保存 5 个解法`
+- 返回新建的解法对象
+
+### 更新解法
+
+```http
+PUT /api/problems/{id}/solutions/{solution_id}
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+```json
+{
+  "name": "二分",
+  "language": "python",
+  "code": "def solve(): return 0"
+}
+```
+
+- 三个字段都可选，只更新传入字段
+- 名称去除首尾空白后不能为空、不能包含控制字符、不超过 60 字符
+- 代码上限 256 KB
+- 语言仅接受 `cpp`、`java`、`python`、`javascript`
+- 只能更新本人且属于该题的解法，否则返回 404
+
+### 删除解法
+
+```http
+DELETE /api/problems/{id}/solutions/{solution_id}
+Authorization: Bearer <token>
+```
+
+- 至少保留 1 份，删除最后一份返回 409 `至少保留一个解法`
+- 返回删除后的完整列表 `{max,solutions}`
+- 提交历史保留，`solution_id` 置空
+
+### 提交关联
+
+`POST /api/submissions` 请求体可带 `solution_id`
+
+后端校验解法属于当前用户且语言与提交语言一致，不一致返回参数错误
+
+提交列表与详情返回 `solution_id`，前端用于历史记录的解法标签
+
+## 兼容草稿接口
+
+旧版按语言保存的草稿接口继续可用，底层映射到 `problem_solutions`
+
+- `GET /api/problems/{id}/draft?language=cpp` 需要登录，`language` 取 `cpp|java|python|javascript`；只对已审核题目开放，返回该语言最近一份有内容的解法 `{draft: {language, code, updated_at} | null}`
+- `PUT /api/problems/{id}/draft` 需要登录，请求体 `{language, code}`；`code` 上限 256 KB，超过返回参数错误；`code` 为空或全空白时清空该语言最近使用的解法并返回 `{draft: null}`
+- 新前端登录后优先使用多解法接口；未登录、服务端失败与竞赛模式只保存到本机
 
 ## 首页工作台接口
 
@@ -930,7 +1039,7 @@ WebSocket 文本帧直接承载 LSP JSON-RPC 消息。连接建立后网关先�
 }
 ```
 
-`continue_learning` 优先取最近一次未通过的提交，没有时取最近一次提交；再与最近一份云端草稿（仅限已审核题目）比较 `last_activity_at`，取更新的一方。来自草稿时 `status` 为 `draft`、`action` 为 `resume`。
+`continue_learning` 优先取最近一次未通过的提交，没有时取最近一次提交；再与最近一份有代码的解法（仅限已审核题目，且该题尚无通过记录）比较 `last_activity_at`，取更新的一方。来自解法时 `status` 为 `draft`、`action` 为 `resume`。
 
 `POST /api/home/check-in` 每个 UTC 自然日只能成功一次，返回 `{checked_in,reputation_score,checkin_streak,message}`；首次签到信誉分 +0.1，上限 100，已经签到或已满时 `checked_in=false` 或分数不变。签到成功提示会显示连续签到天数，个人界面展示「连续签到 N 天」。`GET /api/home/check-in` 返回同一签到的当前状态 `{checked_in_today,reputation_score,checkin_streak}`，导航栏在连续签到天数大于 0 时显示火苗与天数。信誉分只能通过每日签到和管理员定量恢复，退款、上诉等人工复核结果由管理员通过 `PUT /api/admin/users/{id}/reputation` 处理。
 

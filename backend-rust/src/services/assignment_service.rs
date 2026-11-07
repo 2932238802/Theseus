@@ -1254,7 +1254,7 @@ pub async fn list_submissions(
     }
     .map_err(AppError::Database)?;
 
-    let base = "SELECT s.id, s.problem_id, p.title AS problem_title, s.language, s.status, \
+    let base = "SELECT s.id, s.problem_id, s.solution_id, p.title AS problem_title, s.language, s.status, \
                 s.test_cases_passed, s.total_test_cases, s.runtime, s.memory, s.error_message, s.submitted_at \
                 FROM submissions s JOIN problems p ON p.id = s.problem_id \
                 WHERE s.assignment_id = $1";

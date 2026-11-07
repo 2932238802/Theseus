@@ -158,8 +158,13 @@ async fn fetch_latest_submission(
 async fn fetch_draft(pool: &PgPool, user_id: i32) -> Result<Option<DraftContinueRow>, AppError> {
     sqlx::query_as(
         "SELECT d.problem_id, p.title AS problem_title, p.difficulty, d.language, d.updated_at \
-         FROM problem_drafts d JOIN problems p ON p.id = d.problem_id \
-         WHERE d.user_id = $1 AND p.review_status = 'approved' \
+         FROM problem_solutions d JOIN problems p ON p.id = d.problem_id \
+         WHERE d.user_id = $1 AND p.review_status = 'approved' AND d.code <> '' \
+           AND NOT EXISTS ( \
+             SELECT 1 FROM submissions s \
+             WHERE s.user_id = d.user_id AND s.problem_id = d.problem_id \
+               AND s.status = 'accepted' \
+           ) \
          ORDER BY d.updated_at DESC LIMIT 1",
     )
     .bind(user_id)

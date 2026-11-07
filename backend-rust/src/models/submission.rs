@@ -34,6 +34,7 @@ pub struct SubmissionRow {
     pub user_id: i32,
     pub problem_id: i32,
     pub assignment_id: Option<i32>,
+    pub solution_id: Option<i32>,
     pub problem_title: String,
     pub language: String,
     pub code: String,
@@ -119,6 +120,7 @@ pub struct SubmissionResponse {
     pub id: i32,
     pub problem_id: i32,
     pub assignment_id: Option<i32>,
+    pub solution_id: Option<i32>,
     pub problem_title: String,
     pub language: String,
     pub code: String,
@@ -141,6 +143,7 @@ impl From<SubmissionRow> for SubmissionResponse {
             id: row.id,
             problem_id: row.problem_id,
             assignment_id: row.assignment_id,
+            solution_id: row.solution_id,
             problem_title: row.problem_title,
             language: row.language,
             code: row.code,
@@ -167,6 +170,8 @@ pub struct SubmissionRequest {
     pub assignment_id: Option<i32>,
     #[serde(default)]
     pub contest_id: Option<i32>,
+    #[serde(default)]
+    pub solution_id: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -201,6 +206,7 @@ pub struct SubmissionListQuery {
 pub struct SubmissionSummary {
     pub id: i32,
     pub problem_id: i32,
+    pub solution_id: Option<i32>,
     pub problem_title: String,
     pub language: String,
     pub status: String,

@@ -10,11 +10,14 @@ import MarkdownBody from '../components/MarkdownBody.vue'
 import ShortcutDialog from '../components/ShortcutDialog.vue'
 import ProblemDiscussionPanel from '../components/ProblemDiscussionPanel.vue'
 import ProblemNotePanel from '../components/ProblemNotePanel.vue'
+import ProblemSolutionsPanel from '../components/ProblemSolutionsPanel.vue'
+import SolutionSwitcher from '../components/SolutionSwitcher.vue'
 import { useAuthStore } from '../store/auth'
 import { usePreferenceStore } from '../store/preferences'
 import { useProblemStore } from '../store/problems'
 import { useRunStore } from '../store/runs'
 import { useShortcutStore } from '../store/shortcuts'
+import { useSolutionStore } from '../store/solutions'
 import { useSubmissionStore } from '../store/submissions'
 import { fetchAssignment } from '../api/assignments'
 import { fetchContestProblem } from '../api/contests'
@@ -38,12 +41,14 @@ import {
 } from '../utils/constants'
 import { SHORTCUT_ACTIONS, displayShortcut, matchesShortcut, resolveBinding } from '../utils/shortcuts'
 import type { Language, Submission } from '../types/oj'
+import type { ProblemSolution } from '../types/solution'
 import type { RunMode } from '../types/run'
 import { formatArgs, formatInline } from '../utils/format'
 import { useContestEvents } from '../utils/contestEvents'
 import { inspectPaste } from '../utils/pasteInspection'
 import { clearDraftMeta, saveDraftMeta } from '../utils/problemDrafts'
 import { buildLineDiff, type DiffRow } from '../utils/lineDiff'
+import { solutionBadgeLabel, solutionBadgeStatus } from '../utils/solution'
 import { currentTheme, currentThemeId } from '../utils/theme'
 import {
   EDITOR_THEME_GROUPS,
@@ -59,6 +64,7 @@ const preferenceStore = usePreferenceStore()
 const problemStore = useProblemStore()
 const shortcutStore = useShortcutStore()
 const submissionStore = useSubmissionStore()
+const solutionStore = useSolutionStore()
 const runStore = useRunStore()
 const problemId = computed(() => Number(route.params.id))
 const PREFERRED_LANGUAGE_KEY = 'theseus-preferred-language'
@@ -104,7 +110,7 @@ const problemTotal = ref(0)
 const randomProblemLoading = ref(false)
 type OutputTab = 'run' | 'submit' | 'history'
 const activeOutputTab = ref<OutputTab>('submit')
-type ProblemTab = 'description' | 'discussion' | 'note'
+type ProblemTab = 'description' | 'solutions' | 'discussion' | 'note'
 const problemTab = ref<ProblemTab>('description')
 const HISTORY_PAGE_SIZE = 10
 const historyItems = ref<Submission[]>([])
@@ -138,6 +144,33 @@ const contestId = computed(() => {
   return Number.isInteger(value) && value > 0 ? value : null
 })
 const contestEventsEnabled = computed(() => contestId.value !== null)
+// 比赛模式不展示多解法，保留原有单份草稿行为
+const solutionsEnabled = computed(() => contestId.value === null)
+const solutionMode = computed<'server' | 'local'>(() =>
+  authStore.isAuthenticated && solutionsEnabled.value ? 'server' : 'local',
+)
+const activeSolution = computed(() => solutionStore.activeSolution)
+const activeSolutionServerId = computed(() => solutionStore.activeSolution?.serverId ?? undefined)
+const deletingSolution = ref<ProblemSolution | null>(null)
+const deleteSolutionBusy = ref(false)
+const deletingSolutionIndex = computed(() => {
+  const target = deletingSolution.value
+  if (!target) return ''
+  const index = solutionStore.solutions.findIndex((item) => item.id === target.id)
+  return index >= 0 ? String(index + 1).padStart(2, '0') : ''
+})
+const deletingSolutionBadge = computed(() =>
+  deletingSolution.value ? solutionBadgeStatus(deletingSolution.value) : 'draft',
+)
+const deletingSolutionStatusLabel = computed(() =>
+  deletingSolution.value ? solutionBadgeLabel(deletingSolution.value) : '',
+)
+const solutionNameFor = (submission: Submission): string => {
+  if (!submission.solutionId) return ''
+  return (
+    solutionStore.solutions.find((item) => item.serverId === submission.solutionId)?.name ?? ''
+  )
+}
 // 语义补全默认关闭，比赛模式与暂不支持的语言下按钮置灰
 const completionEnabled = ref(localStorage.getItem(EDITOR_COMPLETION_KEY) === 'on')
 const languageSupportsLsp = computed(() => isLspLanguage(language.value))
@@ -343,6 +376,7 @@ const parameterHint = computed(() => {
 
 const templateFor = (target: Language): string => problemStore.currentProblem?.codeTemplate[target] ?? ''
 const restoreDraft = (): void => {
+  if (solutionsEnabled.value) return
   code.value = localStorage.getItem(draftKey.value) ?? templateFor(language.value)
 }
 const hasOtherLanguageDraft = (): boolean =>
@@ -359,8 +393,40 @@ const cancelLocalDraftSave = (): void => {
     localDraftTimer = null
   }
 }
+const solutionHasDraft = (): boolean =>
+  Boolean(code.value && code.value !== templateFor(language.value))
+const anySolutionHasContent = (): boolean =>
+  solutionStore.solutions.some(
+    (solution) => Boolean(solution.code && solution.code !== templateFor(solution.language)),
+  )
+const saveSolutionMeta = (): void => {
+  const problem = problemStore.currentProblem
+  if (!problem) return
+  if (solutionHasDraft()) {
+    saveDraftMeta({
+      problemId: problem.id,
+      title: problem.title,
+      difficulty: problem.difficulty,
+      language: language.value,
+    })
+  } else if (!anySolutionHasContent()) {
+    clearDraftMeta(problem.id)
+  }
+}
+const scheduleSolutionMetaSave = (): void => {
+  cancelLocalDraftSave()
+  localDraftTimer = setTimeout(() => {
+    localDraftTimer = null
+    saveSolutionMeta()
+  }, 400)
+}
 const saveDraft = (): void => {
   cancelLocalDraftSave()
+  if (solutionsEnabled.value) {
+    // 多解法模式下由 store 负责保存代码，这里只维护首页的继续学习记录
+    saveSolutionMeta()
+    return
+  }
   if (code.value) localStorage.setItem(draftKey.value, code.value)
   const problem = problemStore.currentProblem
   if (!problem) return
@@ -383,10 +449,104 @@ const scheduleLocalDraftSave = (): void => {
     saveDraft()
   }, 400)
 }
+const codeForStorage = (): string =>
+  code.value === templateFor(language.value) ? '' : code.value
 const resetCode = (): void => {
   code.value = templateFor(language.value)
+  if (solutionsEnabled.value) {
+    solutionStore.updateActiveCode('')
+    saveSolutionMeta()
+    return
+  }
   saveDraft()
   if (problemStore.currentProblem) clearDraftMeta(problemStore.currentProblem.id)
+}
+
+let applyingSolution = false
+const applySolutionToEditor = async (solution: ProblemSolution): Promise<void> => {
+  applyingSolution = true
+  try {
+    language.value = solution.language
+    code.value = solution.code || templateFor(solution.language)
+    preferenceStore.setProblemLanguage(solution.language)
+    // 等 language/code 侦听器跑完，避免把程序性切换当成用户编辑
+    await nextTick()
+  } finally {
+    applyingSolution = false
+  }
+}
+
+const loadSolutionsForProblem = async (): Promise<void> => {
+  const problem = problemStore.currentProblem
+  if (!problem || !solutionsEnabled.value) {
+    solutionStore.reset()
+    return
+  }
+  await solutionStore.flushCode()
+  try {
+    const active = await solutionStore.load(problem.id, language.value, solutionMode.value)
+    if (active) await applySolutionToEditor(active)
+    saveSolutionMeta()
+  } catch (exception: unknown) {
+    toast.error(toErrorMessage(exception))
+  }
+}
+
+const switchSolution = async (id: string): Promise<void> => {
+  const solution = await solutionStore.switchTo(id)
+  if (!solution) return
+  await applySolutionToEditor(solution)
+  saveSolutionMeta()
+}
+
+const addSolution = async (): Promise<void> => {
+  try {
+    const solution = await solutionStore.add(language.value)
+    await applySolutionToEditor(solution)
+    problemTab.value = 'solutions'
+    saveSolutionMeta()
+    toast.success('已新建解法')
+  } catch (exception: unknown) {
+    toast.error(toErrorMessage(exception))
+  }
+}
+
+const renameSolution = async (id: string, name: string): Promise<void> => {
+  try {
+    await solutionStore.rename(id, name)
+  } catch (exception: unknown) {
+    toast.error(toErrorMessage(exception))
+  }
+}
+
+const requestDeleteSolution = (id: string): void => {
+  const target = solutionStore.solutions.find((item) => item.id === id) ?? null
+  deletingSolution.value = target
+}
+
+const cancelDeleteSolution = (): void => {
+  if (deleteSolutionBusy.value) return
+  deletingSolution.value = null
+}
+
+const confirmDeleteSolution = async (): Promise<void> => {
+  const target = deletingSolution.value
+  if (!target || deleteSolutionBusy.value) return
+  const previousActiveId = solutionStore.activeId
+  deleteSolutionBusy.value = true
+  try {
+    const next = await solutionStore.remove(target.id)
+    deletingSolution.value = null
+    if (next && solutionStore.activeId !== previousActiveId) {
+      await applySolutionToEditor(next)
+    }
+    saveSolutionMeta()
+    toast.success('已删除解法')
+  } catch (exception: unknown) {
+    toast.error(toErrorMessage(exception))
+  } finally {
+    deleteSolutionBusy.value = false
+  }
 }
 
 // 跨设备草稿：本地草稿仍然即时落盘，服务端在停止编辑约 1 秒后同步
@@ -408,6 +568,7 @@ const pushDraftToServer = async (
   targetLanguage: Language,
   content: string,
 ): Promise<boolean> => {
+  if (solutionsEnabled.value) return false
   if (!targetProblemId || contestId.value || !authStore.isAuthenticated) return false
   try {
     await saveProblemDraft(targetProblemId, targetLanguage, content)
@@ -419,6 +580,7 @@ const pushDraftToServer = async (
 }
 
 const scheduleDraftSync = (): void => {
+  if (solutionsEnabled.value) return
   if (!authStore.isAuthenticated || contestId.value) return
   const problem = problemStore.currentProblem
   if (!problem) return
@@ -438,6 +600,7 @@ const scheduleDraftSync = (): void => {
 }
 
 const hydrateDraftFromServer = async (): Promise<void> => {
+  if (solutionsEnabled.value) return
   if (!authStore.isAuthenticated || contestId.value) return
   const problem = problemStore.currentProblem
   if (!problem) return
@@ -500,6 +663,11 @@ const saveDraftNow = async (): Promise<void> => {
   saveDraft()
   const problem = problemStore.currentProblem
   if (!problem) return
+  if (solutionsEnabled.value) {
+    await solutionStore.flushCode()
+    flashSaveStatus(solutionMode.value === 'server' ? 'saved' : 'local')
+    return
+  }
   cancelDraftSync()
   pendingDraftSync = false
   if (!authStore.isAuthenticated || contestId.value) {
@@ -571,6 +739,7 @@ const loadPage = async (): Promise<void> => {
     assignmentError.value = ''
     assignmentLoading.value = false
   }
+  await solutionStore.flushCode()
   await Promise.all([
     loadProblemForPage(),
     contestId.value ? Promise.resolve() : loadAssignmentContext(),
@@ -578,8 +747,12 @@ const loadPage = async (): Promise<void> => {
   if (!contestId.value && problemStore.currentProblem) {
     void loadNeighbors(problemStore.currentProblem.id)
   }
-  restoreDraft()
-  await hydrateDraftFromServer()
+  if (solutionsEnabled.value) {
+    await loadSolutionsForProblem()
+  } else {
+    restoreDraft()
+    await hydrateDraftFromServer()
+  }
 }
 
 const loadNeighbors = async (id: number): Promise<void> => {
@@ -680,6 +853,14 @@ const submitCode = async (): Promise<void> => {
     return
   }
   if (assignmentId.value && !canSubmitCode.value) return
+  if (solutionsEnabled.value) {
+    // 先等语言与代码写回当前解法，避免提交先于解法更新到达后端
+    if (activeSolution.value) {
+      await solutionStore.setActiveLanguage(language.value, codeForStorage())
+    } else {
+      await solutionStore.flushCode()
+    }
+  }
   saveDraft()
   isOutputOpen.value = true
   activeOutputTab.value = 'submit'
@@ -690,7 +871,9 @@ const submitCode = async (): Promise<void> => {
       code.value,
       contestId.value ? undefined : (assignmentId.value ?? undefined),
       contestId.value ?? undefined,
+      activeSolutionServerId.value,
     )
+    if (final) solutionStore.recordSubmission(final)
     if (final?.status === 'Accepted') {
       acceptedSubmission.value = final
     }
@@ -1206,6 +1389,11 @@ watch(aiActive, () => { applyAiWidth() }, { flush: 'post' })
 
 let pageObserver: ResizeObserver | null = null
 
+const handleBeforeUnload = (): void => {
+  saveDraft()
+  if (solutionsEnabled.value) void solutionStore.flushCode()
+}
+
 onMounted(() => {
   void loadPage()
   void loadAiStatus()
@@ -1215,7 +1403,7 @@ onMounted(() => {
   applyOutputHeight()
   applyAiWidth()
   window.addEventListener('resize', onWindowResize)
-  window.addEventListener('beforeunload', saveDraft)
+  window.addEventListener('beforeunload', handleBeforeUnload)
   window.addEventListener('keydown', onShortcutKeydown, true)
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', stopResize)
@@ -1235,9 +1423,22 @@ onMounted(() => {
   }
 })
 watch(language, (_next, previous) => {
+  preferenceStore.setProblemLanguage(language.value)
+  if (solutionsEnabled.value) {
+    if (applyingSolution) return
+    const solution = solutionStore.activeSolution
+    if (!solution) return
+    isRunDialogOpen.value = false
+    const oldTemplate = previous ? templateFor(previous) : ''
+    if (!code.value.trim() || code.value === oldTemplate) {
+      code.value = templateFor(language.value)
+    }
+    saveSolutionMeta()
+    void solutionStore.setActiveLanguage(language.value, codeForStorage())
+    return
+  }
   // 先取消尚未落盘的延迟写入，避免它用新语言覆盖旧语言的草稿
   cancelLocalDraftSave()
-  preferenceStore.setProblemLanguage(language.value)
   // 先把上一种语言的当前代码落盘，再恢复新语言的草稿，避免切换时丢失编辑
   if (previous) {
     const previousKey = `theseus-draft-${problemId.value}-${previous}`
@@ -1285,6 +1486,12 @@ watch(
   },
 )
 watch(code, () => {
+  if (solutionsEnabled.value) {
+    if (applyingSolution) return
+    solutionStore.updateActiveCode(codeForStorage())
+    scheduleSolutionMetaSave()
+    return
+  }
   scheduleLocalDraftSave()
   if (!adoptingRemoteDraft) scheduleDraftSync()
 })
@@ -1293,6 +1500,7 @@ watch(
   (status) => {
     if (status !== 'Accepted' || !problemStore.currentProblem) return
     clearDraftMeta(problemStore.currentProblem.id)
+    if (solutionsEnabled.value) return
     // 通过后清掉云端草稿，避免首页继续学习展示已完成的题目
     cancelDraftSync()
     pendingDraftSync = false
@@ -1300,18 +1508,24 @@ watch(
   },
 )
 watch([() => route.params.id, contestId], () => { void loadPage() })
-watch(() => authStore.isAuthenticated, () => { void loadAiStatus() })
+watch(() => authStore.isAuthenticated, () => {
+  void loadAiStatus()
+  if (solutionsEnabled.value && problemStore.currentProblem) {
+    void loadSolutionsForProblem()
+  }
+})
 watch(assignmentId, () => { void loadAssignmentContext() })
 onBeforeUnmount(() => {
   submissionStore.stopPolling()
   runStore.stopPolling()
   // 把延迟写盘中的最后一次编辑立即落盘
   saveDraft()
+  if (solutionsEnabled.value) void solutionStore.flushCode()
   if (saveStatusTimer !== null) {
     clearTimeout(saveStatusTimer)
     saveStatusTimer = null
   }
-  if (draftSyncTimer !== null || pendingDraftSync) {
+  if (!solutionsEnabled.value && (draftSyncTimer !== null || pendingDraftSync)) {
     // 离开页面时立即把最后一次编辑同步到云端
     cancelDraftSync()
     pendingDraftSync = false
@@ -1319,7 +1533,7 @@ onBeforeUnmount(() => {
     void pushDraftToServer(problemStore.currentProblem?.id, language.value, payload)
   }
   window.removeEventListener('resize', onWindowResize)
-  window.removeEventListener('beforeunload', saveDraft)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   window.removeEventListener('keydown', onShortcutKeydown, true)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', stopResize)
@@ -1381,11 +1595,24 @@ onBeforeUnmount(() => {
           <div class="problem-tags"><span v-for="tag in problemStore.currentProblem.tags" :key="tag" class="tag">{{ tag }}</span><span class="acceptance-stat">通过率 {{ problemStore.currentProblem.acceptance.toFixed(1) }}%</span></div>
           <div v-if="!contestId" class="problem-view-tabs" role="tablist" aria-label="题目内容">
             <button type="button" role="tab" :aria-selected="problemTab === 'description'" :class="{ active: problemTab === 'description' }" @click="problemTab = 'description'">题目描述</button>
+            <button type="button" role="tab" :aria-selected="problemTab === 'solutions'" :class="{ active: problemTab === 'solutions' }" @click="problemTab = 'solutions'">我的解法</button>
             <button type="button" role="tab" :aria-selected="problemTab === 'discussion'" :class="{ active: problemTab === 'discussion' }" @click="problemTab = 'discussion'">题解与讨论</button>
             <button type="button" role="tab" :aria-selected="problemTab === 'note'" :class="{ active: problemTab === 'note' }" @click="problemTab = 'note'">笔记</button>
           </div>
           <article v-if="contestId || problemTab === 'description'" class="problem-content"><MarkdownBody class="problem-statement" :content="problemStore.currentProblem.description" /><h2>示例</h2><div v-for="(example, index) in problemStore.currentProblem.examples" :key="`${example.input}-${index}`" class="example-block"><span>示例 {{ index + 1 }}</span><MarkdownBody v-if="example.image" class="example-illustration" :content="exampleImageMarkdown(example.image, index)" /><pre><b>输入：</b>{{ example.input }}
 <b>输出：</b>{{ example.output }}</pre><p v-if="example.explanation"><b>解释：</b>{{ example.explanation }}</p></div><p v-if="!problemStore.currentProblem.examples.length" class="output-placeholder">暂无示例</p><h2>限制</h2><ul><li>时间限制：{{ problemStore.currentProblem.timeLimit }} ms</li><li>内存限制：{{ problemStore.currentProblem.memoryLimit }} MB</li></ul></article>
+          <ProblemSolutionsPanel
+            v-else-if="problemTab === 'solutions'"
+            :solutions="solutionStore.solutions"
+            :active-id="solutionStore.activeId"
+            :max="solutionStore.max"
+            :loading="solutionStore.loading"
+            :error="solutionStore.error"
+            @switch="switchSolution"
+            @add="addSolution"
+            @rename="renameSolution"
+            @delete="requestDeleteSolution"
+          />
           <ProblemDiscussionPanel v-else-if="problemTab === 'discussion'" :problem-id="problemStore.currentProblem.id" />
           <ProblemNotePanel v-else-if="problemTab === 'note'" :problem-id="problemStore.currentProblem.id" />
         </div>
@@ -1406,7 +1633,7 @@ onBeforeUnmount(() => {
         @keydown.right.prevent="nudgeSplit(24)"
       ></div>
       <section ref="editorPaneRef" class="editor-pane" :class="{ 'output-collapsed': !isOutputOpen }">
-        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><button type="button" class="editor-ai-toggle" :class="{ active: aiActive }" :disabled="aiButtonDisabled" :aria-pressed="aiActive" :title="aiActive ? `${aiTitle}（${shortcutHint('oj.close-ai')}）` : aiTitle" @click="toggleAiAssistant">AI 助手</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><optgroup v-for="group in EDITOR_THEME_GROUPS" :key="group.label" :label="group.label"><option v-for="option in group.options" :key="option.value" :value="option.value">{{ option.label }}</option></optgroup></select><button type="button" aria-label="减小字号" :title="`减小字号（${shortcutHint('oj.font-decrease')}）`" @click="fontSize = Math.max(FONT_SIZE_MIN, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" :title="`增大字号（${shortcutHint('oj.font-increase')}）`" @click="fontSize = Math.min(FONT_SIZE_MAX, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div><div v-if="lspStatusLabel || saveStatusLabel" class="editor-status-float" aria-live="polite"><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span></div></div>
+        <div class="editor-toolbar"><select v-model="language" aria-label="选择编程语言"><option v-for="option in LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select><div class="editor-tools"><SolutionSwitcher v-if="solutionsEnabled" :solutions="solutionStore.solutions" :active-id="solutionStore.activeId" :max="solutionStore.max" @switch="switchSolution" @add="addSolution" @delete="requestDeleteSolution" /><button type="button" class="editor-completion-toggle" :class="{ active: editorCompletion }" :disabled="!completionAllowed" :aria-pressed="editorCompletion" :title="completionTitle" @click="completionEnabled = !completionEnabled">语义补全</button><button type="button" class="editor-ai-toggle" :class="{ active: aiActive }" :disabled="aiButtonDisabled" :aria-pressed="aiActive" :title="aiActive ? `${aiTitle}（${shortcutHint('oj.close-ai')}）` : aiTitle" @click="toggleAiAssistant">AI 助手</button><select v-model="editorTheme" class="editor-theme-select" aria-label="选择编辑器主题"><optgroup v-for="group in EDITOR_THEME_GROUPS" :key="group.label" :label="group.label"><option v-for="option in group.options" :key="option.value" :value="option.value">{{ option.label }}</option></optgroup></select><button type="button" aria-label="减小字号" :title="`减小字号（${shortcutHint('oj.font-decrease')}）`" @click="fontSize = Math.max(FONT_SIZE_MIN, fontSize - 1)">A−</button><span>{{ fontSize }}</span><button type="button" aria-label="增大字号" :title="`增大字号（${shortcutHint('oj.font-increase')}）`" @click="fontSize = Math.min(FONT_SIZE_MAX, fontSize + 1)">A+</button><button type="button" aria-label="快捷键" title="快捷键" @click="isShortcutDialogOpen = true">⌨</button></div><div v-if="lspStatusLabel || saveStatusLabel" class="editor-status-float" aria-live="polite"><span v-if="lspStatusLabel" class="lsp-status" :class="{ 'is-error': lspStatus === 'error' }">{{ lspStatusLabel }}</span><span v-if="saveStatusLabel" class="save-status" :class="{ 'is-error': saveStatus === 'failed' }">{{ saveStatusLabel }}</span></div></div>
         <div class="editor-main" :class="{ 'has-ai': aiActive }">
           <CodeEditor ref="editorRef" v-model="code" :language="language" :font-size="fontSize" :tab-size="preferenceStore.editorTabSize" :theme="editorThemeName" :lsp-enabled="editorCompletion" :shortcut-bindings="shortcutStore.resolved" @shortcut="handleShortcut" @paste-text="handleEditorPaste" @lsp-status="lspStatus = $event" />
           <div
@@ -1511,6 +1738,10 @@ onBeforeUnmount(() => {
                     :expected="latestFailedCase.expected"
                   />
                 </template>
+                <div v-if="submissionStore.latest.status === 'Accepted' && solutionsEnabled" class="accepted-solution-cta">
+                  <p>这个解法已通过 可以保留它 再尝试另一种思路</p>
+                  <button type="button" class="primary-button" :disabled="!solutionStore.canAdd" :title="solutionStore.canAdd ? '新建解法' : `最多保存 ${solutionStore.max} 个解法`" @click="addSolution">{{ solutionStore.canAdd ? '＋ 新建解法' : '已达解法上限' }}</button>
+                </div>
               </template>
               <p v-else class="output-placeholder">提交代码后将在这里显示评测结果</p>
               <p v-if="submissionStore.error" class="form-error" role="alert">{{ submissionStore.error }}</p>
@@ -1531,6 +1762,7 @@ onBeforeUnmount(() => {
                   <button v-for="item in historyItems" :key="item.id" type="button" class="history-item" @click="openHistoryDetail(item)">
                     <span :class="['result-status', item.status === 'Accepted' ? 'accepted' : 'failed']">{{ item.status }}</span>
                     <span class="history-id">#{{ item.id }}</span>
+                    <span v-if="solutionNameFor(item)" class="history-solution-tag">{{ solutionNameFor(item) }}</span>
                     <span>{{ languageLabel(item.language) }}</span>
                     <span>{{ item.testCasesPassed }}/{{ item.totalTestCases }}</span>
                     <span>{{ item.runtime ?? '—' }}</span>
@@ -1648,6 +1880,30 @@ onBeforeUnmount(() => {
         <button class="run-button" type="button" @click="closeHistoryDetail">关闭</button>
         <button class="primary-button" type="button" :disabled="!historyDetail" @click="applyHistoryCode">载入编辑器</button>
       </footer>
+    </section>
+  </div>
+
+  <div v-if="deletingSolution" class="modal-backdrop" @click.self="cancelDeleteSolution">
+    <section class="run-dialog delete-solution-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-solution-title" @keydown.esc.stop="cancelDeleteSolution">
+      <header>
+        <div>
+          <h2 id="delete-solution-title">删除解法</h2>
+          <p>这个操作不会影响其他解法</p>
+        </div>
+        <button type="button" aria-label="关闭" @click="cancelDeleteSolution">×</button>
+      </header>
+      <div class="run-dialog-body">
+        <p class="delete-warning">删除后该解法无法恢复 已有提交记录会保留</p>
+        <div class="delete-target">
+          <span class="solution-index">{{ deletingSolutionIndex }}</span>
+          <strong>{{ deletingSolution.name }}</strong>
+          <span :class="['solution-status', deletingSolutionBadge]">{{ deletingSolutionStatusLabel }}</span>
+        </div>
+        <div class="delete-dialog-actions">
+          <button class="run-button" type="button" :disabled="deleteSolutionBusy" @click="cancelDeleteSolution">取消</button>
+          <button class="solution-danger-button" type="button" :disabled="deleteSolutionBusy" @click="confirmDeleteSolution">{{ deleteSolutionBusy ? '删除中' : '删除解法' }}</button>
+        </div>
+      </div>
     </section>
   </div>
 

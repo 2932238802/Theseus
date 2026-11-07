@@ -56,6 +56,7 @@ export interface BackendProblemList {
 export interface BackendSubmission {
   id: number
   problem_id: number
+  solution_id?: number | null
   problem_title: string
   language: string
   code?: string
@@ -271,6 +272,7 @@ export const mapSubmission = (submission: BackendSubmission): Submission => {
   return {
     id: submission.id,
     problemId: submission.problem_id,
+    solutionId: submission.solution_id ?? undefined,
     problemTitle: submission.problem_title,
     language: normalizeLanguage(submission.language),
     code: submission.code ?? '',
@@ -280,6 +282,8 @@ export const mapSubmission = (submission: BackendSubmission): Submission => {
     totalTestCases: submission.total_test_cases,
     runtime: formatRuntime(submission.runtime),
     memory: formatMemory(submission.memory),
+    runtimeMs: typeof submission.runtime === 'number' ? submission.runtime : undefined,
+    memoryKb: typeof submission.memory === 'number' ? submission.memory : undefined,
     createdAt: submission.submitted_at,
     finishedAt: submission.finished_at ?? undefined,
     compileOutput: submission.compile_output ?? undefined,

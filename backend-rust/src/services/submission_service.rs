@@ -154,6 +154,16 @@ impl SubmissionService {
         if request.code.len() > MAX_CODE_BYTES {
             return Err(AppError::BadRequest("代码不能超过 64 KB".to_owned()));
         }
+        if let Some(solution_id) = request.solution_id {
+            validate_solution(
+                pool,
+                user.id,
+                request.problem_id,
+                solution_id,
+                &request.language,
+            )
+            .await?;
+        }
 
         if request.assignment_id.is_some() && request.contest_id.is_some() {
             return Err(AppError::BadRequest("比赛提交不能同时关联作业".to_owned()));
@@ -423,7 +433,7 @@ impl SubmissionService {
                 .await
                 .map_err(AppError::Database)?;
                 let submissions = sqlx::query_as::<_, SubmissionSummary>(
-                    "SELECT s.id, s.problem_id, p.title AS problem_title, s.language, s.status, s.test_cases_passed, s.total_test_cases, s.runtime, s.memory, s.error_message, s.submitted_at FROM submissions s JOIN problems p ON p.id = s.problem_id WHERE s.user_id = $1 AND s.problem_id = $2 ORDER BY s.submitted_at DESC, s.id DESC LIMIT $3 OFFSET $4",
+                    "SELECT s.id, s.problem_id, s.solution_id, p.title AS problem_title, s.language, s.status, s.test_cases_passed, s.total_test_cases, s.runtime, s.memory, s.error_message, s.submitted_at FROM submissions s JOIN problems p ON p.id = s.problem_id WHERE s.user_id = $1 AND s.problem_id = $2 ORDER BY s.submitted_at DESC, s.id DESC LIMIT $3 OFFSET $4",
                 )
                 .bind(target_user_id)
                 .bind(problem_id)
@@ -442,7 +452,7 @@ impl SubmissionService {
                         .await
                         .map_err(AppError::Database)?;
                 let submissions = sqlx::query_as::<_, SubmissionSummary>(
-                    "SELECT s.id, s.problem_id, p.title AS problem_title, s.language, s.status, s.test_cases_passed, s.total_test_cases, s.runtime, s.memory, s.error_message, s.submitted_at FROM submissions s JOIN problems p ON p.id = s.problem_id WHERE s.user_id = $1 ORDER BY s.submitted_at DESC, s.id DESC LIMIT $2 OFFSET $3",
+                    "SELECT s.id, s.problem_id, s.solution_id, p.title AS problem_title, s.language, s.status, s.test_cases_passed, s.total_test_cases, s.runtime, s.memory, s.error_message, s.submitted_at FROM submissions s JOIN problems p ON p.id = s.problem_id WHERE s.user_id = $1 ORDER BY s.submitted_at DESC, s.id DESC LIMIT $2 OFFSET $3",
                 )
                 .bind(target_user_id)
                 .bind(limit)
@@ -570,7 +580,7 @@ impl SubmissionService {
 
 pub async fn fetch_submission_row(pool: &PgPool, id: i32) -> Result<SubmissionRow, AppError> {
     sqlx::query_as::<_, SubmissionRow>(
-        "SELECT s.id, s.user_id, s.problem_id, s.assignment_id, p.title AS problem_title, s.language, s.code, s.status, s.test_cases_passed, s.total_test_cases, s.runtime, s.memory, s.error_message, s.run_config_snapshot, s.judge_cases_snapshot, s.cases, s.compile_output, s.attempt_count, s.submitted_at, s.started_at, s.finished_at FROM submissions s JOIN problems p ON p.id = s.problem_id WHERE s.id = $1",
+        "SELECT s.id, s.user_id, s.problem_id, s.assignment_id, s.solution_id, p.title AS problem_title, s.language, s.code, s.status, s.test_cases_passed, s.total_test_cases, s.runtime, s.memory, s.error_message, s.run_config_snapshot, s.judge_cases_snapshot, s.cases, s.compile_output, s.attempt_count, s.submitted_at, s.started_at, s.finished_at FROM submissions s JOIN problems p ON p.id = s.problem_id WHERE s.id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -984,7 +994,7 @@ async fn persist_submission(
 ) -> Result<i32, AppError> {
     let Some(context) = assignment else {
         return sqlx::query_scalar::<_, i32>(
-            "INSERT INTO submissions (user_id, problem_id, language, code, status, total_test_cases, run_config_snapshot, judge_cases_snapshot, contest_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
+            "INSERT INTO submissions (user_id, problem_id, language, code, status, total_test_cases, run_config_snapshot, judge_cases_snapshot, contest_id, solution_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
         )
         .bind(user.id)
         .bind(request.problem_id)
@@ -995,6 +1005,7 @@ async fn persist_submission(
         .bind(run_config_value)
         .bind(judge_cases_value)
         .bind(contest_id)
+        .bind(request.solution_id)
         .fetch_one(pool)
         .await
         .map_err(AppError::Database);
@@ -1130,8 +1141,8 @@ async fn persist_submission(
     let submission_id: i32 = sqlx::query_scalar(
         "INSERT INTO submissions \
          (user_id, problem_id, assignment_id, language, code, status, total_test_cases, \
-          run_config_snapshot, judge_cases_snapshot, is_late, late_days) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id",
+          run_config_snapshot, judge_cases_snapshot, is_late, late_days, solution_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id",
     )
     .bind(user.id)
     .bind(request.problem_id)
@@ -1144,11 +1155,41 @@ async fn persist_submission(
     .bind(judge_cases_value)
     .bind(is_late)
     .bind(raw_late_days)
+    .bind(request.solution_id)
     .fetch_one(&mut *transaction)
     .await
     .map_err(AppError::Database)?;
     transaction.commit().await.map_err(AppError::Database)?;
     Ok(submission_id)
+}
+
+async fn validate_solution(
+    pool: &PgPool,
+    user_id: i32,
+    problem_id: i32,
+    solution_id: i32,
+    language: &str,
+) -> Result<(), AppError> {
+    if solution_id <= 0 {
+        return Err(AppError::BadRequest("解法 ID 无效".to_owned()));
+    }
+    let solution_language: Option<String> = sqlx::query_scalar(
+        "SELECT language FROM problem_solutions \
+         WHERE id = $1 AND user_id = $2 AND problem_id = $3",
+    )
+    .bind(solution_id)
+    .bind(user_id)
+    .bind(problem_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+    match solution_language {
+        None => Err(AppError::BadRequest("解法不存在".to_owned())),
+        Some(value) if value != language => {
+            Err(AppError::BadRequest("提交语言与解法语言不一致".to_owned()))
+        }
+        Some(_) => Ok(()),
+    }
 }
 
 fn validate_language(language: &str) -> Result<(), AppError> {
@@ -1232,6 +1273,7 @@ mod tests {
             user_id: 1,
             problem_id: 1,
             assignment_id: None,
+            solution_id: None,
             problem_title: "t".to_owned(),
             language: "python".to_owned(),
             code: "pass".to_owned(),

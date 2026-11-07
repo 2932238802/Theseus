@@ -1,0 +1,1439 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Theseus · 一题多解预览</title>
+<style>
+:root {
+  --color-primary: #3f3f52;
+  --color-primary-ink: #f4f4f6;
+  --color-accent: #4a4a5c;
+  --color-accent-hover: #2e2e3d;
+  --color-accent-soft: #dedee5;
+  --color-accent-ink: #f4f4f6;
+  --color-bg: #e9e9ee;
+  --color-surface: #f7f7f9;
+  --color-text: #24242c;
+  --color-text-secondary: #454552;
+  --color-text-muted: #6e6e7d;
+  --color-border: #c3c4cc;
+  --color-border-strong: #83848f;
+  --color-success: #3d7456;
+  --color-success-soft: #e4ece7;
+  --color-warning: #82602a;
+  --color-warning-soft: #f1e9db;
+  --color-danger: #9c4141;
+  --color-danger-soft: #f2e5e5;
+  --color-danger-ink: #f4f4f6;
+  --code-bg: #fbfbfd;
+  --code-keyword: #7a3e9d;
+  --code-string: #3d7456;
+  --code-comment: #8a8a96;
+  --code-number: #9c5a24;
+  --code-type: #2e5f8a;
+  --code-fn: #3f5f9c;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "SFMono-Regular", monospace;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(24, 24, 32, 0.06);
+  --shadow-md: 0 12px 32px rgba(24, 24, 32, 0.1), 0 2px 8px rgba(24, 24, 32, 0.05);
+  --duration: 150ms;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --color-primary: #f2f2f2;
+  --color-primary-ink: #1c1c1c;
+  --color-accent: #b3b6bd;
+  --color-accent-hover: #f2f2f2;
+  --color-accent-soft: #3f3f52;
+  --color-accent-ink: #1c1c1c;
+  --color-bg: #1c1c1c;
+  --color-surface: #38384a;
+  --color-text: #f2f2f2;
+  --color-text-secondary: #b3b6bd;
+  --color-text-muted: #a5a5b2;
+  --color-border: #4b4b5c;
+  --color-border-strong: #b3b6bd;
+  --color-success: #8fc7a6;
+  --color-success-soft: #23392d;
+  --color-warning: #d9b36c;
+  --color-warning-soft: #3a2f1e;
+  --color-danger: #e08c8c;
+  --color-danger-soft: #3d2424;
+  --color-danger-ink: #1c1c1c;
+  --code-bg: #222229;
+  --code-keyword: #c792ea;
+  --code-string: #a5d6a7;
+  --code-comment: #7c7c8c;
+  --code-number: #f0b37e;
+  --code-type: #82aaff;
+  --code-fn: #dcdcaa;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body { min-width: 320px; min-height: 100vh; margin: 0; }
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+a { color: var(--color-accent); text-decoration: none; }
+button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
+input, select, textarea { color: var(--color-text); font: inherit; }
+input::placeholder { color: var(--color-text-muted); }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* Header ------------------------------------------------------------------ */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  height: 64px;
+  align-items: center;
+  gap: var(--space-xl);
+  padding: 0 max(var(--space-lg), calc((100vw - 1320px) / 2));
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.brand { display: inline-flex; flex: 0 0 auto; align-items: center; gap: var(--space-sm); color: var(--color-text); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.brand-mark { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-accent-ink); font-size: 15px; font-weight: 600; line-height: 1; }
+.main-nav { display: flex; align-self: stretch; gap: var(--space-lg); }
+.main-nav > a { display: flex; height: 64px; align-items: center; gap: 4px; border-bottom: 2px solid transparent; color: var(--color-text-secondary); font-size: 14px; font-weight: 500; }
+.main-nav > a:hover { color: var(--color-text); }
+.main-nav > a.is-active { border-bottom-color: var(--color-accent); color: var(--color-text); }
+.nav-right { display: flex; align-items: center; gap: var(--space-md); margin-left: auto; }
+.nav-search { display: flex; width: clamp(180px, 18vw, 240px); height: 40px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
+.nav-search svg { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: var(--color-text-muted); stroke-width: 1.6; }
+.nav-search input { width: 100%; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; font-size: 13px; }
+.nav-avatar { display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; border: 1px solid var(--color-border); border-radius: 50%; background: var(--color-primary); color: var(--color-primary-ink); font-size: 13px; font-weight: 600; }
+
+/* OJ layout --------------------------------------------------------------- */
+
+.oj-page {
+  display: grid;
+  height: calc(100vh - 64px);
+  min-height: 620px;
+  grid-template-columns: minmax(380px, 560px) 8px minmax(520px, 1fr);
+  background: var(--color-surface);
+}
+
+.problem-pane { min-width: 0; overflow-y: auto; }
+.problem-pane-inner { max-width: 820px; margin: 0 auto; padding: var(--space-lg) var(--space-xl) 96px; }
+
+.pane-resizer { position: relative; width: 8px; cursor: col-resize; background: transparent; touch-action: none; }
+.pane-resizer::after { position: absolute; inset: 0 3px; background: var(--color-border); content: ''; transition: background-color var(--duration); }
+.pane-resizer:hover::after { background: var(--color-accent); }
+
+.problem-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); margin: var(--space-sm) 0 var(--space-sm); }
+.problem-heading h1 { font-size: 27px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+.problem-heading-actions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-sm); padding-top: 3px; }
+.favorite-button { min-height: 30px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 12px; }
+.favorite-button:hover { border-color: var(--color-warning); color: var(--color-warning); }
+.difficulty { display: inline-flex; min-height: 26px; align-items: center; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.difficulty.easy { background: var(--color-success-soft); color: var(--color-success); }
+
+.problem-nav { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-bottom: var(--space-md); }
+.problem-nav button { min-height: 30px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 12px; }
+.problem-nav button:hover { border-color: var(--color-border-strong); color: var(--color-text); }
+
+.problem-tags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-lg); }
+.tag { display: inline-flex; padding: 2px 9px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg); color: var(--color-text-secondary); font-size: 12px; }
+.acceptance-stat { margin-left: auto; color: var(--color-text-muted); font-size: 12px; }
+
+.problem-view-tabs { display: flex; gap: var(--space-xs); margin-bottom: var(--space-lg); border-bottom: 1px solid var(--color-border); }
+.problem-view-tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 4px; border-bottom: 2px solid transparent; color: var(--color-text-secondary); font-size: 14px; font-weight: 500; transition: color var(--duration), border-color var(--duration); }
+.problem-view-tabs button + button { margin-left: var(--space-md); }
+.problem-view-tabs button:hover { color: var(--color-text); }
+.problem-view-tabs button.active { border-bottom-color: var(--color-accent); color: var(--color-accent); }
+.tab-badge { display: inline-flex; min-width: 18px; height: 18px; align-items: center; justify-content: center; padding: 0 5px; border-radius: 999px; background: var(--color-bg); color: var(--color-text-muted); font-size: 11px; font-weight: 600; line-height: 1; }
+.problem-view-tabs button.active .tab-badge { background: var(--color-accent-soft); color: var(--color-accent); }
+
+.problem-panel { animation: panel-in 150ms ease-out; }
+@keyframes panel-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.problem-statement p { margin-bottom: var(--space-md); color: var(--color-text-secondary); font-size: 14px; line-height: 1.75; }
+.problem-statement h3 { margin: var(--space-lg) 0 var(--space-sm); font-size: 16px; }
+.problem-statement ul { margin: 0; padding-left: 20px; color: var(--color-text-secondary); font-size: 13px; line-height: 1.9; }
+.example-block { margin-bottom: var(--space-md); padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); }
+.example-block > span { display: block; margin-bottom: 6px; color: var(--color-text-muted); font-size: 12px; }
+.example-block pre { margin: 0; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; }
+
+/* My solutions ------------------------------------------------------------ */
+
+.solutions-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-md); }
+.solutions-head h2 { display: flex; align-items: center; gap: var(--space-sm); font-size: 19px; }
+.count-pill { display: inline-flex; min-height: 22px; align-items: center; padding: 0 8px; border: 1px solid var(--color-border); border-radius: 999px; color: var(--color-text-muted); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.new-solution-button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 4px; padding: 0 13px; border: 1px solid var(--color-accent); border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-accent-ink); font-size: 13px; font-weight: 500; transition: background-color var(--duration), border-color var(--duration); }
+.new-solution-button:hover:not(:disabled) { border-color: var(--color-accent-hover); background: var(--color-accent-hover); }
+
+.solution-limit-note { display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md); padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--color-warning) 28%, transparent); border-radius: var(--radius-sm); background: var(--color-warning-soft); color: var(--color-warning); font-size: 12px; }
+.solution-limit-note::before { display: inline-flex; width: 16px; height: 16px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid currentColor; border-radius: 50%; content: '!'; font-size: 10px; font-weight: 700; line-height: 1; }
+
+.solution-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.solution-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); transition: border-color var(--duration), background-color var(--duration), box-shadow var(--duration); }
+.solution-card:hover { border-color: var(--color-border-strong); }
+.solution-card.is-active { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 4%, var(--color-surface)); box-shadow: inset 3px 0 0 var(--color-accent); }
+.solution-card-main { display: flex; min-width: 0; align-items: flex-start; gap: 11px; padding: 14px 0 14px 16px; cursor: pointer; text-align: left; }
+.solution-index { flex: 0 0 auto; padding-top: 2px; color: var(--color-text-muted); font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; }
+.solution-info { min-width: 0; flex: 1; }
+.solution-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.solution-name { overflow-wrap: anywhere; font-size: 14.5px; font-weight: 600; line-height: 1.45; }
+.solution-status { display: inline-flex; min-height: 19px; align-items: center; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.solution-status.accepted { background: var(--color-success-soft); color: var(--color-success); }
+.solution-status.failed { background: var(--color-danger-soft); color: var(--color-danger); }
+.solution-status.draft { background: var(--color-bg); color: var(--color-text-muted); }
+.solution-flag { display: inline-flex; min-height: 19px; align-items: center; padding: 0 7px; border: 1px solid var(--color-accent); border-radius: 999px; color: var(--color-accent); font-size: 10px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.solution-lang { display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 4px; background: var(--color-bg); color: var(--color-text-muted); font-family: var(--font-mono); font-size: 10.5px; }
+.solution-meta { margin-top: 4px; color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; }
+.solution-meta em { color: var(--color-text-muted); font-style: normal; }
+.solution-time { margin-top: 2px; color: var(--color-text-muted); font-size: 11px; }
+.solution-actions { display: flex; align-items: flex-start; gap: 2px; padding: 12px 12px 0 8px; }
+.solution-actions button { padding: 4px 7px; border-radius: 6px; color: var(--color-text-muted); font-size: 11.5px; white-space: nowrap; transition: background-color var(--duration), color var(--duration); }
+.solution-actions button:hover { background: var(--color-bg); color: var(--color-text); }
+.solution-actions button.is-danger:hover { background: var(--color-danger-soft); color: var(--color-danger); }
+.solution-actions button:disabled { opacity: 0.35; }
+.rename-input { width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--color-accent); border-radius: 6px; background: var(--color-surface); font-size: 14px; font-weight: 600; cursor: text; }
+
+/* Discussion and note placeholders ---------------------------------------- */
+
+.discussion-list { display: flex; flex-direction: column; gap: var(--space-md); }
+.discussion-card { padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.discussion-card:hover { border-color: var(--color-border-strong); }
+.discussion-title { display: flex; align-items: center; gap: var(--space-sm); font-size: 14.5px; font-weight: 600; }
+.discussion-title .tag { font-size: 10.5px; }
+.discussion-card p { margin-top: 6px; color: var(--color-text-secondary); font-size: 13px; line-height: 1.7; }
+.discussion-meta { display: flex; gap: var(--space-md); margin-top: 10px; color: var(--color-text-muted); font-size: 11.5px; }
+.note-editor { min-height: 220px; width: 100%; resize: vertical; padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text); font-family: var(--font-sans); font-size: 14px; line-height: 1.8; }
+.note-editor:focus { border-color: var(--color-accent); outline: none; }
+.note-foot { display: flex; justify-content: space-between; margin-top: var(--space-sm); color: var(--color-text-muted); font-size: 11.5px; }
+
+/* Editor pane ------------------------------------------------------------- */
+
+.editor-pane { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto minmax(0, 1fr) 8px auto 60px; }
+
+.editor-toolbar { position: relative; display: flex; min-height: 52px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px var(--space-md); padding: 6px var(--space-md); border-bottom: 1px solid var(--color-border); }
+.toolbar-left { display: flex; align-items: center; gap: var(--space-sm); }
+.language-select, .theme-select { height: 32px; padding: 0 8px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 12px; }
+.language-select { max-width: 132px; }
+.theme-select { max-width: 116px; }
+.editor-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-xs); margin-left: auto; color: var(--color-text-secondary); font-size: 12px; }
+.tool-button { display: inline-flex; width: auto; height: 32px; align-items: center; padding: 0 8px; border: 1px solid var(--color-border); border-radius: 6px; color: var(--color-text-secondary); font-size: 12px; }
+.tool-button:hover { border-color: var(--color-border-strong); background: var(--color-bg); color: var(--color-text); }
+.icon-button { display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; border-radius: 6px; color: var(--color-text-secondary); font-size: 13px; }
+.icon-button:hover { background: var(--color-bg); color: var(--color-text); }
+.font-size { min-width: 16px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Solution switcher ------------------------------------------------------- */
+
+.switch-wrap { position: relative; }
+.switch-button { display: inline-flex; max-width: 270px; height: 32px; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface); color: var(--color-text); font-size: 12px; transition: border-color var(--duration), background-color var(--duration); }
+.switch-button:hover { border-color: var(--color-border-strong); background: var(--color-bg); }
+.switch-button[aria-expanded='true'] { border-color: var(--color-accent); background: var(--color-bg); }
+.switch-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--color-border-strong); }
+.switch-dot.accepted { background: var(--color-success); }
+.switch-dot.failed { background: var(--color-danger); }
+.switch-dot.draft { background: var(--color-text-muted); }
+.switch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switch-count { color: var(--color-text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.switch-caret { color: var(--color-text-muted); font-size: 9px; transition: transform var(--duration); }
+.switch-button[aria-expanded='true'] .switch-caret { transform: rotate(180deg); }
+
+.solution-popover { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; width: min(380px, calc(100vw - 32px)); padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-md); animation: menu-in 140ms ease-out; }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.popover-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 8px; }
+.popover-head strong { font-size: 13px; font-weight: 600; }
+.popover-head span { color: var(--color-text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.solution-row-list { display: flex; max-height: 324px; flex-direction: column; gap: 2px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.solution-row { display: flex; align-items: center; border-radius: var(--radius-sm); transition: background-color var(--duration); }
+.solution-row:hover { background: var(--color-bg); }
+.solution-row.is-active { background: var(--color-accent-soft); }
+.solution-row-main { display: flex; min-width: 0; flex: 1; align-items: center; gap: 9px; padding: 9px 10px; text-align: left; }
+.row-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--color-border-strong); }
+.row-dot.accepted { background: var(--color-success); }
+.row-dot.failed { background: var(--color-danger); }
+.row-dot.draft { background: var(--color-text-muted); }
+.row-info { min-width: 0; flex: 1; }
+.row-name { display: block; overflow: hidden; color: var(--color-text); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.row-meta { display: block; margin-top: 1px; color: var(--color-text-muted); font-size: 11px; }
+.row-badge { flex: 0 0 auto; }
+.row-actions { display: flex; flex: 0 0 auto; gap: 1px; padding-right: 4px; opacity: 0; transition: opacity var(--duration); }
+.solution-row:hover .row-actions, .solution-row.is-active .row-actions, .row-actions:focus-within { opacity: 1; }
+.row-actions button { display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center; border-radius: 6px; color: var(--color-text-muted); font-size: 13px; }
+.row-actions button:hover { background: var(--color-surface); color: var(--color-text); }
+.row-actions button.is-danger:hover { background: var(--color-danger-soft); color: var(--color-danger); }
+.row-actions button:disabled { opacity: 0.35; }
+.popover-foot { display: flex; align-items: center; gap: var(--space-sm); margin-top: 6px; padding: 8px 6px 2px; border-top: 1px solid var(--color-border); }
+.popover-add { display: inline-flex; min-height: 32px; flex: 1; align-items: center; justify-content: center; gap: 4px; padding: 0 12px; border: 1px dashed var(--color-border-strong); border-radius: 6px; color: var(--color-text-secondary); font-size: 12px; font-weight: 500; }
+.popover-add:hover:not(:disabled) { border-color: var(--color-accent); background: var(--color-bg); color: var(--color-text); }
+.popover-add:disabled { border-style: solid; }
+.popover-hint { flex: 0 0 auto; color: var(--color-text-muted); font-size: 11px; }
+
+/* Code editor ------------------------------------------------------------- */
+
+.editor-main { display: grid; min-width: 0; min-height: 0; grid-template-columns: minmax(0, 1fr); }
+.code-editor-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--code-bg); }
+.code-scroll { display: flex; height: 100%; overflow: auto; }
+.line-numbers { position: sticky; left: 0; z-index: 1; flex: 0 0 auto; min-width: 48px; padding: 14px 10px 24px 14px; border-right: 1px solid var(--color-border); background: var(--code-bg); color: var(--color-text-muted); font-family: var(--font-mono); font-size: 12px; line-height: 1.7; text-align: right; user-select: none; opacity: 0.7; }
+.code-block { min-width: 0; margin: 0; padding: 14px 20px 24px; color: var(--color-text); font-family: var(--font-mono); font-size: 13px; line-height: 1.7; white-space: pre; tab-size: 4; }
+.tok-comment { color: var(--code-comment); font-style: italic; }
+.tok-string { color: var(--code-string); }
+.tok-keyword { color: var(--code-keyword); }
+.tok-number { color: var(--code-number); }
+.tok-type { color: var(--code-type); }
+.tok-fn { color: var(--code-fn); }
+
+.save-float { position: absolute; top: calc(100% + 8px); right: var(--space-md); z-index: 6; padding: 4px 10px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); box-shadow: var(--shadow-sm); color: var(--color-success); font-size: 11.5px; pointer-events: none; animation: menu-in 140ms ease-out; }
+
+/* Output ------------------------------------------------------------------ */
+
+.pane-resizer-h { position: relative; height: 8px; cursor: row-resize; background: transparent; touch-action: none; }
+.pane-resizer-h::after { position: absolute; inset: 3px 0; background: var(--color-border); content: ''; }
+.pane-resizer-h:hover::after { background: var(--color-accent); }
+
+.output-panel { display: flex; min-height: 0; flex-direction: column; background: var(--color-surface); }
+.output-panel > header { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: var(--space-md); padding: 0 var(--space-md); }
+.output-tabs { display: flex; align-items: center; gap: var(--space-xs); }
+.output-tabs > button { padding: 6px 10px; border-radius: 6px; color: var(--color-text-secondary); font-size: 13px; font-weight: 500; transition: background-color var(--duration), color var(--duration); }
+.output-tabs > button:hover { background: var(--color-bg); color: var(--color-text); }
+.output-tabs > button.active { background: var(--color-bg); color: var(--color-text); }
+.output-toggle { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 6px; color: var(--color-text-secondary); }
+.output-toggle:hover { background: var(--color-bg); color: var(--color-text); }
+.result-status { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.result-status.accepted { background: var(--color-success-soft); color: var(--color-success); }
+.result-status.failed { background: var(--color-danger-soft); color: var(--color-danger); }
+.result-status.muted { background: var(--color-bg); color: var(--color-text-muted); }
+.output-body { min-height: 0; max-height: 196px; overflow-y: auto; padding: 2px var(--space-md) var(--space-md); }
+.output-panel.is-collapsed .output-body { display: none; }
+.output-placeholder { padding: var(--space-md) 0; color: var(--color-text-muted); font-size: 13px; }
+.run-note { margin-bottom: var(--space-sm); color: var(--color-text-muted); font-size: 12px; }
+
+.result-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); }
+.result-title { font-size: 17px; font-weight: 600; }
+.result-hero .result-note { margin-top: 2px; color: var(--color-text-secondary); font-size: 12px; }
+.verdict { display: inline-flex; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.verdict.accepted { background: var(--color-success-soft); color: var(--color-success); }
+.verdict.failed { background: var(--color-danger-soft); color: var(--color-danger); }
+.result-stats { display: flex; flex-wrap: wrap; gap: var(--space-sm) var(--space-xl); margin: var(--space-md) 0 0; }
+.result-stats div { min-width: 88px; }
+.result-stats dt { color: var(--color-text-muted); font-size: 11px; }
+.result-stats dd { margin: 1px 0 0; color: var(--color-text); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.run-block { margin-top: var(--space-md); }
+.run-block > span { display: block; margin-bottom: 4px; color: var(--color-text-secondary); font-size: 12px; }
+.run-block pre { max-height: 120px; margin: 0; overflow: auto; padding: var(--space-sm) var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); font-family: var(--font-mono); font-size: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.result-next { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-top: var(--space-md); padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); }
+.result-next strong { display: block; font-size: 13px; font-weight: 600; }
+.result-next span { color: var(--color-text-muted); font-size: 11.5px; }
+.secondary-button { display: inline-flex; min-height: 32px; flex: 0 0 auto; align-items: center; justify-content: center; gap: 4px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-text); font-size: 12px; font-weight: 500; }
+.secondary-button:hover { border-color: var(--color-border-strong); background: var(--color-bg); }
+.draft-hint { display: flex; gap: var(--space-sm); margin-top: var(--space-md); padding: 10px 12px; border: 1px dashed var(--color-border); border-radius: var(--radius-sm); color: var(--color-text-muted); font-size: 12px; }
+.draft-hint b { flex: 0 0 auto; color: var(--color-text-secondary); font-weight: 600; }
+
+.run-case { margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--color-border); }
+.run-case:first-of-type { border-top: 0; }
+.run-case header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-sm); color: var(--color-text-secondary); font-size: 12px; font-weight: 500; }
+.case-status { display: inline-flex; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.case-status.passed { background: var(--color-success-soft); color: var(--color-success); }
+.case-status.failed { background: var(--color-danger-soft); color: var(--color-danger); }
+
+.history-list { display: flex; flex-direction: column; gap: 2px; margin-top: var(--space-xs); }
+.history-item { display: grid; grid-template-columns: 78px 46px minmax(100px, 1fr) 56px 54px 50px 68px; align-items: center; gap: var(--space-sm); width: 100%; padding: 8px 6px; border-radius: 6px; text-align: left; color: var(--color-text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.history-item:hover { background: var(--color-bg); }
+.history-item .result-status { justify-content: center; padding: 2px 6px; font-size: 10.5px; }
+.history-id { color: var(--color-text-muted); font-family: var(--font-mono); font-size: 11px; }
+.history-solution { display: inline-flex; min-width: 0; align-items: center; gap: 6px; overflow: hidden; color: var(--color-text); text-overflow: ellipsis; white-space: nowrap; }
+.history-solution::before { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--color-border-strong); content: ''; }
+.history-solution.accepted::before { background: var(--color-success); }
+.history-solution.failed::before { background: var(--color-danger); }
+.history-lang { color: var(--color-text-muted); font-family: var(--font-mono); font-size: 10.5px; }
+.history-item time { color: var(--color-text-muted); text-align: right; white-space: nowrap; }
+
+/* Editor footer ----------------------------------------------------------- */
+
+.editor-actions { display: flex; align-items: center; justify-content: space-between; padding: 0 var(--space-md); border-top: 1px solid var(--color-border); background: var(--color-surface); }
+.editor-actions > div { display: flex; gap: var(--space-sm); }
+.run-button, .reset-button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; padding: 0 var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); font-size: 14px; }
+.run-button:hover, .reset-button:hover { border-color: var(--color-border-strong); background: var(--color-bg); }
+.reset-button { border-color: transparent; color: var(--color-text-secondary); font-size: 13px; }
+.submit-button { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: var(--space-sm); padding: 0 var(--space-md); border: 1px solid var(--color-accent); border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-accent-ink); font-size: 14px; font-weight: 500; }
+.submit-button:hover { border-color: var(--color-accent-hover); background: var(--color-accent-hover); }
+
+/* Dialog ------------------------------------------------------------------ */
+
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: var(--space-md); background: rgba(28, 28, 28, 0.55); backdrop-filter: blur(2px); }
+.run-dialog { width: min(430px, 100%); max-height: calc(100vh - 32px); overflow: auto; border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-md); animation: dialog-in 160ms ease-out; }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(6px) scale(0.985); } to { opacity: 1; transform: none; } }
+.run-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); padding: var(--space-lg) var(--space-lg) 0; }
+.run-dialog h2 { font-size: 18px; }
+.run-dialog header p { margin-top: 4px; color: var(--color-text-muted); font-size: 12px; }
+.run-dialog header button { display: inline-flex; width: 30px; height: 30px; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 6px; color: var(--color-text-muted); font-size: 18px; }
+.run-dialog header button:hover { background: var(--color-bg); color: var(--color-text); }
+.run-dialog-body { padding: var(--space-md) var(--space-lg) var(--space-lg); }
+.delete-warning { color: var(--color-text-secondary); font-size: 13px; line-height: 1.7; }
+.delete-target { display: flex; align-items: center; gap: var(--space-sm); margin-top: var(--space-md); padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); }
+.delete-target .solution-index { padding: 0; }
+.delete-target strong { min-width: 0; flex: 1; overflow: hidden; font-size: 13.5px; text-overflow: ellipsis; white-space: nowrap; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-sm); margin-top: var(--space-lg); }
+.danger-button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; padding: 0 var(--space-md); border: 1px solid var(--color-danger); border-radius: var(--radius-sm); background: var(--color-danger); color: var(--color-danger-ink); font-size: 14px; font-weight: 500; }
+.danger-button:hover { filter: brightness(0.92); }
+
+/* Toast and preview dock -------------------------------------------------- */
+
+.toast { position: fixed; left: 50%; bottom: 92px; z-index: 130; max-width: min(420px, calc(100vw - 32px)); padding: 9px 16px; border-radius: 999px; background: var(--color-primary); color: var(--color-primary-ink); box-shadow: var(--shadow-md); font-size: 13px; opacity: 0; pointer-events: none; transform: translate(-50%, 8px); transition: opacity 160ms, transform 160ms; }
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+.preview-dock { position: fixed; left: 50%; bottom: 22px; z-index: 120; display: flex; align-items: center; gap: 4px; padding: 6px; border: 1px solid color-mix(in srgb, var(--color-primary) 70%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--color-primary) 94%, transparent); color: var(--color-primary-ink); box-shadow: var(--shadow-md); transform: translateX(-50%); backdrop-filter: blur(8px); }
+.preview-dock-label { padding: 0 10px; font-size: 12px; opacity: 0.65; white-space: nowrap; }
+.preview-dock button { min-height: 32px; padding: 0 14px; border-radius: 999px; color: inherit; font-size: 13px; opacity: 0.72; white-space: nowrap; transition: background var(--duration), opacity var(--duration); }
+.preview-dock button:hover { opacity: 1; }
+.preview-dock button.is-active { background: var(--color-primary-ink); color: var(--color-primary); font-weight: 600; opacity: 1; }
+.preview-dock-hint { padding: 0 10px 0 4px; font-size: 11px; opacity: 0.55; white-space: nowrap; }
+.preview-dock .reset-demo { min-width: 32px; padding: 0 9px; font-size: 14px; }
+
+/* Responsive -------------------------------------------------------------- */
+
+@media (max-width: 1100px) {
+  .oj-page { grid-template-columns: minmax(340px, 46%) 8px minmax(0, 1fr); }
+  .problem-pane-inner { padding-left: var(--space-lg); padding-right: var(--space-lg); }
+  .switch-button { max-width: 190px; }
+}
+
+@media (max-width: 900px) {
+  .main-nav { display: none; }
+  .nav-search { width: 180px; }
+  .oj-page { display: block; height: auto; min-height: 0; }
+  .problem-pane { border-bottom: 1px solid var(--color-border); }
+  .problem-pane-inner { max-width: none; padding: var(--space-lg) var(--space-md) var(--space-xl); }
+  .pane-resizer { display: none; }
+  .editor-pane { height: 700px; }
+  .solution-actions { padding-top: 10px; }
+}
+
+@media (max-width: 640px) {
+  .site-header { gap: var(--space-md); padding: 0 var(--space-md); }
+  .nav-search { display: none; }
+  .problem-heading h1 { font-size: 23px; }
+  .problem-heading-actions .favorite-button { display: none; }
+  .acceptance-stat { margin-left: 0; }
+  .solutions-head { align-items: flex-start; }
+  .solution-card { grid-template-columns: 1fr; }
+  .solution-card-main { padding-right: 12px; }
+  .solution-actions { padding: 0 12px 10px 38px; }
+  .solution-actions button { border: 1px solid var(--color-border); background: var(--color-surface); }
+  .editor-toolbar { padding: 6px 10px; }
+  .theme-select, .tool-button { display: none; }
+  .switch-button { max-width: 150px; }
+  .output-body { max-height: 240px; }
+  .history-item { grid-template-columns: 76px 48px minmax(100px, 1fr) 52px; }
+  .history-item .history-lang, .history-item time, .history-item .history-runtime { display: none; }
+  .result-next { align-items: flex-start; flex-direction: column; }
+  .editor-actions { padding: 0 10px; }
+  .reset-button { display: none; }
+  .preview-dock { max-width: calc(100vw - 24px); overflow-x: auto; }
+  .preview-dock-hint, .preview-dock-label { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="#">
+    <span class="brand-mark" aria-hidden="true">T</span>
+    Theseus
+  </a>
+  <nav class="main-nav" aria-label="主导航">
+    <a href="#" class="is-active">题库</a>
+    <a href="#">比赛</a>
+    <a href="#">论坛</a>
+    <a href="#">组织</a>
+    <a href="#">排行</a>
+  </nav>
+  <div class="nav-right">
+    <label class="nav-search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+      <input type="search" placeholder="搜索题目、题解或用户" aria-label="搜索">
+    </label>
+    <span class="nav-avatar" aria-label="林小满">林</span>
+  </div>
+</header>
+
+<main class="oj-page">
+  <section class="problem-pane" id="problem-pane">
+    <div class="problem-pane-inner">
+      <header class="problem-heading">
+        <h1>1. 两数之和</h1>
+        <div class="problem-heading-actions">
+          <button class="favorite-button" type="button">☆ 收藏</button>
+          <span class="difficulty easy">简单</span>
+        </div>
+      </header>
+
+      <nav class="problem-nav" aria-label="题目导航">
+        <button type="button">← 上一题</button>
+        <button type="button">随机一题</button>
+        <button type="button">下一题 →</button>
+      </nav>
+
+      <div class="problem-tags">
+        <span class="tag">数组</span>
+        <span class="tag">哈希表</span>
+        <span class="acceptance-stat">通过率 68.4%</span>
+      </div>
+
+      <div class="problem-view-tabs" role="tablist" aria-label="题目内容">
+        <button type="button" role="tab" data-problem-tab="description" aria-selected="false">题目描述</button>
+        <button type="button" role="tab" data-problem-tab="solutions" aria-selected="true" class="active">我的解法 <span class="tab-badge" id="tab-count">3</span></button>
+        <button type="button" role="tab" data-problem-tab="discussion" aria-selected="false">题解与讨论</button>
+        <button type="button" role="tab" data-problem-tab="note" aria-selected="false">笔记</button>
+      </div>
+
+      <div class="problem-panel problem-statement" data-panel="description" hidden>
+        <p>给定一个整数数组 <code>nums</code> 和一个整数目标值 <code>target</code> 在数组中找出和为目标值的那两个整数 并返回它们的数组下标</p>
+        <p>你可以假设每种输入只会对应一个答案 但是数组中同一个元素不能重复使用</p>
+        <h3>示例</h3>
+        <div class="example-block">
+          <span>示例 1</span>
+          <pre>输入：nums = [2, 7, 11, 15], target = 9
+输出：[0, 1]
+解释：nums[0] + nums[1] = 2 + 7 = 9</pre>
+        </div>
+        <div class="example-block">
+          <span>示例 2</span>
+          <pre>输入：nums = [3, 2, 4], target = 6
+输出：[1, 2]</pre>
+        </div>
+        <h3>限制</h3>
+        <ul>
+          <li>2 ≤ nums.length ≤ 10⁴</li>
+          <li>-10⁹ ≤ nums[i] ≤ 10⁹</li>
+          <li>只会存在一个有效答案</li>
+          <li>时间限制 1000 ms 内存限制 256 MB</li>
+        </ul>
+      </div>
+
+      <div class="problem-panel" data-panel="solutions">
+        <div class="solutions-head">
+          <h2>我的解法 <span class="count-pill" id="solutions-count">3 / 5</span></h2>
+          <button type="button" class="new-solution-button" id="overview-add">＋ 新建解法</button>
+        </div>
+        <p class="solution-limit-note" id="overview-limit" hidden>已达 5 个解法上限 删除一个后才能继续新建</p>
+        <ol class="solution-list" id="solution-list"></ol>
+      </div>
+
+      <div class="problem-panel discussion-list" data-panel="discussion" hidden>
+        <article class="discussion-card">
+          <div class="discussion-title">哈希表一遍扫描 时间复杂度 O(n) <span class="tag">题解</span></div>
+          <p>遍历数组时把已经见过的数字和下标存进哈希表 对每个数只查一次 target - nums[i] 注意先查后存 避免同一个元素被用两次</p>
+          <div class="discussion-meta"><span>林小满</span><span>38 赞</span><span>12 收藏</span><span>2 小时前</span></div>
+        </article>
+        <article class="discussion-card">
+          <div class="discussion-title">排序加双指针 为什么下标会乱 <span class="tag">讨论</span></div>
+          <p>排序后数组下标的含义变了 如果答案要求返回原始下标 需要在排序前把值和下标一起保存 否则会得到数值本身而不是下标</p>
+          <div class="discussion-meta"><span>周予安</span><span>21 赞</span><span>6 收藏</span><span>昨天 21:40</span></div>
+        </article>
+      </div>
+
+      <div class="problem-panel" data-panel="note" hidden>
+        <textarea class="note-editor" aria-label="我的笔记">哈希表写法记得先查后存
+双指针要保留原始下标
+暴力枚举只在 n 很小时考虑</textarea>
+        <div class="note-foot"><span>笔记只对自己可见 自动保存</span><span>✓ 已保存</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="pane-resizer" role="separator" aria-label="调整题目与编辑器宽度" aria-hidden="true"></div>
+
+  <section class="editor-pane">
+    <div class="editor-toolbar">
+      <div class="toolbar-left">
+        <select class="language-select" id="language-select" aria-label="选择编程语言">
+          <option value="cpp">C++17</option>
+          <option value="python">Python 3</option>
+          <option value="java">Java 17</option>
+          <option value="javascript">JavaScript</option>
+        </select>
+      </div>
+      <div class="editor-tools">
+        <div class="switch-wrap" id="switch-wrap">
+          <button type="button" class="switch-button" id="switch-button" aria-haspopup="true" aria-expanded="false" title="切换解法">
+            <span class="switch-dot accepted" id="switch-dot" aria-hidden="true"></span>
+            <span class="switch-name" id="switch-name">方法一 · 哈希表</span>
+            <span class="switch-count" id="switch-count">1 / 3</span>
+            <span class="switch-caret" aria-hidden="true">▾</span>
+          </button>
+          <div class="solution-popover" id="solution-popover" role="dialog" aria-label="切换解法" hidden>
+            <div class="popover-head">
+              <strong>切换解法</strong>
+              <span id="popover-count">3 / 5</span>
+            </div>
+            <ul class="solution-row-list" id="popover-list"></ul>
+            <div class="popover-foot">
+              <button type="button" class="popover-add" id="popover-add">＋ 新建解法</button>
+              <span class="popover-hint" id="popover-hint">最多保存 5 个</span>
+            </div>
+          </div>
+        </div>
+        <button class="tool-button" type="button">语义补全</button>
+        <button class="tool-button" type="button">AI 助手</button>
+        <select class="theme-select" aria-label="选择编辑器主题">
+          <option>跟随系统</option>
+          <option>GitHub Light</option>
+          <option>One Dark</option>
+        </select>
+        <button class="icon-button" type="button" aria-label="减小字号">A−</button>
+        <span class="font-size">14</span>
+        <button class="icon-button" type="button" aria-label="增大字号">A+</button>
+        <button class="icon-button" type="button" aria-label="快捷键">⌨</button>
+      </div>
+      <div class="save-float" id="save-float" hidden>✓ 已保存</div>
+    </div>
+
+    <div class="editor-main">
+      <div class="code-editor-shell">
+        <div class="code-scroll">
+          <div class="line-numbers" id="line-numbers" aria-hidden="true"></div>
+          <pre class="code-block"><code id="code-block"></code></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane-resizer-h" role="separator" aria-label="调整编辑器与运行结果的高度" aria-hidden="true"></div>
+
+    <section class="output-panel" id="output-panel">
+      <header>
+        <div class="output-tabs" role="tablist" aria-label="运行与提交结果">
+          <button type="button" role="tab" data-output-tab="run" aria-selected="false">运行结果</button>
+          <button type="button" role="tab" data-output-tab="submit" aria-selected="true" class="active">提交结果</button>
+          <button type="button" role="tab" data-output-tab="history" aria-selected="false">提交记录 <span id="history-count">· 4</span></button>
+          <button class="output-toggle" id="output-toggle" type="button" aria-expanded="true" aria-label="收起结果面板"><span>⌄</span></button>
+        </div>
+        <span class="result-status accepted" id="output-status">通过</span>
+      </header>
+      <div class="output-body" id="output-body"></div>
+    </section>
+
+    <footer class="editor-actions">
+      <button class="reset-button" type="button">↺ 重置代码</button>
+      <div>
+        <button class="run-button" type="button">运行自定义输入</button>
+        <button class="submit-button" type="button">提交代码 <span aria-hidden="true">→</span></button>
+      </div>
+    </footer>
+  </section>
+</main>
+
+<div class="modal-backdrop" id="delete-modal" hidden>
+  <section class="run-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+    <header>
+      <div>
+        <h2 id="delete-title">删除解法</h2>
+        <p>这个操作不会影响其他解法</p>
+      </div>
+      <button type="button" aria-label="关闭" id="close-delete">×</button>
+    </header>
+    <div class="run-dialog-body">
+      <p class="delete-warning">删除后该解法的代码和关联记录都会被移除 且无法恢复</p>
+      <div class="delete-target" id="delete-target">
+        <span class="solution-index">01</span>
+        <strong id="delete-target-name">方法二 · 双指针</strong>
+        <span class="solution-status failed" id="delete-target-status">未通过</span>
+      </div>
+      <div class="dialog-actions">
+        <button class="run-button" type="button" id="cancel-delete">取消</button>
+        <button class="danger-button" type="button" id="confirm-delete">删除解法</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="preview-dock" role="toolbar" aria-label="预览界面切换">
+  <span class="preview-dock-label">预览</span>
+  <button type="button" data-preview="overview" class="is-active">解法总览</button>
+  <button type="button" data-preview="switcher">快速切换</button>
+  <button type="button" data-preview="add">新建解法</button>
+  <button type="button" data-preview="limit">5 个上限</button>
+  <button type="button" data-preview="delete">删除确认</button>
+  <button type="button" id="theme-toggle">深色</button>
+  <button type="button" class="reset-demo" id="reset-demo" aria-label="重置演示" title="重置演示">↺</button>
+  <span class="preview-dock-hint">点击体验</span>
+</div>
+
+<script>
+const MAX_SOLUTIONS = 5
+const MAX_HINT = '已达上限 5 / 5'
+const LANGUAGE_LABELS = { cpp: 'C++17', python: 'Python 3', java: 'Java 17', javascript: 'JavaScript' }
+const CN_NUMBERS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
+
+const SEED = [
+  {
+    id: 1,
+    name: '方法一 · 哈希表',
+    language: 'cpp',
+    updated: '2 分钟前',
+    code: `class Solution {
+public:
+    vector<int> twoSum(vector<int>& nums, int target) {
+        unordered_map<int, int> seen;
+        for (int i = 0; i < nums.size(); ++i) {
+            auto it = seen.find(target - nums[i]);
+            if (it != seen.end()) return {it->second, i};
+            seen[nums[i]] = i;
+        }
+        return {};
+    }
+};`,
+    result: {
+      status: 'Accepted',
+      passed: 24,
+      total: 24,
+      runtime: '8 ms',
+      memory: '10.4 MB',
+      message: '全部 24 个测试点通过',
+    },
+  },
+  {
+    id: 2,
+    name: '方法二 · 双指针',
+    language: 'cpp',
+    updated: '昨天 22:14',
+    code: `class Solution {
+public:
+    vector<int> twoSum(vector<int>& nums, int target) {
+        vector<pair<int, int>> a;
+        for (int i = 0; i < nums.size(); ++i) {
+            a.push_back({nums[i], i});
+        }
+        sort(a.begin(), a.end());
+        int l = 0, r = a.size() - 1;
+        while (l < r) {
+            int sum = a[l].first + a[r].first;
+            if (sum == target) {
+                return {a[l].first, a[r].first};  // 这里返回了数值
+            }
+            sum < target ? ++l : --r;
+        }
+        return {};
+    }
+};`,
+    result: {
+      status: 'Wrong Answer',
+      passed: 18,
+      total: 24,
+      runtime: '6 ms',
+      memory: '10.1 MB',
+      message: '解答错误',
+      failedCase: {
+        index: 7,
+        input: 'nums = [3, 2, 4], target = 6',
+        expected: '[1, 2]',
+        actual: '[2, 4]',
+      },
+    },
+  },
+  {
+    id: 3,
+    name: '方法三 · 暴力枚举',
+    language: 'python',
+    updated: '11-03 19:02',
+    code: `class Solution:
+    def twoSum(self, nums, target):
+        # 暴力枚举 先保留一个可读性最好的版本
+        for i in range(len(nums)):
+            for j in range(i + 1, len(nums)):
+                if nums[i] + nums[j] == target:
+                    return [i, j]
+        return []`,
+    result: null,
+  },
+]
+
+const TEMPLATES = {
+  cpp: `class Solution {
+public:
+    vector<int> twoSum(vector<int>& nums, int target) {
+        // 写下你的思路
+    }
+};`,
+  python: `class Solution:
+    def twoSum(self, nums, target):
+        # 写下你的思路
+        pass`,
+  java: `class Solution {
+    public int[] twoSum(int[] nums, int target) {
+        // 写下你的思路
+    }
+}`,
+  javascript: `var twoSum = function(nums, target) {
+    // 写下你的思路
+};`,
+}
+
+let state = createInitialState()
+
+function createInitialState() {
+  return {
+    solutions: SEED.map((item) => ({ ...item, result: item.result ? { ...item.result } : null })),
+    activeId: 1,
+    nextId: 4,
+    nextOrdinal: 4,
+    problemTab: 'solutions',
+    outputTab: 'submit',
+    outputOpen: true,
+    popoverOpen: false,
+    editingId: null,
+    pendingDeleteId: null,
+    preview: 'overview',
+    theme: 'light',
+  }
+}
+
+const $ = (id) => document.getElementById(id)
+const findSolution = (id) => state.solutions.find((item) => item.id === id)
+const activeSolution = () => findSolution(state.activeId) ?? state.solutions[0]
+const escapeHtml = (value) => String(value)
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+const escapeAttr = (value) => escapeHtml(value)
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#39;')
+const cnNumber = (value) => CN_NUMBERS[value] ?? String(value)
+
+const statusOf = (solution) => {
+  if (!solution.result) return 'draft'
+  return solution.result.status === 'Accepted' ? 'accepted' : 'failed'
+}
+const statusLabel = (solution) => {
+  const status = statusOf(solution)
+  if (status === 'accepted') return '已通过'
+  if (status === 'failed') return '未通过'
+  return '草稿'
+}
+const verdictLabel = (solution) => {
+  const status = statusOf(solution)
+  if (status === 'accepted') return '通过'
+  if (status === 'failed') return '未通过'
+  return '未提交'
+}
+
+const allSolutionsMeta = () => `${state.solutions.length} / ${MAX_SOLUTIONS}`
+
+/* Editor ------------------------------------------------------------------ */
+
+function highlight(code, language) {
+  const escaped = escapeHtml(code)
+  const commentPattern = language === 'python' ? '#[^\\n]*' : '\\/\\/[^\\n]*'
+  const pattern = new RegExp(
+    `(${commentPattern})|("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*')|\\b(class|public|private|static|return|for|while|if|else|int|auto|vector|unordered_map|pair|sort|false|true|const|def|in|range|len|pass|None|True|False|function|let|var|new|this)\\b|\\b(\\d+)\\b`,
+    'g',
+  )
+  return escaped.replace(pattern, (match, comment, string, keyword, number) => {
+    if (comment) return `<span class="tok-comment">${comment}</span>`
+    if (string) return `<span class="tok-string">${string}</span>`
+    if (keyword) {
+      const typeWords = ['int', 'auto', 'vector', 'unordered_map', 'pair']
+      const cls = typeWords.includes(keyword) ? 'tok-type' : 'tok-keyword'
+      return `<span class="${cls}">${keyword}</span>`
+    }
+    if (number) return `<span class="tok-number">${number}</span>`
+    return match
+  })
+}
+
+function renderEditor() {
+  const solution = activeSolution()
+  const lines = solution.code.split('\n')
+  $('line-numbers').innerHTML = lines.map((_, index) => `<span>${index + 1}</span>`).join('')
+  $('code-block').innerHTML = highlight(solution.code, solution.language)
+  $('language-select').value = solution.language
+}
+
+/* Solution lists ---------------------------------------------------------- */
+
+function renderOverview() {
+  const list = $('solution-list')
+  list.innerHTML = state.solutions.map((solution, index) => {
+    const status = statusOf(solution)
+    const isActive = solution.id === state.activeId
+    const canDelete = state.solutions.length > 1
+    const result = solution.result
+    let meta = '尚未提交'
+    if (result) {
+      if (result.status === 'Accepted') {
+        meta = `${result.passed} / ${result.total} 测试点 · ${result.runtime} · ${result.memory}`
+      } else {
+        meta = `通过 ${result.passed} / ${result.total} 测试点 · ${result.runtime}`
+      }
+    }
+    const title = state.editingId === solution.id
+      ? `<input class="rename-input" data-rename-input="${solution.id}" value="${escapeAttr(solution.name)}" aria-label="解法名称">`
+      : `<span class="solution-name">${escapeHtml(solution.name)}</span>`
+
+    return `
+      <li class="solution-card${isActive ? ' is-active' : ''}" data-id="${solution.id}">
+        <div class="solution-card-main" data-action="switch" data-id="${solution.id}">
+          <span class="solution-index">${String(index + 1).padStart(2, '0')}</span>
+          <div class="solution-info">
+            <div class="solution-title-row">
+              ${title}
+              <span class="solution-status ${status}">${statusLabel(solution)}</span>
+              <span class="solution-lang">${LANGUAGE_LABELS[solution.language]}</span>
+              ${isActive ? '<span class="solution-flag">当前编辑</span>' : ''}
+            </div>
+            <p class="solution-meta">${meta}</p>
+            <p class="solution-time">更新于 ${solution.updated}</p>
+          </div>
+        </div>
+        <div class="solution-actions">
+          <button type="button" data-action="switch" data-id="${solution.id}">${isActive ? '编辑中' : '编辑'}</button>
+          <button type="button" data-action="rename" data-id="${solution.id}">重命名</button>
+          <button type="button" class="is-danger" data-action="delete" data-id="${solution.id}"${canDelete ? '' : ' disabled title="至少保留一个解法"'}>删除</button>
+        </div>
+      </li>`
+  }).join('')
+}
+
+function renderPopover() {
+  $('popover-list').innerHTML = state.solutions.map((solution) => {
+    const status = statusOf(solution)
+    const isActive = solution.id === state.activeId
+    const canDelete = state.solutions.length > 1
+
+    return `
+      <li class="solution-row${isActive ? ' is-active' : ''}">
+        <button type="button" class="solution-row-main" data-action="switch" data-id="${solution.id}">
+          <span class="row-dot ${status}" aria-hidden="true"></span>
+          <span class="row-info">
+            <span class="row-name">${escapeHtml(solution.name)}</span>
+            <span class="row-meta">${LANGUAGE_LABELS[solution.language]} · ${statusLabel(solution)} · ${solution.updated}</span>
+          </span>
+        </button>
+        <span class="row-actions">
+          <button type="button" data-action="rename" data-id="${solution.id}" aria-label="重命名 ${escapeAttr(solution.name)}" title="重命名">✎</button>
+          <button type="button" class="is-danger" data-action="delete" data-id="${solution.id}" aria-label="删除 ${escapeAttr(solution.name)}" title="${canDelete ? '删除' : '至少保留一个解法'}"${canDelete ? '' : ' disabled'}>×</button>
+        </span>
+      </li>`
+  }).join('')
+}
+
+function renderSwitcher() {
+  const solution = activeSolution()
+  const status = statusOf(solution)
+  const index = state.solutions.findIndex((item) => item.id === solution.id)
+  $('switch-dot').className = `switch-dot ${status}`
+  $('switch-name').textContent = solution.name
+  $('switch-count').textContent = `${index + 1} / ${state.solutions.length}`
+  $('switch-button').title = `当前：${solution.name} · 点击切换解法`
+}
+
+function renderLimits() {
+  const full = state.solutions.length >= MAX_SOLUTIONS
+  $('solutions-count').textContent = allSolutionsMeta()
+  $('popover-count').textContent = allSolutionsMeta()
+  $('overview-limit').hidden = !full
+  $('overview-add').disabled = full
+  $('popover-add').disabled = full
+  $('popover-add').textContent = full ? '已达 5 个上限' : '＋ 新建解法'
+  $('popover-hint').textContent = full ? MAX_HINT : `还可新建 ${MAX_SOLUTIONS - state.solutions.length} 个`
+  $('tab-count').textContent = state.solutions.length
+}
+
+/* Output ------------------------------------------------------------------ */
+
+function statsHtml(solution) {
+  const result = solution.result
+  if (!result) return ''
+  return `
+    <dl class="result-stats">
+      <div><dt>通过用例</dt><dd>${result.passed} / ${result.total}</dd></div>
+      <div><dt>执行用时</dt><dd>${result.runtime}</dd></div>
+      <div><dt>内存消耗</dt><dd>${result.memory}</dd></div>
+    </dl>`
+}
+
+function renderSubmitOutput(solution) {
+  const result = solution.result
+  if (!result) {
+    return `
+      <p class="output-placeholder">这个解法还没有提交 运行或提交后会在这里显示结果</p>
+      <div class="draft-hint"><b>提示</b><span>每个解法独立保存代码 切换时不会覆盖其他草稿</span></div>`
+  }
+
+  if (result.status === 'Accepted') {
+    return `
+      <div class="result-hero">
+        <div>
+          <p class="result-title">通过</p>
+          <p class="result-note">${result.message} · 本解法已自动保存</p>
+        </div>
+        <span class="verdict accepted">Accepted</span>
+      </div>
+      ${statsHtml(solution)}
+      <div class="result-next">
+        <div><strong>想换一种写法？</strong><span>保留当前解法 再新建一个草稿</span></div>
+        <button type="button" class="secondary-button" data-action="add">＋ 新建解法</button>
+      </div>`
+  }
+
+  const failed = result.failedCase
+  return `
+    <div class="result-hero">
+      <div>
+        <p class="result-title">未通过</p>
+        <p class="result-note">${result.message} · 可以先切回已通过的解法对照</p>
+      </div>
+      <span class="verdict failed">Wrong Answer</span>
+    </div>
+    ${statsHtml(solution)}
+    ${failed ? `
+      <div class="run-block"><span>失败用例 #${failed.index} · 输入</span><pre>${escapeHtml(failed.input)}</pre></div>
+      <div class="run-block"><span>期望</span><pre>${escapeHtml(failed.expected)}</pre></div>
+      <div class="run-block"><span>实际</span><pre>${escapeHtml(failed.actual)}</pre></div>` : ''}`
+}
+
+function renderRunOutput(solution) {
+  const lang = LANGUAGE_LABELS[solution.language]
+  return `
+    <p class="run-note">运行结果不计入提交 也不影响通过率</p>
+    <div class="result-hero">
+      <div>
+        <p class="result-title">示例运行通过</p>
+        <p class="result-note">当前解法：${escapeHtml(solution.name)} · ${lang}</p>
+      </div>
+      <span class="verdict accepted">2 / 2</span>
+    </div>
+    <div class="run-case">
+      <header><span>示例 1</span><span class="case-status passed">通过</span></header>
+      <div class="run-block"><span>输入</span><pre>nums = [2, 7, 11, 15], target = 9</pre></div>
+      <div class="run-block"><span>实际</span><pre>[0, 1]</pre></div>
+    </div>
+    <div class="run-case">
+      <header><span>示例 2</span><span class="case-status passed">通过</span></header>
+      <div class="run-block"><span>输入</span><pre>nums = [3, 2, 4], target = 6</pre></div>
+      <div class="run-block"><span>实际</span><pre>[1, 2]</pre></div>
+    </div>`
+}
+
+function renderHistoryOutput() {
+  const rows = [
+    { id: 1042, status: 'Accepted', solution: '方法一 · 哈希表', state: 'accepted', language: 'C++17', passed: '24 / 24', runtime: '8 ms', time: '2 分钟前' },
+    { id: 1041, status: 'Wrong Answer', solution: '方法二 · 双指针', state: 'failed', language: 'C++17', passed: '18 / 24', runtime: '6 ms', time: '昨天 22:14' },
+    { id: 1038, status: 'Accepted', solution: '方法一 · 哈希表', state: 'accepted', language: 'C++17', passed: '24 / 24', runtime: '9 ms', time: '昨天 21:40' },
+    { id: 1027, status: 'Accepted', solution: '方法一 · 哈希表', state: 'accepted', language: 'C++17', passed: '24 / 24', runtime: '10 ms', time: '11-03 19:05' },
+  ]
+  return `
+    <p class="run-note">仅显示本题的提交 每条记录标记了使用的解法</p>
+    <div class="history-list">
+      ${rows.map((row) => `
+        <button type="button" class="history-item">
+          <span class="result-status ${row.state}">${row.status}</span>
+          <span class="history-id">#${row.id}</span>
+          <span class="history-solution ${row.state}">${row.solution}</span>
+          <span class="history-lang">${row.language}</span>
+          <span>${row.passed}</span>
+          <span class="history-runtime">${row.runtime}</span>
+          <time>${row.time}</time>
+        </button>`).join('')}
+    </div>`
+}
+
+function renderOutput() {
+  const solution = activeSolution()
+  const statusEl = $('output-status')
+  document.querySelectorAll('[data-output-tab]').forEach((button) => {
+    const active = button.dataset.outputTab === state.outputTab
+    button.classList.toggle('active', active)
+    button.setAttribute('aria-selected', String(active))
+  })
+
+  if (state.outputTab === 'submit') {
+    $('output-body').innerHTML = renderSubmitOutput(solution)
+    const status = statusOf(solution)
+    statusEl.textContent = verdictLabel(solution)
+    statusEl.className = `result-status ${status === 'draft' ? 'muted' : status}`
+  } else if (state.outputTab === 'run') {
+    $('output-body').innerHTML = renderRunOutput(solution)
+    statusEl.textContent = '2 / 2'
+    statusEl.className = 'result-status accepted'
+  } else {
+    $('output-body').innerHTML = renderHistoryOutput()
+    statusEl.textContent = '共 4 条提交'
+    statusEl.className = 'result-status muted'
+  }
+}
+
+/* Render all -------------------------------------------------------------- */
+
+function render() {
+  renderOverview()
+  renderPopover()
+  renderSwitcher()
+  renderLimits()
+  renderEditor()
+  renderOutput()
+  renderPopoverOpen()
+}
+
+function renderPopoverOpen() {
+  const open = state.popoverOpen
+  $('solution-popover').hidden = !open
+  $('switch-button').setAttribute('aria-expanded', String(open))
+}
+
+/* Actions ----------------------------------------------------------------- */
+
+function showToast(text) {
+  const toastEl = $('toast')
+  window.clearTimeout(showToast.timer)
+  toastEl.textContent = text
+  toastEl.classList.add('is-visible')
+  showToast.timer = window.setTimeout(() => toastEl.classList.remove('is-visible'), 1900)
+}
+
+function flashSaved(message = '✓ 已保存') {
+  const el = $('save-float')
+  el.textContent = message
+  el.hidden = false
+  window.clearTimeout(flashSaved.timer)
+  flashSaved.timer = window.setTimeout(() => { el.hidden = true }, 1500)
+}
+
+function openPopover() {
+  state.popoverOpen = true
+  renderPopoverOpen()
+}
+
+function closePopover() {
+  state.popoverOpen = false
+  renderPopoverOpen()
+}
+
+function switchSolution(id) {
+  if (!findSolution(id)) return
+  state.activeId = id
+  state.editingId = null
+  closePopover()
+  render()
+  flashSaved('✓ 已切换 自动保存')
+}
+
+function startRename(id) {
+  if (!findSolution(id)) return
+  state.editingId = id
+  state.popoverOpen = false
+  switchProblemTab('solutions')
+  render()
+  requestAnimationFrame(() => {
+    const input = document.querySelector(`[data-rename-input="${id}"]`)
+    input?.focus()
+    input?.select()
+  })
+}
+
+function commitRename(id, value) {
+  if (state.editingId !== id) return
+  const solution = findSolution(id)
+  const name = value.trim()
+  if (solution && name && name !== solution.name) {
+    solution.name = name
+    showToast(`已重命名为「${name}」`)
+  }
+  state.editingId = null
+  render()
+  flashSaved()
+}
+
+function cancelRename() {
+  if (state.editingId === null) return
+  state.editingId = null
+  render()
+}
+
+function addSolution(options = {}) {
+  if (state.solutions.length >= MAX_SOLUTIONS) {
+    showToast('最多保留 5 个解法 请先删除一个')
+    return null
+  }
+  const language = options.language ?? activeSolution().language
+  const solution = {
+    id: state.nextId++,
+    name: `方法${cnNumber(state.nextOrdinal++)} · 待命名`,
+    language,
+    updated: '刚刚',
+    code: TEMPLATES[language],
+    result: null,
+  }
+  state.solutions.push(solution)
+  state.activeId = solution.id
+  state.editingId = null
+  state.problemTab = 'solutions'
+  switchProblemTab('solutions')
+  closePopover()
+  render()
+  flashSaved('✓ 草稿已保存')
+  if (!options.silent) {
+    showToast(`已新建解法 · ${allSolutionsMeta()} 个`)
+  }
+  return solution
+}
+
+function openDeleteDialog(id) {
+  if (state.solutions.length <= 1) {
+    showToast('至少保留一个解法')
+    return
+  }
+  const solution = findSolution(id)
+  if (!solution) return
+  state.pendingDeleteId = id
+  const index = state.solutions.findIndex((item) => item.id === id)
+  $('delete-target-name').textContent = solution.name
+  $('delete-target-status').textContent = statusLabel(solution)
+  $('delete-target-status').className = `solution-status ${statusOf(solution)}`
+  $('delete-target').querySelector('.solution-index').textContent = String(index + 1).padStart(2, '0')
+  $('delete-modal').hidden = false
+  $('confirm-delete').focus()
+}
+
+function closeDeleteDialog() {
+  state.pendingDeleteId = null
+  $('delete-modal').hidden = true
+}
+
+function confirmDelete() {
+  const id = state.pendingDeleteId
+  const solution = findSolution(id)
+  if (!solution) {
+    closeDeleteDialog()
+    return
+  }
+  const index = state.solutions.findIndex((item) => item.id === id)
+  state.solutions = state.solutions.filter((item) => item.id !== id)
+  if (state.activeId === id) {
+    state.activeId = state.solutions[Math.min(index, state.solutions.length - 1)].id
+  }
+  closeDeleteDialog()
+  render()
+  flashSaved()
+  showToast(`已删除「${solution.name}」`)
+}
+
+function switchProblemTab(tab) {
+  state.problemTab = tab
+  document.querySelectorAll('[data-problem-tab]').forEach((button) => {
+    const active = button.dataset.problemTab === tab
+    button.classList.toggle('active', active)
+    button.setAttribute('aria-selected', String(active))
+  })
+  document.querySelectorAll('[data-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.panel !== tab
+  })
+}
+
+function fillToLimit() {
+  while (state.solutions.length < MAX_SOLUTIONS) {
+    addSolution({ silent: true })
+  }
+  state.problemTab = 'solutions'
+  switchProblemTab('solutions')
+  closePopover()
+  render()
+  showToast('已填充到 5 个解法上限')
+}
+
+function resetDemo() {
+  state = createInitialState()
+  closeDeleteDialog()
+  $('delete-modal').hidden = true
+  document.documentElement.dataset.theme = state.theme
+  $('theme-toggle').textContent = '深色'
+  $('output-panel').classList.remove('is-collapsed')
+  $('output-toggle').setAttribute('aria-expanded', 'true')
+  $('output-toggle').querySelector('span').textContent = '⌄'
+  switchProblemTab('solutions')
+  syncPreviewButtons()
+  render()
+  showToast('演示已重置')
+}
+
+/* Events ------------------------------------------------------------------ */
+
+function handleSolutionAction(event) {
+  if (event.target.closest('input')) return
+  const actionEl = event.target.closest('[data-action]')
+  if (!actionEl) return
+  const id = Number(actionEl.dataset.id)
+  const action = actionEl.dataset.action
+  if (action === 'switch') switchSolution(id)
+  if (action === 'rename') {
+    event.stopPropagation()
+    startRename(id)
+  }
+  if (action === 'delete') {
+    event.stopPropagation()
+    openDeleteDialog(id)
+  }
+  if (action === 'add') addSolution()
+}
+
+$('solution-list').addEventListener('click', handleSolutionAction)
+$('popover-list').addEventListener('click', handleSolutionAction)
+$('output-body').addEventListener('click', handleSolutionAction)
+
+$('switch-button').addEventListener('click', (event) => {
+  event.stopPropagation()
+  state.popoverOpen = !state.popoverOpen
+  renderPopoverOpen()
+})
+
+$('overview-add').addEventListener('click', () => addSolution())
+$('popover-add').addEventListener('click', () => addSolution())
+
+document.addEventListener('click', (event) => {
+  if (!state.popoverOpen) return
+  if ($('switch-wrap').contains(event.target)) return
+  closePopover()
+})
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    if (!$('delete-modal').hidden) {
+      closeDeleteDialog()
+      return
+    }
+    if (state.popoverOpen) closePopover()
+    if (state.editingId !== null) cancelRename()
+  }
+})
+
+document.addEventListener('keydown', (event) => {
+  const input = event.target.closest?.('[data-rename-input]')
+  if (!input) return
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    commitRename(Number(input.dataset.renameInput), input.value)
+  }
+})
+
+document.addEventListener('focusout', (event) => {
+  const input = event.target.closest?.('[data-rename-input]')
+  if (!input) return
+  const id = Number(input.dataset.renameInput)
+  if (state.editingId !== id) return
+  // 等一帧 让 Enter/Escape 先处理
+  window.setTimeout(() => {
+    if (state.editingId === id) commitRename(id, input.value)
+  }, 0)
+})
+
+$('language-select').addEventListener('change', (event) => {
+  const solution = activeSolution()
+  solution.language = event.target.value
+  solution.updated = '刚刚'
+  render()
+  flashSaved()
+  showToast(`已切换为 ${LANGUAGE_LABELS[solution.language]} 提交时按当前语言评测`)
+})
+
+document.querySelectorAll('[data-problem-tab]').forEach((button) => {
+  button.addEventListener('click', () => switchProblemTab(button.dataset.problemTab))
+})
+
+document.querySelectorAll('[data-output-tab]').forEach((button) => {
+  button.addEventListener('click', () => {
+    state.outputTab = button.dataset.outputTab
+    state.outputOpen = true
+    $('output-panel').classList.remove('is-collapsed')
+    $('output-toggle').setAttribute('aria-expanded', 'true')
+    renderOutput()
+  })
+})
+
+$('output-toggle').addEventListener('click', () => {
+  state.outputOpen = !state.outputOpen
+  $('output-panel').classList.toggle('is-collapsed', !state.outputOpen)
+  $('output-toggle').setAttribute('aria-expanded', String(state.outputOpen))
+  $('output-toggle').querySelector('span').textContent = state.outputOpen ? '⌄' : '›'
+})
+
+$('close-delete').addEventListener('click', closeDeleteDialog)
+$('cancel-delete').addEventListener('click', closeDeleteDialog)
+$('confirm-delete').addEventListener('click', confirmDelete)
+$('delete-modal').addEventListener('click', (event) => {
+  if (event.target === $('delete-modal')) closeDeleteDialog()
+})
+
+$('theme-toggle').addEventListener('click', () => {
+  state.theme = state.theme === 'dark' ? 'light' : 'dark'
+  document.documentElement.dataset.theme = state.theme
+  $('theme-toggle').textContent = state.theme === 'dark' ? '浅色' : '深色'
+})
+
+function syncPreviewButtons() {
+  document.querySelectorAll('[data-preview]').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.preview === state.preview)
+  })
+}
+
+document.querySelectorAll('[data-preview]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation()
+    state.preview = button.dataset.preview
+    syncPreviewButtons()
+    if (state.preview === 'overview') {
+      switchProblemTab('solutions')
+      closePopover()
+      $('problem-pane').scrollTo({ top: 0, behavior: 'smooth' })
+    } else if (state.preview === 'switcher') {
+      switchProblemTab('solutions')
+      openPopover()
+    } else if (state.preview === 'add') {
+      addSolution()
+    } else if (state.preview === 'limit') {
+      fillToLimit()
+    } else if (state.preview === 'delete') {
+      closePopover()
+      openDeleteDialog(state.activeId)
+    }
+  })
+})
+
+$('reset-demo').addEventListener('click', resetDemo)
+
+/* Init -------------------------------------------------------------------- */
+
+switchProblemTab('solutions')
+render()
+</script>
+</body>
+</html>

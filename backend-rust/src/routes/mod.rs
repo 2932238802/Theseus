@@ -24,7 +24,8 @@ use crate::{
         favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
         lsp_handler, metrics_handler, note_handler, notification_handler, oauth_handler,
         plus_handler, preference_handler, problem_handler, profile_handler, ranking_handler,
-        run_handler, social_handler, submission_handler, wrong_problem_handler, ws_handler,
+        run_handler, social_handler, solution_handler, submission_handler, wrong_problem_handler,
+        ws_handler,
     },
 };
 
@@ -426,6 +427,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/problems/{id}/draft",
             get(draft_handler::get).put(draft_handler::save),
+        )
+        .route(
+            "/api/problems/{id}/solutions",
+            get(solution_handler::list).post(solution_handler::create),
+        )
+        .route(
+            "/api/problems/{id}/solutions/{solution_id}",
+            put(solution_handler::update).delete(solution_handler::remove),
         )
         .route(
             "/api/problems/{id}/judge-cases",

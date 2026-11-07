@@ -83,6 +83,8 @@ export interface Submission {
   id: number
   problemId: number
   problemTitle: string
+  /** 关联的解法，旧提交或比赛提交可能为空 */
+  solutionId?: number
   language: Language
   code: string
   status: SubmissionStatus
@@ -91,6 +93,8 @@ export interface Submission {
   totalTestCases: number
   runtime?: string
   memory?: string
+  runtimeMs?: number
+  memoryKb?: number
   createdAt: string
   finishedAt?: string
   compileOutput?: string

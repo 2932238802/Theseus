@@ -106,15 +106,24 @@ export const useSubmissionStore = defineStore('submissions', () => {
     code: string,
     assignmentId?: number,
     contestId?: number,
+    solutionId?: number,
   ): Promise<Submission | null> => {
     isSubmitting.value = true
     error.value = ''
     try {
-      const created = await createSubmission(problemId, language, code, assignmentId, contestId)
+      const created = await createSubmission(
+        problemId,
+        language,
+        code,
+        assignmentId,
+        contestId,
+        solutionId,
+      )
       latest.value = {
         id: created.submissionId,
         problemId,
         problemTitle: '',
+        solutionId,
         language,
         code,
         status: 'Running',
