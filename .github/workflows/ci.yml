@@ -34,6 +34,17 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: cargo test
         run: cargo test --all-targets
+      - name: Verify Dockerfile bin list
+        run: |
+          set -euo pipefail
+          # 依赖层用空入口占位；新增 bin 时 Dockerfile 必须同步占位与产物复制。
+          for file in src/bin/*.rs; do
+            bin=$(basename "$file" .rs)
+            grep -q "src/bin/${bin}.rs" Dockerfile \
+              || { echo "Dockerfile 缺少 ${bin} 的空入口" >&2; exit 1; }
+            grep -q "target/release/${bin}" Dockerfile \
+              || { echo "Dockerfile 缺少 ${bin} 的产物复制" >&2; exit 1; }
+          done
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
@@ -132,23 +143,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # GHA layer cache alone does not export RUN cache mounts.
-      - uses: actions/cache@v4
-        if: matrix.image != 'frontend'
-        with:
-          path: .buildkit-cache
-          key: cargo-buildkit-${{ runner.os }}-${{ matrix.image }}-${{ hashFiles('backend-rust/Cargo.lock', 'backend-rust/Dockerfile') }}-${{ github.sha }}
-          restore-keys: |
-            cargo-buildkit-${{ runner.os }}-${{ matrix.image }}-${{ hashFiles('backend-rust/Cargo.lock', 'backend-rust/Dockerfile') }}-
-      - uses: reproducible-containers/buildkit-cache-dance@v3
-        if: matrix.image != 'frontend'
-        with:
-          cache-map: |
-            {
-              ".buildkit-cache/registry": {"target": "/usr/local/cargo/registry", "id": "theseus-cargo-registry"},
-              ".buildkit-cache/git": {"target": "/usr/local/cargo/git", "id": "theseus-cargo-git"},
-              ".buildkit-cache/target": {"target": "/src/target", "id": "theseus-cargo-target-amd64"}
-            }
+      # 依赖与 registry 都在依赖层，GHA 层缓存可直接复用，无需额外导出 cache mount。
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}

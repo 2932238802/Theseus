@@ -1,8 +1,5 @@
-# syntax=docker/dockerfile:1
-
 # Theseus 后端镜像：API、判题 Worker、防作弊 Worker 共用同一镜像，由 compose 指定 command。
 FROM rust:1-slim-bookworm AS builder
-ARG TARGETARCH
 # 默认单任务编译：2 GB 内存的服务器上并发编译容易 OOM，可通过 build arg 覆盖。
 ARG CARGO_BUILD_JOBS=1
 # 中国大陆服务器可传 https://rsproxy.cn/index/ 加速 crate 下载。
@@ -17,16 +14,27 @@ RUN if [ -n "$CARGO_MIRROR" ]; then \
     fi
 
 COPY Cargo.toml Cargo.lock ./
+
+# 先用空入口编译依赖，把「依赖层」与「源码层」分开：
+# Cargo.toml / Cargo.lock 不变时这一层直接命中缓存，
+# 日常源码与迁移修改只重新编译本包，CI 的 GHA 层缓存也依赖这个分界。
+# registry 与 Git 依赖写进本层，命中缓存时无需重新联网下载或校验。
+# 新增 bin 时同步这里的空入口与下面的产物复制列表。
+RUN mkdir -p src/bin \
+    && printf 'fn main() {}\n' > src/main.rs \
+    && : > src/lib.rs \
+    && printf 'fn main() {}\n' > src/bin/judge_worker.rs \
+    && printf 'fn main() {}\n' > src/bin/anticheat_worker.rs \
+    && printf 'fn main() {}\n' > src/bin/lsp_gateway.rs \
+    && cargo build --release --locked --bins \
+    && rm -rf src
+
+# 迁移由 sqlx::migrate! 在编译本包时读取，不参与依赖层，避免新增迁移触发全量重编。
 COPY migrations ./migrations
 COPY src ./src
 
-# 缓存跨源码更新保留；backend 与 lsp 共用 builder 时串行访问，避免并发写入。
-# release 默认不启用 Rust 增量编译，显式开启以复用本项目的编译中间结果。
-# 必须在同一个 RUN 内把产物复制到 /out：cache mount 不会进入镜像层。
-RUN --mount=type=cache,id=theseus-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,id=theseus-cargo-git,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,id=theseus-cargo-target-${TARGETARCH},target=/src/target,sharing=locked \
-    CARGO_INCREMENTAL=1 cargo build --release --locked --bins \
+# 复用上一层的依赖产物，只编译本包并复制最终二进制。
+RUN cargo build --release --locked --bins \
     && mkdir -p /out \
     && cp target/release/backend-rust \
           target/release/judge_worker \
@@ -41,18 +49,21 @@ FROM docker:27-cli AS dockercli
 # 语义补全镜像：每个 WebSocket 连接对应一个 clangd / pyright 进程。
 FROM node:22-bookworm-slim AS lsp
 ARG APT_MIRROR=
+# clangd 依赖 g++ 提供的标准库与系统头文件；pyright 只需要 Node，不安装 Python。
+# 语言服务器与 pyright 分成两层，调整其中一侧不会重装另一侧。
 RUN if [ -n "$APT_MIRROR" ]; then \
         sed -i "s|deb.debian.org|$APT_MIRROR|g; s|security.debian.org|$APT_MIRROR|g" \
             /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
     fi \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates tzdata g++ python3 python-is-python3 \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata g++ \
     && (apt-get install -y --no-install-recommends clangd \
         || apt-get install -y --no-install-recommends clangd-14) \
     && (command -v clangd >/dev/null 2>&1 \
         || ln -sf "$(command -v clangd-14)" /usr/local/bin/clangd) \
-    && npm install -g pyright@1.1.414 \
     && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g pyright@1.1.414 && npm cache clean --force
 
 COPY --from=builder /out/lsp_gateway /app/lsp_gateway
 WORKDIR /app

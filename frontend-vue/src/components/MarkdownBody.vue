@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { extractMath, renderMathIn } from '../utils/markdownMath'
 
 const props = defineProps<{ content: string }>()
 
@@ -34,10 +35,12 @@ const ALLOWED_TAGS = [
   'img',
 ]
 
-const html = computed(() => {
+const rendered = computed(() => {
   const source = props.content ?? ''
-  const rendered = marked.parse(source, { async: false }) as string
-  const clean = DOMPurify.sanitize(rendered, {
+  // 公式先抽成占位符，避免 marked 处理掉 LaTeX 反斜杠或拆开多行 $$
+  const extraction = extractMath(source)
+  const parsed = marked.parse(extraction.markdown, { async: false }) as string
+  const clean = DOMPurify.sanitize(parsed, {
     ALLOWED_TAGS,
     ALLOWED_ATTR: ['href', 'title', 'start', 'colspan', 'rowspan', 'src', 'alt'],
     FORBID_TAGS: ['iframe', 'script', 'style', 'form', 'input', 'button', 'svg'],
@@ -69,7 +72,31 @@ const html = computed(() => {
     image.setAttribute('role', 'button')
     image.setAttribute('aria-label', alt ? `查看大图：${alt}` : '查看大图')
   })
-  return template.innerHTML
+
+  return { html: template.innerHTML, math: extraction.math }
+})
+
+const html = computed(() => rendered.value.html)
+
+const containerRef = ref<HTMLElement | null>(null)
+let mathRenderId = 0
+
+const renderMath = async (): Promise<void> => {
+  const renderId = ++mathRenderId
+  await nextTick()
+  const container = containerRef.value
+  if (!container || renderId !== mathRenderId) return
+  // 公式内容变化时占位符与清洗结果可能完全相同，需主动重置后再渲染，避免残留旧公式
+  container.innerHTML = rendered.value.html
+  await renderMathIn(container, rendered.value.math)
+}
+
+watch(rendered, () => {
+  void renderMath()
+})
+
+onMounted(() => {
+  void renderMath()
 })
 
 interface ImagePreview {
@@ -132,6 +159,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
+    ref="containerRef"
     class="markdown-body"
     v-html="html"
     @click="onContainerClick"
