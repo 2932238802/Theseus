@@ -12,7 +12,7 @@
 | `backend_api.md` | 后端接口契约与错误码 | 随接口变更维护 |
 | `README.md` | 文档索引与阅读入口 | 已建立 |
 | `STATUS.md` | 当前 CR、门禁、进行中任务、阻塞与下一步 | 由 Doc Agent 维护 |
-| `archive/20261119/` | 面经板块改版需求卡（CR-001~003）、开发文档与实施台账 | G2 完成，待 G3 评审 |
+| `archive/20261119/` | 面经板块改版需求卡（CR-001~003）、开发文档与实施台账 | G4 通过，已提交 `6db10be` |
 | `2610259_班级与作业设计方案.md` | 三角色、组织、作业、提交、批改详细设计 | 核心闭环已实现 |
 | `2610261_班级邀请与通知完善设计方案.md` | 组织邀请、邀请通知与通知中心 | 已实现 |
 | `2610271_作业策略的实现.md` | 迟交、重交次数、计分、可见性、补交/免修、解析、统计与审计 | 已实现 |
@@ -104,7 +104,7 @@
 - 可观测性落地：Compose 新增可选 `observability` profile，编排 Prometheus、Alertmanager 与 Grafana，端口只绑定 `127.0.0.1`；Prometheus 抓取 `backend:3000/metrics` 并保留 15 天，加载可用性、5xx、P95、判题 Worker/积压/死信、连接池与匹配错误告警；Alertmanager 复用 `EMAIL_*` 发送告警邮件，也支持通用 webhook，未配置渠道时仅在 UI 查看；Grafana 预置 Prometheus 数据源与「Theseus 运行概览」仪表盘；`/metrics` 新增 `theseus_judge_queue_enabled`，用于区分队列关闭与 Redis 指标不可读；判题 Worker 确认任务后删除 Stream 条目，使队列长度只反映待处理量；`.env` 中的 `COMPOSE_PROFILES=observability` 使 `update.sh` 一并启用观测组件（`2611051`）。
 - 性能压测与索引收口：新增 `deploy/load/k6-theseus.js` 与运行说明，覆盖题库浏览、登录态阅读与可选真实提交，`setup()` 只登录一次以适配单设备登录，默认不打印任何凭据；新增 `deploy/scripts/pg_stats.sh` 启用、重置与查看 `pg_stat_statements`，Compose 为 postgres 预加载扩展；`0045` 新增个人提交、个人某题提交与通知列表的复合索引，删除被覆盖的旧索引；本地用 100,000 条提交与 50,000 条通知的事务内合成数据验证，个人某题提交约快 5.6 倍、通知列表约快 42 倍（`2611052`）。
 - 题库扩充至 1000 题：在原有 200 题基础上新增四批共 800 道函数式题目（1300-2099），每批 200 道（75 简单、85 中等、40 困难），合计 300 简单、340 中等、160 困难；由 `generate_bulk_problem_seed.py --batch 1|2|3|4` 从 24 个批量目录文件生成四个种子 SQL，生成前校验 ID 连续、批次内与跨批次标题不重复，并用参考解逐条计算隐藏用例；`clean_dev.sql` 同步清理固定 ID。
-- 面经板块改版：正文只收题目，发布页与详情页增加「不写答案 / 只收录题目」提示；新增 `rebuild_interview_posts.sh`，未传 `--yes` 只预览，确认后自动备份、只删除 `board='interview'`、调用 `import_interview.sh --no-answers` 重建，失败非零退出并打印 `restore.sh`；`0048` 为面经新增单选类型 `technical|hr|algorithm|manager`（不入库综合板块）、部分索引、列表筛选、发帖必填、详情标签、管理端改类型与审计；`0049` 新增 `interview_templates`，读者端 `/interview/templates` 提供扁平列表与 Markdown 正文，管理端 `/admin/interview-templates` 支持增删改查、拖拽排序与 Markdown 编辑器（工具栏、`Ctrl/Cmd+B/I/K`、预览清洗 XSS）；HR 模板入口只在面经列表/发布页选中「HR 面」时出现，模板页面不出现 VIP/Plus 升级字样（`archive/20261119/`）。
+- 面经板块改版：正文只收题目，发布页与详情页增加「不写答案 / 只收录题目」提示；新增 `rebuild_interview_posts.sh`，未传 `--yes` 只预览，确认后自动备份、只删除 `board='interview'`、调用 `import_interview.sh --no-answers` 重建，失败非零退出并打印 `restore.sh`；`0048` 为面经新增单选类型 `technical|hr|algorithm|manager`（不入库综合板块）、部分索引、列表筛选、发帖必填、详情标签、管理端改类型与审计；`0049` 新增 `interview_templates`，读者端 `/interview/templates` 提供扁平列表与 Markdown 正文，管理端 `/admin/interview-templates` 支持增删改查、拖拽排序与 Markdown 编辑器（工具栏、`Ctrl/Cmd+B/I/K`、预览清洗 XSS）；HR 模板入口只在面经列表/发布页选中「HR 面」时出现，模板页面不出现 VIP/Plus 升级字样（`archive/20261119/`）。`update.sh` 的持续导入也已带 `--no-answers`，新增 `doc/interview` 文件部署后同样只保留题目。
 
 **部分完成**
 

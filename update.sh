@@ -20,6 +20,7 @@
 #   - 题面配图从 frontend-vue/public/problem-images 只读挂载进前端容器，
 #     git pull 后即时生效；只更新内容时可加 --skip-build 跳过镜像构建。
 #   - 随后把 `doc/interview` 下的面经 Markdown 导入面经板块，已存在标题跳过；
+#     导入只保留题目，自动去掉流程、复盘、待补充与答案（等价 --no-answers）；
 #     默认作者取最早的启用管理员，可用 INTERVIEW_IMPORT_AUTHOR 指定。
 #   - 迁移失败时脚本退出并打印 `deploy/scripts/restore.sh` 回滚命令，由人工决定是否恢复。
 set -euo pipefail
@@ -60,7 +61,7 @@ Theseus 服务器增量更新：备份 -> 运行镜像 -> 构建 -> 先迁移 ->
   4. 拉取 CI 镜像或 docker compose build（--build）
   5. 停止 backend 与两个 Worker，仅启动新 backend 应用增量迁移
   6. 执行题面配图补丁（backend-rust/scripts/patch_problem_images.sql）
-  7. 导入 doc/interview 面经（需已有管理员账号，已存在标题跳过）
+  7. 导入 doc/interview 面经（需已有管理员账号，已存在标题跳过；只保留题目，去掉流程与答案）
   8. 启动其余服务
   9. 核对新增迁移、失败迁移与健康状态
 EOF
@@ -395,8 +396,9 @@ say "题面配图：${IMAGE_COUNT} 张（挂载生效，无需重建镜像）"
 
 # ---------- 5.6 面经导入 ----------
 # doc/interview 是面经的原始来源，不随镜像入库；这里按标题补新增，不覆盖
-# 已有帖子，避免冲掉界面里的编辑。需要强制同步 Markdown 时设置
-# INTERVIEW_IMPORT_UPDATE=1 或手动执行 import_interview.sh --update。
+# 已有帖子，避免冲掉界面里的编辑。导入固定加 --no-answers，只保留题目，
+# 去掉流程、复盘、待补充与答案。需要强制同步 Markdown 时设置
+# INTERVIEW_IMPORT_UPDATE=1 或手动执行 import_interview.sh --update --no-answers。
 IMPORT_INTERVIEW="$ROOT/backend-rust/scripts/import_interview.sh"
 INTERVIEW_DIR="$ROOT/doc/interview"
 FIRST_INTERVIEW=$(find "$INTERVIEW_DIR" -type f -name '*.md' ! -name 'README.md' -print -quit 2>/dev/null || true)
@@ -408,11 +410,11 @@ if [[ -x "$IMPORT_INTERVIEW" ]] && [[ -n "$FIRST_INTERVIEW" ]]; then
     fi
     if [[ -n "$INTERVIEW_AUTHOR" ]]; then
         say "导入面经（作者：$INTERVIEW_AUTHOR）"
-        import_args=(--author "$INTERVIEW_AUTHOR" --docker)
+        import_args=(--author "$INTERVIEW_AUTHOR" --docker --no-answers)
         [[ "${INTERVIEW_IMPORT_UPDATE:-0}" == "1" ]] && import_args+=(--update)
         if ! IMPORT_COMPOSE_FILE="$DEPLOY/compose.yaml" IMPORT_COMPOSE_ENV="$DEPLOY/.env" \
             "$IMPORT_INTERVIEW" "${import_args[@]}"; then
-            warn "面经导入失败，可手动重试：./backend-rust/scripts/import_interview.sh --author $INTERVIEW_AUTHOR --docker"
+            warn "面经导入失败，可手动重试：./backend-rust/scripts/import_interview.sh --author $INTERVIEW_AUTHOR --docker --no-answers"
         fi
     else
         warn "未找到可用管理员，跳过面经导入（注册并提升管理员后重跑 update.sh）"

@@ -105,7 +105,10 @@ tags: [场景题, 手撕]
 ./backend-rust/scripts/import_interview.sh --author <用户名> --docker --update
 ```
 
-服务器执行 `./update.sh` 时会自动导入一次：默认作者取最早的启用管理员，已存在的标题跳过；需要覆盖时在 `deploy/.env` 设置 `INTERVIEW_IMPORT_UPDATE=1`，或手动加 `--update`。
+服务器执行 `./update.sh` 时会自动导入一次：默认作者取最早的启用管理员，已存在的标题跳过，并固定带 `--no-answers` 只写入题目；需要覆盖时在 `deploy/.env` 设置 `INTERVIEW_IMPORT_UPDATE=1`，或手动加 `--update`。
+
+- `INTERVIEW_IMPORT_UPDATE=1` 会用「仅题目」版本覆盖已有帖子正文，手写在正文里的答案会被去掉；答案请写在论坛评论区
+- 新增面经文件必须包含 `## 题目` 章节，否则导入时会被判正文为空而跳过（不会写坏已有帖子）
 
 - 标题取文件中的一级标题，也是去重键
 - `--no-answers` 只保留题目与 `**题目**` / `**题意**` 描述；面试流程、复盘、待补充与答案都不导入
