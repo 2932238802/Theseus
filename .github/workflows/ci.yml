@@ -59,10 +59,25 @@ jobs:
             echo 'RSA is now active; remove the advisory exception and reassess.' >&2
             exit 1
           fi
+      - name: Verify SQLite is not enabled on any target
+        run: |
+          set -euo pipefail
+          # libsqlite3-sys is pulled in by SQLx's optional SQLite backend only.
+          # This application uses PostgreSQL; fail if it becomes active so the
+          # audit exception below is reassessed.
+          dependents=$(cargo tree --locked --target all --invert libsqlite3-sys --prefix none)
+          if [[ -n "$dependents" ]]; then
+            printf '%s\n' "$dependents"
+            echo 'SQLite is now active; remove the advisory exception and reassess.' >&2
+            exit 1
+          fi
       - name: cargo audit（依赖漏洞）
         # RUSTSEC-2023-0071 has no fix; rsa is an unused SQLx MySQL optional
         # dependency in the lockfile, guarded by the all-target check above.
-        run: cargo audit --ignore RUSTSEC-2023-0071
+        # RUSTSEC-2026-0459 affects libsqlite3-sys from SQLx's optional SQLite
+        # backend, which this project does not enable; the guard above ensures
+        # it stays inactive.
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0459
 
   frontend:
     name: frontend (build)
