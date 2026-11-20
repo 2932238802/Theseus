@@ -24,6 +24,7 @@ import type {
   ForumReply,
   ForumScope,
   ForumSort,
+  InterviewType,
 } from '../types/forum'
 import type { FeedCounts } from '../types/social'
 
@@ -94,6 +95,7 @@ export const useForumStore = defineStore('forum', () => {
     if (query.value.board === board) return
     query.value.board = board
     query.value.tag = undefined
+    query.value.interview_type = undefined
     query.value.company = undefined
     query.value.role = undefined
     applyFilters()
@@ -110,6 +112,11 @@ export const useForumStore = defineStore('forum', () => {
     } catch {
       facets.value = { companies: [], roles: [] }
     }
+  }
+
+  const setInterviewType = (type: InterviewType | null): void => {
+    query.value.interview_type = type ?? undefined
+    applyFilters()
   }
 
   const setCompany = (company: string): void => {
@@ -330,6 +337,7 @@ export const useForumStore = defineStore('forum', () => {
     applyFilters,
     setBoard,
     setTag,
+    setInterviewType,
     setCompany,
     setRole,
     loadFacets,

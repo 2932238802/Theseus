@@ -6,6 +6,7 @@ pub const FORUM_TAGS: [&str; 5] = ["general", "help", "solution", "discussion", 
 pub const FORUM_BOARDS: [&str; 2] = ["general", "interview"];
 pub const BOARD_GENERAL: &str = "general";
 pub const BOARD_INTERVIEW: &str = "interview";
+pub const INTERVIEW_TYPES: [&str; 4] = ["technical", "hr", "algorithm", "manager"];
 pub const REPORT_REASONS: [&str; 5] = ["spam", "abuse", "spoiler", "illegal", "other"];
 pub const MAX_TITLE_CHARS: usize = 120;
 pub const MAX_POST_BODY_CHARS: usize = 20_000;
@@ -29,6 +30,10 @@ pub fn is_known_board(value: &str) -> bool {
 
 pub fn is_known_report_reason(value: &str) -> bool {
     REPORT_REASONS.contains(&value)
+}
+
+pub fn is_known_interview_type(value: &str) -> bool {
+    INTERVIEW_TYPES.contains(&value)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -124,6 +129,7 @@ pub struct ForumPostListQuery {
     pub page: Option<u32>,
     pub size: Option<u32>,
     pub board: Option<String>,
+    pub interview_type: Option<String>,
     pub tag: Option<String>,
     pub company: Option<String>,
     pub role: Option<String>,
@@ -161,6 +167,8 @@ pub struct CreatePostRequest {
     pub company: Option<String>,
     #[serde(default)]
     pub role: Option<String>,
+    #[serde(default)]
+    pub interview_type: Option<String>,
     pub problem_id: Option<i32>,
     #[serde(default)]
     pub is_anonymous: bool,
@@ -172,12 +180,17 @@ pub struct UpdatePostRequest {
     pub body_md: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// 允许编辑时切换板块；缺省沿用帖子当前板块。
+    #[serde(default)]
+    pub board: Option<String>,
     #[serde(default)]
     pub interview_date: Option<String>,
     #[serde(default)]
     pub company: Option<String>,
     #[serde(default)]
     pub role: Option<String>,
+    #[serde(default)]
+    pub interview_type: Option<String>,
     pub problem_id: Option<i32>,
 }
 
@@ -212,6 +225,7 @@ pub struct ForumPostSummary {
     pub interview_date: Option<String>,
     pub company: Option<String>,
     pub role: Option<String>,
+    pub interview_type: Option<String>,
     pub view_count: i32,
     pub accepted_comment_id: Option<i64>,
     pub tags: Vec<String>,
@@ -385,6 +399,18 @@ pub struct AdminStatusRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct AdminInterviewTypeRequest {
+    pub interview_type: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminInterviewTypeResponse {
+    pub id: i64,
+    pub interview_type: String,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AdminPinRequest {
     pub is_pinned: bool,
 }
@@ -425,6 +451,7 @@ pub struct AdminForumPostSummary {
     pub interview_date: Option<String>,
     pub company: Option<String>,
     pub role: Option<String>,
+    pub interview_type: Option<String>,
     pub view_count: i32,
     pub accepted_comment_id: Option<i64>,
     pub tags: Vec<String>,
@@ -566,6 +593,7 @@ pub struct ForumPostRow {
     pub interview_date: Option<String>,
     pub company: Option<String>,
     pub role: Option<String>,
+    pub interview_type: Option<String>,
     pub view_count: i32,
     pub accepted_comment_id: Option<i64>,
     pub problem_id: Option<i32>,
@@ -605,6 +633,7 @@ impl ForumPostRow {
             interview_date: self.interview_date,
             company: self.company,
             role: self.role,
+            interview_type: self.interview_type,
             view_count: self.view_count,
             accepted_comment_id: self.accepted_comment_id,
             tags: self.tags,
@@ -646,6 +675,7 @@ pub struct AdminForumPostRow {
     pub interview_date: Option<String>,
     pub company: Option<String>,
     pub role: Option<String>,
+    pub interview_type: Option<String>,
     pub view_count: i32,
     pub accepted_comment_id: Option<i64>,
     pub problem_id: Option<i32>,
@@ -686,6 +716,7 @@ impl AdminForumPostRow {
             interview_date: self.interview_date,
             company: self.company,
             role: self.role,
+            interview_type: self.interview_type,
             view_count: self.view_count,
             accepted_comment_id: self.accepted_comment_id,
             tags: self.tags,

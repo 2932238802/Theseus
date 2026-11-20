@@ -4211,6 +4211,7 @@ pub async fn sync_event_forum(
             interview_date: None,
             company: None,
             role: None,
+            interview_type: None,
             problem_id: None,
             is_anonymous: false,
         },

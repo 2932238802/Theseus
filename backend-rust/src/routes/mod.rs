@@ -21,11 +21,11 @@ use crate::{
     handlers::{
         admin_forum_handler, admin_user_handler, ai_handler, anticheat_handler, assignment_handler,
         audit_handler, auth_handler, badge_handler, class_handler, contest_handler, draft_handler,
-        favorite_handler, forum_handler, health_handler, home_handler, invitation_handler,
-        lsp_handler, metrics_handler, note_handler, notification_handler, oauth_handler,
-        plus_handler, preference_handler, problem_handler, profile_handler, ranking_handler,
-        run_handler, social_handler, solution_handler, submission_handler, wrong_problem_handler,
-        ws_handler,
+        favorite_handler, forum_handler, health_handler, home_handler, interview_template_handler,
+        invitation_handler, lsp_handler, metrics_handler, note_handler, notification_handler,
+        oauth_handler, plus_handler, preference_handler, problem_handler, profile_handler,
+        ranking_handler, run_handler, social_handler, solution_handler, submission_handler,
+        wrong_problem_handler, ws_handler,
     },
 };
 
@@ -501,6 +501,14 @@ pub fn router(state: AppState) -> Router {
             "/api/forum/interview/facets",
             get(forum_handler::interview_facets),
         )
+        .route(
+            "/api/forum/interview/templates",
+            get(interview_template_handler::list),
+        )
+        .route(
+            "/api/forum/interview/templates/{id}",
+            get(interview_template_handler::get),
+        )
         .route("/api/forum/favorites", get(forum_handler::favorites))
         .route("/api/forum/feed-counts", get(social_handler::feed_counts))
         .route(
@@ -577,6 +585,10 @@ pub fn router(state: AppState) -> Router {
             put(admin_forum_handler::pin_post),
         )
         .route(
+            "/api/admin/forum/posts/{id}/interview-type",
+            put(admin_forum_handler::update_interview_type),
+        )
+        .route(
             "/api/admin/forum/reports",
             get(admin_forum_handler::list_reports),
         )
@@ -591,6 +603,18 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/admin/forum/actions",
             get(admin_forum_handler::list_actions),
+        )
+        .route(
+            "/api/admin/interview/templates",
+            get(interview_template_handler::admin_list).post(interview_template_handler::create),
+        )
+        .route(
+            "/api/admin/interview/templates/order",
+            put(interview_template_handler::reorder),
+        )
+        .route(
+            "/api/admin/interview/templates/{id}",
+            put(interview_template_handler::update).delete(interview_template_handler::delete),
         )
         .route("/api/admin/audit-logs", get(audit_handler::list))
         .route("/api/admin/audit-logs/meta", get(audit_handler::meta))

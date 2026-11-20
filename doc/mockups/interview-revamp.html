@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Theseus · 面经板块改版预览</title>
+<style>
+:root {
+  --color-primary: #3f3f52;
+  --color-primary-ink: #f4f4f6;
+  --color-accent: #4a4a5c;
+  --color-accent-hover: #2e2e3d;
+  --color-accent-soft: #dedee5;
+  --color-accent-ink: #f4f4f6;
+  --color-bg: #e9e9ee;
+  --color-surface: #f7f7f9;
+  --color-surface-raised: #ffffff;
+  --color-text: #24242c;
+  --color-text-secondary: #454552;
+  --color-text-muted: #6e6e7d;
+  --color-border: #c3c4cc;
+  --color-border-strong: #83848f;
+  --color-success: #3d7456;
+  --color-success-soft: #e4ece7;
+  --color-warning: #82602a;
+  --color-warning-soft: #f1e9db;
+  --color-danger: #9c4141;
+  --color-danger-soft: #f2e5e5;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "SFMono-Regular", monospace;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(24, 24, 32, 0.06);
+  --shadow-md: 0 12px 32px rgba(24, 24, 32, 0.1), 0 2px 8px rgba(24, 24, 32, 0.05);
+  --duration: 150ms;
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  --color-primary: #f2f2f2;
+  --color-primary-ink: #1c1c1c;
+  --color-accent: #b3b6bd;
+  --color-accent-hover: #f2f2f2;
+  --color-accent-soft: #3f3f52;
+  --color-accent-ink: #1c1c1c;
+  --color-bg: #1c1c1c;
+  --color-surface: #252533;
+  --color-surface-raised: #2e2e3d;
+  --color-text: #f2f2f2;
+  --color-text-secondary: #b3b6bd;
+  --color-text-muted: #a5a5b2;
+  --color-border: #4b4b5c;
+  --color-border-strong: #b3b6bd;
+  --color-success: #8fc7a6;
+  --color-success-soft: #23392d;
+  --color-warning: #d9b36c;
+  --color-warning-soft: #3a2f1e;
+  --color-danger: #e08c8c;
+  --color-danger-soft: #3d2424;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-width: 320px; min-height: 100vh; margin: 0; }
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4, p { margin: 0; }
+h1, h2, h3, h4 { font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+a { color: var(--color-accent); text-decoration: none; }
+button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+input, select, textarea { color: var(--color-text); font: inherit; }
+input::placeholder, textarea::placeholder { color: var(--color-text-muted); }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* Header ------------------------------------------------------------------ */
+.site-header {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; height: 64px; align-items: center; gap: var(--space-xl);
+  padding: 0 max(var(--space-lg), calc((100vw - 1200px) / 2));
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.brand { display: inline-flex; align-items: center; gap: var(--space-sm); color: var(--color-text); font-size: 20px; font-weight: 600; }
+.brand-mark {
+  display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-accent-ink);
+  font-size: 15px; font-weight: 600; line-height: 1;
+}
+.main-nav { display: flex; align-self: stretch; gap: var(--space-lg); }
+.main-nav > a {
+  display: flex; height: 64px; align-items: center; gap: 4px;
+  border-bottom: 2px solid transparent; color: var(--color-text-secondary); font-size: 14px; font-weight: 500;
+}
+.main-nav > a:hover { color: var(--color-text); }
+.main-nav > a.is-active { border-bottom-color: var(--color-accent); color: var(--color-text); }
+.nav-caret { width: 0; height: 0; border-top: 4px solid currentColor; border-right: 4px solid transparent; border-left: 4px solid transparent; opacity: 0.55; }
+.nav-right { display: flex; align-items: center; gap: var(--space-md); margin-left: auto; }
+.nav-search {
+  display: flex; width: clamp(180px, 18vw, 250px); height: 40px; align-items: center; gap: 6px;
+  padding: 0 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface);
+}
+.nav-search svg { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: var(--color-text-muted); stroke-width: 1.6; }
+.nav-search input { width: 100%; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; font-size: 13px; }
+.icon-button { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: var(--radius-sm); color: var(--color-text-secondary); }
+.icon-button:hover { background: var(--color-bg); color: var(--color-text); }
+.icon-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.avatar-button {
+  display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center;
+  border: 1px solid var(--color-border); border-radius: 50%; background: var(--color-primary);
+  color: var(--color-primary-ink); font-size: 14px; font-weight: 600;
+}
+.nav-vip-badge {
+  display: inline-flex; min-height: 18px; align-items: center; padding: 0 6px; border-radius: 999px;
+  background: var(--color-warning-soft); color: var(--color-warning); font-size: 10px; font-weight: 700; line-height: 1;
+}
+
+/* Common ------------------------------------------------------------------ */
+.page-shell { width: min(1200px, 100%); margin: 0 auto; padding: var(--space-2xl) var(--space-lg) 110px; }
+.page-shell.forum-page { width: min(1000px, 100%); }
+.primary-button {
+  display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: var(--space-sm);
+  padding: 0 var(--space-md); border: 1px solid var(--color-accent); border-radius: var(--radius-sm);
+  background: var(--color-accent); color: var(--color-accent-ink); font-size: 14px; font-weight: 500;
+  transition: background-color var(--duration), border-color var(--duration);
+}
+.primary-button:hover { border-color: var(--color-accent-hover); background: var(--color-accent-hover); }
+.secondary-button {
+  display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  background: var(--color-surface); color: var(--color-text); font-size: 14px; font-weight: 500;
+}
+.secondary-button:hover { border-color: var(--color-border-strong); background: var(--color-bg); }
+.text-button { color: var(--color-text-muted); font-size: 13px; }
+.text-button:hover { color: var(--color-accent); }
+.badge {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  background: var(--color-bg); color: var(--color-text-secondary); font-size: 12px; white-space: nowrap;
+}
+.badge.is-type { background: var(--color-accent-soft); color: var(--color-accent); font-weight: 500; }
+.badge.is-hr { background: var(--color-warning-soft); color: var(--color-warning); font-weight: 500; }
+.badge.is-best { background: var(--color-success-soft); color: var(--color-success); font-weight: 600; }
+.badge.is-vip { background: var(--color-warning-soft); color: var(--color-warning); font-weight: 700; letter-spacing: 0.04em; }
+.subtle { color: var(--color-text-muted); font-size: 13px; }
+.screen { display: none; }
+.screen.is-active { display: block; }
+
+/* Preview dock ------------------------------------------------------------ */
+.preview-dock {
+  position: fixed; left: 50%; bottom: 22px; z-index: 120;
+  display: flex; align-items: center; gap: 4px; padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 70%, transparent);
+  border-radius: 999px; background: color-mix(in srgb, var(--color-primary) 94%, transparent);
+  color: var(--color-primary-ink); box-shadow: var(--shadow-md);
+  transform: translateX(-50%); backdrop-filter: blur(8px);
+}
+.preview-dock-label { padding: 0 10px; font-size: 12px; opacity: 0.65; white-space: nowrap; }
+.preview-dock button {
+  min-height: 32px; padding: 0 14px; border-radius: 999px; color: inherit; font-size: 13px;
+  opacity: 0.72; white-space: nowrap; transition: background var(--duration), opacity var(--duration);
+}
+.preview-dock button:hover { opacity: 1; }
+.preview-dock button.is-active { background: var(--color-primary-ink); color: var(--color-primary); font-weight: 600; opacity: 1; }
+.preview-dock-divider { width: 1px; height: 20px; margin: 0 4px; background: currentColor; opacity: 0.18; }
+
+/* Toolbar ----------------------------------------------------------------- */
+.forum-toolbar {
+  display: grid; gap: var(--space-md); margin-bottom: var(--space-md); padding: var(--space-md);
+  border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface);
+}
+.toolbar-row { display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap; }
+.sort-tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--radius-sm); background: var(--color-bg); }
+.sort-tabs button { min-height: 32px; padding: 0 var(--space-md); border-radius: 6px; color: var(--color-text-secondary); font-size: 13px; font-weight: 500; }
+.sort-tabs button.active { background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-sm); }
+.search-box { position: relative; display: flex; min-width: 220px; max-width: 380px; flex: 1; align-items: center; }
+.search-box svg { position: absolute; left: 11px; width: 16px; height: 16px; fill: none; stroke: var(--color-text-muted); stroke-width: 1.7; }
+.search-box input { width: 100%; height: 38px; padding: 0 var(--space-md) 0 36px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); font-size: 13px; }
+.search-box input:focus { border-color: var(--color-accent); outline: none; }
+.board-tabs { display: inline-flex; gap: var(--space-sm); }
+.board-tab {
+  display: inline-flex; min-height: 34px; align-items: center; gap: 6px; padding: 0 var(--space-lg);
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface);
+  color: var(--color-text-secondary); font-size: 14px; font-weight: 500;
+}
+.board-tab.active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent); }
+.type-row { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg); flex-wrap: wrap; }
+.type-label { color: var(--color-text-muted); font-size: 12px; font-weight: 500; letter-spacing: 0.02em; }
+.type-tab {
+  display: inline-flex; min-height: 32px; align-items: center; gap: 6px; padding: 0 14px;
+  border: 1px solid transparent; border-radius: 999px; color: var(--color-text-secondary); font-size: 13px; font-weight: 500;
+}
+.type-tab:hover { border-color: var(--color-border); color: var(--color-text); }
+.type-tab.is-active { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); }
+.type-count {
+  display: inline-flex; min-width: 19px; height: 18px; align-items: center; justify-content: center;
+  padding: 0 5px; border-radius: 999px; background: var(--color-surface); color: var(--color-text-muted);
+  font-size: 11px; font-weight: 600; line-height: 1;
+}
+.type-tab.is-active .type-count { background: color-mix(in srgb, var(--color-accent-ink) 22%, transparent); color: var(--color-accent-ink); }
+.filter-select {
+  height: 34px; min-width: 130px; padding: 0 10px; border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm); background: var(--color-surface); font-size: 13px;
+}
+.toolbar-note { margin-left: auto; color: var(--color-text-muted); font-size: 12px; }
+
+/* VIP banner -------------------------------------------------------------- */
+.vip-banner {
+  display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-md);
+  padding: var(--space-md) var(--space-lg); border: 1px solid color-mix(in srgb, var(--color-warning) 40%, var(--color-border));
+  border-radius: var(--radius-lg); background: linear-gradient(100deg, var(--color-warning-soft), var(--color-surface) 65%);
+}
+.vip-banner-mark {
+  display: inline-flex; width: 42px; height: 42px; flex: 0 0 auto; align-items: center; justify-content: center;
+  border-radius: 12px; background: var(--color-warning); color: var(--color-surface); font-size: 13px; font-weight: 800; letter-spacing: 0.02em;
+}
+.vip-banner-copy { min-width: 0; flex: 1; }
+.vip-banner-copy h3 { font-size: 15px; }
+.vip-banner-copy p { margin-top: 2px; color: var(--color-text-secondary); font-size: 13px; }
+
+/* HR template entry ------------------------------------------------------- */
+.hr-entry {
+  display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-md);
+  padding: var(--space-md) var(--space-lg); border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); background: var(--color-surface); color: inherit; text-decoration: none;
+  transition: border-color var(--duration), box-shadow var(--duration);
+}
+.hr-entry:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-sm); }
+.hr-entry-mark {
+  display: inline-flex; width: 42px; height: 42px; flex: 0 0 auto; align-items: center; justify-content: center;
+  border-radius: 12px; background: var(--color-accent); color: var(--color-accent-ink); font-size: 13px; font-weight: 800; letter-spacing: 0.02em;
+}
+.hr-entry-copy { min-width: 0; flex: 1; }
+.hr-entry-copy h3 { font-size: 15px; }
+.hr-entry-copy p { margin-top: 2px; color: var(--color-text-secondary); font-size: 13px; }
+.empty-state { padding: var(--space-2xl) var(--space-lg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); text-align: center; }
+.empty-state p { color: var(--color-text-secondary); font-size: 14px; }
+.empty-state .secondary-button { margin-top: var(--space-md); }
+
+/* Post cards -------------------------------------------------------------- */
+.post-list { display: grid; gap: var(--space-md); }
+.post-card { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); transition: border-color var(--duration), box-shadow var(--duration); }
+.post-card:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-sm); }
+.post-card-main { display: grid; gap: var(--space-sm); padding: var(--space-lg); }
+.post-card-top { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; }
+.post-card-title { color: var(--color-text); font-size: 17px; font-weight: 600; line-height: 1.4; }
+.post-card-title:hover { color: var(--color-accent); }
+.post-card-excerpt {
+  color: var(--color-text-secondary); font-size: 13px; line-height: 1.65;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.post-card-meta { display: flex; align-items: center; gap: var(--space-sm); color: var(--color-text-muted); font-size: 12px; flex-wrap: wrap; }
+.post-card-stats { display: inline-flex; gap: var(--space-md); margin-left: auto; }
+.stat { display: inline-flex; align-items: center; gap: 4px; color: var(--color-text-muted); font-size: 12px; }
+.stat svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-top: var(--space-lg); color: var(--color-text-muted); font-size: 12px; }
+.pagination > div { display: flex; align-items: center; gap: var(--space-sm); }
+.pagination button { min-height: 30px; padding: 0 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-secondary); font-size: 12px; }
+
+/* Detail ------------------------------------------------------------------ */
+.detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--space-lg); align-items: start; }
+@media (max-width: 900px) { .detail-layout { grid-template-columns: 1fr; } }
+.breadcrumb { display: flex; align-items: center; gap: 6px; margin-bottom: var(--space-md); color: var(--color-text-muted); font-size: 13px; }
+.breadcrumb a { color: var(--color-text-muted); }
+.breadcrumb a:hover { color: var(--color-accent); }
+.article { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.article-head { display: grid; gap: var(--space-sm); padding: var(--space-lg) var(--space-lg) var(--space-md); border-bottom: 1px solid var(--color-border); }
+.article-head h1 { font-size: 24px; }
+.article-meta { display: flex; align-items: center; gap: var(--space-sm); color: var(--color-text-muted); font-size: 12px; flex-wrap: wrap; }
+.article-body { padding: var(--space-lg); }
+.question-block { display: grid; gap: var(--space-sm); }
+.question-block-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); }
+.question-block-head h2 { font-size: 16px; }
+.question-list { display: grid; gap: 0; margin: var(--space-md) 0 0; padding: 0; list-style: none; border-top: 1px solid var(--color-border); }
+.question-list li { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: var(--space-sm); padding: 14px 0; border-bottom: 1px solid var(--color-border); }
+.question-no { display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center; border-radius: 8px; background: var(--color-bg); color: var(--color-text-muted); font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+.question-text { font-size: 14px; line-height: 1.7; color: var(--color-text); }
+.question-text small { display: block; margin-top: 4px; color: var(--color-text-muted); font-size: 12px; }
+.answer-hint {
+  display: flex; align-items: flex-start; gap: var(--space-sm); margin-top: var(--space-md); padding: var(--space-md);
+  border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-bg);
+  color: var(--color-text-secondary); font-size: 13px;
+}
+.answer-hint svg { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px; fill: none; stroke: var(--color-accent); stroke-width: 1.7; }
+.answer-hint strong { color: var(--color-text); }
+
+.comments { margin-top: var(--space-lg); }
+.comments-head { display: flex; align-items: baseline; gap: var(--space-sm); margin-bottom: var(--space-md); }
+.comments-head h2 { font-size: 17px; }
+.comment-list { display: grid; gap: var(--space-md); }
+.comment-card { padding: var(--space-lg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.comment-card.is-best { border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border)); background: linear-gradient(180deg, var(--color-success-soft), var(--color-surface) 42%); }
+.comment-head { display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-sm); flex-wrap: wrap; }
+.comment-avatar { display: inline-flex; width: 30px; height: 30px; align-items: center; justify-content: center; border-radius: 50%; background: var(--color-primary); color: var(--color-primary-ink); font-size: 12px; font-weight: 600; }
+.comment-author { font-size: 13px; font-weight: 600; }
+.comment-time { color: var(--color-text-muted); font-size: 12px; }
+.comment-body { color: var(--color-text-secondary); font-size: 14px; line-height: 1.75; }
+.comment-body p + p { margin-top: 8px; }
+.comment-actions { display: flex; align-items: center; gap: var(--space-md); margin-top: var(--space-md); padding-top: var(--space-sm); border-top: 1px solid var(--color-border); }
+.comment-actions button { color: var(--color-text-muted); font-size: 12px; }
+.comment-actions button:hover { color: var(--color-accent); }
+.comment-actions .is-on { color: var(--color-accent); font-weight: 500; }
+.reply-box { margin-top: var(--space-md); padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.reply-box textarea { width: 100%; min-height: 92px; padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); font-size: 14px; resize: vertical; }
+.reply-box textarea:focus { border-color: var(--color-accent); outline: none; }
+.reply-box-foot { display: flex; align-items: center; gap: var(--space-md); margin-top: var(--space-sm); }
+.reply-box-foot .subtle { margin-right: auto; }
+.checkbox { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-secondary); font-size: 13px; }
+
+.side-card { padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.side-card + .side-card { margin-top: var(--space-md); }
+.side-card h3 { font-size: 14px; margin-bottom: var(--space-sm); }
+.side-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.side-list a { display: block; color: var(--color-text-secondary); font-size: 13px; line-height: 1.5; }
+.side-list a:hover { color: var(--color-accent); }
+.side-list .subtle { display: block; margin-top: 2px; }
+.vip-side { border-color: color-mix(in srgb, var(--color-warning) 40%, var(--color-border)); background: linear-gradient(160deg, var(--color-warning-soft), var(--color-surface) 70%); }
+.vip-side p { color: var(--color-text-secondary); font-size: 13px; margin: 6px 0 var(--space-md); }
+
+/* Compose ----------------------------------------------------------------- */
+.compose-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--space-lg); align-items: start; }
+@media (max-width: 900px) { .compose-grid { grid-template-columns: 1fr; } }
+.form-card { padding: var(--space-lg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+@media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } }
+.field { display: grid; gap: 6px; margin-bottom: var(--space-md); }
+.field > label { color: var(--color-text-secondary); font-size: 13px; font-weight: 500; }
+.field input, .field select, .field textarea {
+  width: 100%; min-height: 40px; padding: 9px 12px; border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm); background: var(--color-surface-raised); font-size: 14px;
+}
+.field textarea { min-height: 78px; resize: vertical; line-height: 1.65; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--color-accent); outline: none; }
+.type-picker { display: flex; gap: var(--space-sm); flex-wrap: wrap; }
+.type-pick {
+  display: inline-flex; min-height: 34px; align-items: center; padding: 0 14px; border: 1px solid var(--color-border);
+  border-radius: 999px; background: var(--color-surface-raised); color: var(--color-text-secondary); font-size: 13px;
+}
+.type-pick.is-active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent); font-weight: 500; }
+.compose-notice {
+  display: flex; gap: var(--space-sm); margin-bottom: var(--space-md); padding: var(--space-md);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-border)); border-radius: var(--radius-md);
+  background: var(--color-warning-soft); color: var(--color-text-secondary); font-size: 13px;
+}
+.compose-notice svg { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px; fill: none; stroke: var(--color-warning); stroke-width: 1.7; }
+.compose-notice strong { color: var(--color-text); }
+.question-editor { display: grid; gap: var(--space-sm); }
+.question-editor-item { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: var(--space-sm); align-items: start; }
+.question-editor-item .question-no { margin-top: 8px; }
+.question-editor-item textarea { min-height: 62px; }
+.add-question { justify-self: start; }
+.form-actions { display: flex; align-items: center; gap: var(--space-sm); margin-top: var(--space-lg); padding-top: var(--space-md); border-top: 1px solid var(--color-border); }
+.form-actions .subtle { margin-right: auto; }
+.tips-card ol { margin: 0; padding-left: 18px; color: var(--color-text-secondary); font-size: 13px; line-height: 1.8; }
+
+/* VIP page ---------------------------------------------------------------- */
+.vip-hero {
+  display: flex; align-items: center; gap: var(--space-lg); margin-bottom: var(--space-lg);
+  padding: var(--space-xl); border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
+  border-radius: var(--radius-lg); background: linear-gradient(110deg, var(--color-warning-soft), var(--color-surface) 62%);
+}
+.vip-hero-mark {
+  display: inline-flex; width: 64px; height: 64px; flex: 0 0 auto; align-items: center; justify-content: center;
+  border-radius: 16px; background: var(--color-warning); color: var(--color-surface); font-size: 18px; font-weight: 800;
+}
+.vip-hero-copy { min-width: 0; flex: 1; }
+.vip-hero-copy h1 { display: flex; align-items: center; gap: var(--space-sm); font-size: 26px; }
+.vip-hero-copy p { margin-top: 6px; color: var(--color-text-secondary); font-size: 14px; }
+.vip-hero-actions { display: flex; flex: 0 0 auto; gap: var(--space-sm); }
+.vip-layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: var(--space-lg); align-items: start; }
+@media (max-width: 900px) { .vip-layout { grid-template-columns: 1fr; } }
+.vip-nav { padding: var(--space-sm); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.vip-nav-label { padding: 8px 10px 4px; color: var(--color-text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; }
+.vip-nav button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 9px 10px; border-radius: var(--radius-sm); color: var(--color-text-secondary); font-size: 13px; text-align: left; }
+.vip-nav button:hover { background: var(--color-bg); color: var(--color-text); }
+.vip-nav button.is-active { background: var(--color-accent-soft); color: var(--color-accent); font-weight: 600; }
+.vip-nav-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.45; }
+.vip-panel { display: grid; gap: var(--space-md); }
+.vip-card { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; }
+.vip-card-head { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--color-border); background: var(--color-surface-raised); }
+.vip-card-head h2 { font-size: 16px; }
+.vip-card-head .badge { margin-left: auto; }
+.vip-card-body { padding: var(--space-lg); }
+.template-section { display: grid; gap: var(--space-sm); padding: 14px 0; border-bottom: 1px solid var(--color-border); }
+.template-section:last-child { border-bottom: 0; padding-bottom: 0; }
+.template-section:first-child { padding-top: 0; }
+.template-label { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; }
+.template-label::before { content: ""; width: 3px; height: 14px; border-radius: 2px; background: var(--color-accent); }
+.template-section p { color: var(--color-text-secondary); font-size: 14px; line-height: 1.75; }
+.template-section .example { padding: 10px 12px; border-left: 3px solid var(--color-accent-soft); background: var(--color-bg); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.7; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+@media (max-width: 640px) { .compare { grid-template-columns: 1fr; } }
+.compare-col { padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); }
+.compare-col h4 { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 8px; }
+.compare-col.bad h4 { color: var(--color-danger); }
+.compare-col.good h4 { color: var(--color-success); }
+.compare-col ul { margin: 0; padding-left: 18px; color: var(--color-text-secondary); font-size: 13px; line-height: 1.8; }
+.routine-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; counter-reset: routine; }
+.routine-list li { position: relative; padding: 12px 14px 12px 44px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); color: var(--color-text-secondary); font-size: 13px; line-height: 1.7; counter-increment: routine; }
+.routine-list li::before {
+  content: counter(routine); position: absolute; left: 12px; top: 12px;
+  display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center;
+  border-radius: 7px; background: var(--color-accent-soft); color: var(--color-accent); font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+}
+.routine-list strong { color: var(--color-text); }
+.vip-locked { position: relative; }
+.vip-locked .vip-panel { filter: blur(5px); pointer-events: none; user-select: none; opacity: 0.55; }
+.lock-overlay {
+  position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
+  padding: var(--space-lg); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+  backdrop-filter: blur(2px);
+}
+.lock-card { width: min(430px, 100%); padding: var(--space-xl); border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--color-border)); border-radius: var(--radius-lg); background: var(--color-surface); text-align: center; box-shadow: var(--shadow-md); }
+.lock-card-mark { display: inline-flex; width: 46px; height: 46px; align-items: center; justify-content: center; margin-bottom: var(--space-sm); border-radius: 13px; background: var(--color-warning-soft); color: var(--color-warning); font-size: 12px; font-weight: 800; }
+.lock-card h2 { font-size: 18px; }
+.lock-card p { margin: 6px 0 var(--space-md); color: var(--color-text-secondary); font-size: 13px; }
+.lock-card .primary-button { width: 100%; }
+.lock-hint { margin-top: var(--space-sm); color: var(--color-text-muted); font-size: 12px; }
+
+/* Toast / annotation ------------------------------------------------------ */
+.note-line { margin-top: var(--space-md); color: var(--color-text-muted); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="#">
+    <span class="brand-mark">T</span>
+    Theseus
+  </a>
+  <nav class="main-nav" aria-label="主导航">
+    <a href="#">题库</a>
+    <a href="#">竞赛</a>
+    <a href="#">校园 <span class="nav-caret"></span></a>
+    <a href="#" class="is-active">学习 <span class="nav-caret"></span></a>
+  </nav>
+  <div class="nav-right">
+    <label class="nav-search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+      <input type="search" placeholder="搜索题目 面经 用户">
+    </label>
+    <button class="icon-button" title="通知" aria-label="通知">
+      <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg>
+    </button>
+    <button class="avatar-button" title="个人中心">L</button>
+  </div>
+</header>
+
+<main>
+  <!-- ================= Screen 1: 面经列表 ================= -->
+  <section class="screen is-active" data-screen="list">
+    <div class="page-shell forum-page">
+      <section class="forum-toolbar" aria-label="面经筛选">
+        <div class="toolbar-row">
+          <div class="sort-tabs" role="tablist" aria-label="排序">
+            <button class="active" role="tab" aria-selected="true">最新</button>
+            <button role="tab" aria-selected="false">最热</button>
+          </div>
+          <div class="board-tabs" role="tablist" aria-label="板块">
+            <button class="board-tab">综合</button>
+            <button class="board-tab active" role="tab" aria-selected="true">面经</button>
+          </div>
+          <label class="search-box">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+            <input type="search" placeholder="搜索公司 岗位 题目关键词">
+          </label>
+          <button class="primary-button">写面经</button>
+        </div>
+
+        <div class="type-row" aria-label="面试类型">
+          <span class="type-label">面试类型</span>
+          <button class="type-tab is-active" data-type="全部">全部 <span class="type-count">128</span></button>
+          <button class="type-tab" data-type="技术面">技术面 <span class="type-count">76</span></button>
+          <button class="type-tab" data-type="HR 面">HR 面 <span class="type-count">24</span></button>
+          <button class="type-tab" data-type="算法面">算法面 <span class="type-count">18</span></button>
+          <button class="type-tab" data-type="主管面">主管面 <span class="type-count">3</span></button>
+          <span class="toolbar-note">类型可由管理员在后台增删</span>
+        </div>
+
+        <div class="toolbar-row">
+          <select class="filter-select" aria-label="公司">
+            <option>全部公司</option>
+            <option>字节跳动</option>
+            <option>腾讯</option>
+            <option>美团</option>
+          </select>
+          <select class="filter-select" aria-label="岗位">
+            <option>全部岗位</option>
+            <option>后端开发</option>
+            <option>前端开发</option>
+            <option>产品经理</option>
+          </select>
+          <select class="filter-select" aria-label="时间">
+            <option>全部时间</option>
+            <option>2025-10</option>
+            <option>2025-09</option>
+          </select>
+          <span class="toolbar-note">面经正文只保留题目 答案由社区在评论区补充</span>
+        </div>
+      </section>
+
+      <a class="hr-entry" id="hr-template-entry" href="#" data-goto="vip" hidden>
+        <span class="hr-entry-mark">HR</span>
+        <span class="hr-entry-copy">
+          <h3>HR 面模板与套路</h3>
+          <p>自我介绍 离职原因 职业规划 薪资谈判 一共 6 套模板与 4 类拆解思路</p>
+        </span>
+        <span class="secondary-button">查看模板</span>
+      </a>
+
+      <div class="post-list">
+        <article class="post-card" data-types="技术面 算法面">
+          <div class="post-card-main">
+            <div class="post-card-top">
+              <a class="post-card-title" href="#" data-goto="detail">字节跳动 · 后端开发 · 一面面经</a>
+              <span class="badge is-type">技术面</span>
+              <span class="badge">算法面</span>
+            </div>
+            <p class="post-card-excerpt">1. 讲一下项目里最难的技术点 2. Redis 缓存穿透和雪崩怎么处理 3. MySQL 索引失效的常见场景 4. 手撕 LFU</p>
+            <div class="post-card-meta">
+              <span>林同学</span>
+              <span>·</span>
+              <span>2025-10</span>
+              <span>·</span>
+              <span>字节跳动</span>
+              <span>·</span>
+              <span>后端开发</span>
+              <span class="post-card-stats">
+                <span class="stat"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>1.2k</span>
+                <span class="stat"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"></path></svg>12 条答案</span>
+              </span>
+            </div>
+          </div>
+        </article>
+
+        <article class="post-card" data-types="HR 面">
+          <div class="post-card-main">
+            <div class="post-card-top">
+              <a class="post-card-title" href="#" data-goto="detail">美团 · 产品经理 · HR 面完整记录</a>
+              <span class="badge is-hr">HR 面</span>
+              <span class="badge">已解决</span>
+            </div>
+            <p class="post-card-excerpt">1. 自我介绍 2. 为什么选择美团 3. 讲一次你和同事意见不一致的经历 4. 你最大的缺点是什么 5. 期望薪资</p>
+            <div class="post-card-meta">
+              <span>匿名用户</span>
+              <span>·</span>
+              <span>2025-09</span>
+              <span>·</span>
+              <span>美团</span>
+              <span>·</span>
+              <span>产品经理</span>
+              <span class="post-card-stats">
+                <span class="stat"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>860</span>
+                <span class="stat"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"></path></svg>9 条答案</span>
+              </span>
+            </div>
+          </div>
+        </article>
+
+        <article class="post-card" data-types="技术面 算法面">
+          <div class="post-card-main">
+            <div class="post-card-top">
+              <a class="post-card-title" href="#" data-goto="detail">腾讯 · 前端开发 · 二面面经</a>
+              <span class="badge is-type">技术面</span>
+              <span class="badge">算法面</span>
+            </div>
+            <p class="post-card-excerpt">1. 浏览器从输入 URL 到渲染完成发生了什么 2. 前端性能监控怎么做 3. 万级组件树怎么优化渲染 4. 讲一下微前端落地取舍</p>
+            <div class="post-card-meta">
+              <span>周同学</span>
+              <span>·</span>
+              <span>2025-08</span>
+              <span>·</span>
+              <span>腾讯</span>
+              <span>·</span>
+              <span>前端开发</span>
+              <span class="post-card-stats">
+                <span class="stat"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>640</span>
+                <span class="stat"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"></path></svg>5 条答案</span>
+              </span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="empty-state" id="type-empty" hidden>
+        <p>这个类型下还没有面经</p>
+        <button class="secondary-button">写第一篇</button>
+      </div>
+
+      <div class="pagination">
+        <span>共 128 篇 · 第 1 / 13 页</span>
+        <div>
+          <button disabled>上一页</button>
+          <button>下一页</button>
+        </div>
+      </div>
+      <p class="note-line">原型说明 类型名称与数量为示例 以你确认后的分类为准</p>
+    </div>
+  </section>
+
+  <!-- ================= Screen 2: 面经详情 ================= -->
+  <section class="screen" data-screen="detail">
+    <div class="page-shell">
+      <div class="breadcrumb">
+        <a href="#" data-goto="list">面经</a>
+        <span>/</span>
+        <span>技术面</span>
+      </div>
+
+      <div class="detail-layout">
+        <div>
+          <article class="article">
+            <div class="article-head">
+              <div class="post-card-top">
+                <span class="badge is-type">技术面</span>
+                <span class="badge">算法面</span>
+                <span class="badge is-best">已解决</span>
+              </div>
+              <h1>字节跳动 · 后端开发 · 一面面经</h1>
+              <div class="article-meta">
+                <span>林同学</span>
+                <span>·</span>
+                <span>2025-10</span>
+                <span>·</span>
+                <span>字节跳动</span>
+                <span>·</span>
+                <span>后端开发</span>
+                <span>·</span>
+                <span>阅读 1.2k</span>
+              </div>
+            </div>
+
+            <div class="article-body">
+              <div class="question-block">
+                <div class="question-block-head">
+                  <h2>题目清单</h2>
+                  <span class="subtle">共 4 道题</span>
+                </div>
+                <ol class="question-list">
+                  <li>
+                    <span class="question-no">1</span>
+                    <div class="question-text">讲一下项目里最难的技术点 你是怎么定位和解决的
+                      <small>追问 如果重做一次 你会改哪里</small>
+                    </div>
+                  </li>
+                  <li>
+                    <span class="question-no">2</span>
+                    <div class="question-text">Redis 缓存穿透 击穿 雪崩分别是什么 线上怎么处理</div>
+                  </li>
+                  <li>
+                    <span class="question-no">3</span>
+                    <div class="question-text">MySQL 索引失效的常见场景 举三个你遇到的例子</div>
+                  </li>
+                  <li>
+                    <span class="question-no">4</span>
+                    <div class="question-text">手撕 LFU 要求 O(1) 复杂度</div>
+                  </li>
+                </ol>
+
+                <div class="answer-hint">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><circle cx="12" cy="16.5" r=".5" fill="currentColor"></circle></svg>
+                  <span><strong>这道面经只收集题目</strong> 答案由评论区的同学补充<br>
+                  觉得哪条回答讲得好 可以点赞 楼主或管理员可以把一条评论设为最佳答案</span>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <section class="comments">
+            <div class="comments-head">
+              <h2>社区答案</h2>
+              <span class="subtle">12 条评论 · 3 条最佳答案候选</span>
+            </div>
+
+            <div class="comment-list">
+              <article class="comment-card is-best">
+                <div class="comment-head">
+                  <span class="comment-avatar">陈</span>
+                  <span class="comment-author">陈同学</span>
+                  <span class="badge is-best">最佳答案</span>
+                  <span class="comment-time">2 天前</span>
+                </div>
+                <div class="comment-body">
+                  <p><strong>第 2 题</strong> 穿透是查不存在的数据 布隆过滤器加空值缓存 击穿是热点 key 过期 用互斥锁或逻辑过期 雪崩是大量 key 同时过期 过期时间加随机抖动 再配降级</p>
+                  <p><strong>第 4 题</strong> 两个双向链表 一个按频率 一个按时间 节点里存 freq 每次访问把节点移到 freq+1 链表的头部</p>
+                </div>
+                <div class="comment-actions">
+                  <button class="is-on">赞同 28</button>
+                  <button>回复</button>
+                  <button>采纳为最佳答案</button>
+                </div>
+              </article>
+
+              <article class="comment-card">
+                <div class="comment-head">
+                  <span class="comment-avatar">周</span>
+                  <span class="comment-author">周同学</span>
+                  <span class="comment-time">3 天前</span>
+                </div>
+                <div class="comment-body">
+                  <p><strong>第 3 题</strong> 我遇到过的 联合索引不满足最左前缀 对索引列做函数运算 隐式类型转换 比如字符串字段传数字 还有一个是 like 以百分号开头</p>
+                </div>
+                <div class="comment-actions">
+                  <button>赞同 11</button>
+                  <button>回复</button>
+                </div>
+              </article>
+
+              <article class="comment-card">
+                <div class="comment-head">
+                  <span class="comment-avatar">匿</span>
+                  <span class="comment-author">匿名用户</span>
+                  <span class="comment-time">3 天前</span>
+                </div>
+                <div class="comment-body">
+                  <p>第 1 题建议按 STAR 讲 先把指标说清楚 比如 P99 从 800ms 降到 120ms 再说你做了什么 最后说复盘</p>
+                </div>
+                <div class="comment-actions">
+                  <button>赞同 7</button>
+                  <button>回复</button>
+                </div>
+              </article>
+            </div>
+
+            <div class="reply-box">
+              <textarea placeholder="写下你的答案或补充 支持 Markdown"></textarea>
+              <div class="reply-box-foot">
+                <label class="checkbox"><input type="checkbox"> 匿名发布</label>
+                <span class="subtle">请针对题目作答 不要直接复制整篇题解</span>
+                <button class="primary-button">发布答案</button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <aside>
+          <div class="side-card">
+            <h3>同公司面经</h3>
+            <ul class="side-list">
+              <li><a href="#">字节跳动 · 后端开发 · 二面面经</a><span class="subtle">6 道题 · 8 条答案</span></li>
+              <li><a href="#">字节跳动 · 算法工程师 · 一面</a><span class="subtle">5 道题 · 4 条答案</span></li>
+              <li><a href="#">字节跳动 · HR 面记录</a><span class="subtle">HR 面 · 7 条答案</span></li>
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Screen 3: 发布面经 ================= -->
+  <section class="screen" data-screen="compose">
+    <div class="page-shell">
+      <div class="breadcrumb">
+        <a href="#" data-goto="list">面经</a>
+        <span>/</span>
+        <span>写面经</span>
+      </div>
+
+      <div class="compose-grid">
+        <div class="form-card">
+          <h1 style="font-size:22px;margin-bottom:6px">写面经</h1>
+          <p class="subtle" style="margin-bottom:var(--space-lg)">只记录问题和现场情况 答案留给评论区</p>
+
+          <div class="compose-notice">
+            <svg viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3Z"></path><path d="M12 9v5"></path><circle cx="12" cy="17" r=".5" fill="currentColor"></circle></svg>
+            <span><strong>正文不要写答案</strong> 这里只填面试官问到的题目 追问和现场氛围<br>
+            答案由社区在评论区补充 这样可以避免一篇面经把整道题的标准答案固定死</span>
+          </div>
+
+          <div class="field">
+            <label>面试类型</label>
+            <div class="type-picker">
+              <button class="type-pick is-active" data-compose-type="技术面">技术面</button>
+              <button class="type-pick" data-compose-type="HR 面">HR 面</button>
+              <button class="type-pick" data-compose-type="算法面">算法面</button>
+              <button class="type-pick" data-compose-type="主管面">主管面</button>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="field">
+              <label for="company">公司</label>
+              <input id="company" placeholder="例如 字节跳动">
+            </div>
+            <div class="field">
+              <label for="role">岗位</label>
+              <input id="role" placeholder="例如 后端开发">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="field">
+              <label for="date">面试时间</label>
+              <input id="date" type="month" value="2025-10">
+            </div>
+            <div class="field">
+              <label for="round">轮次</label>
+              <select id="round">
+                <option>一面</option>
+                <option>二面</option>
+                <option>三面</option>
+                <option>HR 面</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="title">标题</label>
+            <input id="title" value="字节跳动 · 后端开发 · 一面面经">
+          </div>
+
+          <div class="field">
+            <label>题目清单</label>
+            <div class="question-editor">
+              <div class="question-editor-item">
+                <span class="question-no">1</span>
+                <textarea>讲一下项目里最难的技术点 你是怎么定位和解决的</textarea>
+              </div>
+              <div class="question-editor-item">
+                <span class="question-no">2</span>
+                <textarea>Redis 缓存穿透 击穿 雪崩分别是什么 线上怎么处理</textarea>
+              </div>
+              <div class="question-editor-item">
+                <span class="question-no">3</span>
+                <textarea></textarea>
+              </div>
+              <button class="secondary-button add-question">+ 添加题目</button>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <span class="subtle">发布后仍可编辑题目 答案不会随题目一起保存</span>
+            <button class="secondary-button">存草稿</button>
+            <button class="primary-button">发布面经</button>
+          </div>
+        </div>
+
+        <aside>
+          <div class="side-card tips-card">
+            <h3>发布规范</h3>
+            <ol>
+              <li>一题一段 不要把所有问题挤在一行</li>
+              <li>只写问题和追问 不写参考答案</li>
+              <li>可以补充面试官关注点和现场节奏</li>
+              <li>公司 岗位 时间尽量准确 方便检索</li>
+              <li>不要上传简历 联系方式等隐私信息</li>
+            </ol>
+          </div>
+          <div class="side-card" id="compose-hr-card" hidden>
+            <h3>这次是 HR 面</h3>
+            <p class="subtle" style="margin:6px 0 var(--space-md)">可以直接套用 HR 面模板 再把你被问到的原题补进题目清单</p>
+            <button class="secondary-button" data-goto="vip">打开 HR 模板</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Screen 4: HR 面模板 ================= -->
+  <section class="screen" data-screen="vip">
+    <div class="page-shell">
+      <div class="breadcrumb">
+        <a href="#" data-goto="list">面经</a>
+        <span>/</span>
+        <span>HR 面模板</span>
+      </div>
+
+      <div class="vip-hero">
+        <span class="vip-hero-mark">HR</span>
+        <div class="vip-hero-copy">
+          <h1>HR 面模板与套路</h1>
+          <p>把高频 HR 问题拆成可复用模板 同时标出哪些是套话 哪些是面试官真正想听的</p>
+        </div>
+      </div>
+
+      <div class="vip-layout">
+        <nav class="vip-nav" aria-label="HR 模板目录">
+          <div class="vip-nav-label">HR 必问</div>
+          <button class="is-active"><span class="vip-nav-dot"></span>自我介绍</button>
+          <button><span class="vip-nav-dot"></span>为什么选择我们</button>
+          <button><span class="vip-nav-dot"></span>离职原因</button>
+          <button><span class="vip-nav-dot"></span>职业规划</button>
+          <button><span class="vip-nav-dot"></span>最大缺点</button>
+          <button><span class="vip-nav-dot"></span>期望薪资</button>
+          <button><span class="vip-nav-dot"></span>反问环节</button>
+          <div class="vip-nav-label" style="margin-top:10px">方法论</div>
+          <button><span class="vip-nav-dot"></span>STAR 怎么讲</button>
+          <button><span class="vip-nav-dot"></span>套话识别与替换</button>
+        </nav>
+
+        <div class="vip-panel-wrap">
+          <div class="vip-panel">
+            <article class="vip-card">
+              <div class="vip-card-head">
+                <h2>01 · 自我介绍模板</h2>
+                <span class="badge">建议 60–90 秒</span>
+              </div>
+              <div class="vip-card-body">
+                <div class="template-section">
+                  <span class="template-label">结构</span>
+                  <p>一句话定位 → 一段最能证明能力的经历 → 为什么是这个岗位 → 收尾</p>
+                </div>
+                <div class="template-section">
+                  <span class="template-label">模板</span>
+                  <p>我是<strong>某某</strong> 目前在<strong>某校某专业</strong> 主要做<strong>方向</strong><br>
+                  过去一段时间我做过<strong>一件最有结果的事</strong> 负责<strong>什么</strong> 拿到了<strong>什么可量化结果</strong><br>
+                  我投这个岗位是因为<strong>岗位要求与我的经历重合点</strong><br>
+                  如果有机会加入 我希望先<strong>补上什么</strong> 再<strong>承担什么</strong></p>
+                </div>
+                <div class="template-section">
+                  <span class="template-label">示例</span>
+                  <p class="example">我是林某 计算机专业大三 主要做后端开发<br>
+                  上一段实习里我负责订单查询接口 把 P99 从 800ms 降到 120ms 主要做了慢查询治理和缓存分层<br>
+                  我看到这个岗位需要 Go 和 MySQL 我正好在这两块有连续的项目经验<br>
+                  入职后我想先把业务链路摸熟 再独立负责一个模块</p>
+                </div>
+                <div class="template-section">
+                  <span class="template-label">面试官在听什么</span>
+                  <p>表达是否结构化 经历是否真实可追问 你和岗位是否匹配 不是听你背简历</p>
+                </div>
+              </div>
+            </article>
+
+            <article class="vip-card">
+              <div class="vip-card-head">
+                <h2>02 · 套话与有效信息</h2>
+                <span class="badge">常见扣分点</span>
+              </div>
+              <div class="vip-card-body">
+                <div class="compare">
+                  <div class="compare-col bad">
+                    <h4>常见套话</h4>
+                    <ul>
+                      <li>我学习能力强 抗压能力强</li>
+                      <li>贵公司平台大 氛围好</li>
+                      <li>我最大的缺点就是太追求完美</li>
+                      <li>希望能和公司一起成长</li>
+                    </ul>
+                  </div>
+                  <div class="compare-col good">
+                    <h4>换成有效信息</h4>
+                    <ul>
+                      <li>我在两周内自学了某框架 并上线了一个功能</li>
+                      <li>我看过你们某产品 我注意到某处体验问题 我的想法是</li>
+                      <li>我做需求时容易先动手 后来强制自己先写一页方案</li>
+                      <li>我未来一年想补齐某能力 和这个岗位的某要求一致</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="vip-card">
+              <div class="vip-card-head">
+                <h2>03 · HR 面答题套路</h2>
+                <span class="badge">四步拆解</span>
+              </div>
+              <div class="vip-card-body">
+                <ol class="routine-list">
+                  <li><strong>先接住问题</strong> 用一句话复述问题 确认你听懂了 不要抢答</li>
+                  <li><strong>给结论</strong> 先说你最想传达的一句话 让面试官有抓手</li>
+                  <li><strong>举证</strong> 用 STAR 讲一个具体经历 说清楚情境 任务 行动 结果</li>
+                  <li><strong>回扣岗位</strong> 把这段经历和岗位要求连起来 再说一句反思</li>
+                </ol>
+                <p class="subtle" style="margin-top:12px">同一套结构可以套 90% 的行为面问题 差别只在举证素材</p>
+              </div>
+            </article>
+
+            <article class="vip-card">
+              <div class="vip-card-head">
+                <h2>04 · 期望薪资怎么答</h2>
+                <span class="badge">高频追问</span>
+              </div>
+              <div class="vip-card-body">
+                <div class="template-section">
+                  <span class="template-label">原则</span>
+                  <p>先给区间 不给单点 先问清结构 再谈数字 不要主动压价 也不要用“都可以”回避</p>
+                </div>
+                <div class="template-section">
+                  <span class="template-label">话术</span>
+                  <p class="example">我更关注岗位本身和成长空间 薪资方面我了解到的市场区间是<strong>某范围</strong><br>
+                  具体可以根据岗位职级和整体包来谈 方便的话想先了解一下这个岗位的薪资结构</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+
+      <p class="note-line">原型说明 模板内容为示例 正式内容需要你或教研同学确认后录入</p>
+    </div>
+  </section>
+</main>
+
+<nav class="preview-dock" aria-label="原型页面切换">
+  <span class="preview-dock-label">面经改版</span>
+  <button class="is-active" data-screen-btn="list">1 列表</button>
+  <button data-screen-btn="detail">2 详情</button>
+  <button data-screen-btn="compose">3 发布</button>
+  <button data-screen-btn="vip">4 HR 模板</button>
+  <span class="preview-dock-divider"></span>
+  <button id="theme-toggle">深浅</button>
+</nav>
+
+<script>
+(function () {
+  var screens = document.querySelectorAll('.screen')
+  var buttons = document.querySelectorAll('[data-screen-btn]')
+
+  function show(name) {
+    screens.forEach(function (el) {
+      el.classList.toggle('is-active', el.dataset.screen === name)
+    })
+    buttons.forEach(function (btn) {
+      btn.classList.toggle('is-active', btn.dataset.screenBtn === name)
+    })
+    if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  var initial = (location.hash || '').replace('#', '')
+  if (document.querySelector('.screen[data-screen="' + initial + '"]')) show(initial)
+
+  buttons.forEach(function (btn) {
+    btn.addEventListener('click', function () { show(btn.dataset.screenBtn) })
+  })
+
+  document.querySelectorAll('[data-goto]').forEach(function (el) {
+    el.addEventListener('click', function (event) {
+      event.preventDefault()
+      show(el.dataset.goto)
+    })
+  })
+
+  var themeToggle = document.getElementById('theme-toggle')
+  themeToggle.addEventListener('click', function () {
+    var root = document.documentElement
+    root.dataset.theme = root.dataset.theme === 'dark' ? '' : 'dark'
+  })
+
+  // 面试类型筛选 只有 HR 面才展示模板入口
+  var typeTabs = document.querySelectorAll('.type-tab')
+  var hrEntry = document.getElementById('hr-template-entry')
+  var cards = document.querySelectorAll('.post-card[data-types]')
+  var empty = document.getElementById('type-empty')
+  typeTabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      var type = tab.dataset.type
+      typeTabs.forEach(function (t) { t.classList.toggle('is-active', t === tab) })
+      if (hrEntry) hrEntry.hidden = type !== 'HR 面'
+      var visible = 0
+      cards.forEach(function (card) {
+        var match = type === '全部' || card.dataset.types.split(' ').indexOf(type) !== -1
+        card.hidden = !match
+        if (match) visible++
+      })
+      if (empty) empty.hidden = visible !== 0
+    })
+  })
+
+  // 发布页同样只在选择 HR 面后展示模板入口
+  var composeTypes = document.querySelectorAll('[data-compose-type]')
+  var composeHr = document.getElementById('compose-hr-card')
+  composeTypes.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      composeTypes.forEach(function (b) { b.classList.toggle('is-active', b === btn) })
+      if (composeHr) composeHr.hidden = btn.dataset.composeType !== 'HR 面'
+    })
+  })
+})()
+</script>
+</body>
+</html>

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import ProblemReferenceCard from './ProblemReferenceCard.vue'
-import type { ForumPostSummary } from '../types/forum'
-import { FORUM_TAG_LABELS } from '../types/forum'
+import type { ForumPostSummary, InterviewType } from '../types/forum'
+import { FORUM_INTERVIEW_TYPE_LABELS, FORUM_TAG_LABELS } from '../types/forum'
 import { formatForumTime } from '../utils/forum'
 
 defineProps<{ post: ForumPostSummary }>()
 const emit = defineEmits<{ 'toggle-follow': [post: ForumPostSummary] }>()
+
+const typeLabel = (type: InterviewType | null): string =>
+  type ? FORUM_INTERVIEW_TYPE_LABELS[type] : ''
 </script>
 
 <template>
@@ -20,6 +23,10 @@ const emit = defineEmits<{ 'toggle-follow': [post: ForumPostSummary] }>()
       <div class="forum-post-card-topline">
         <span v-if="post.isPinned" class="forum-pin-badge">置顶</span>
         <span v-if="post.board === 'interview'" class="forum-board-badge">面经</span>
+        <span
+          v-if="post.board === 'interview' && post.interviewType"
+          class="forum-type-badge"
+        >{{ typeLabel(post.interviewType) }}</span>
         <span v-if="post.acceptedCommentId" class="forum-accepted-badge">已解决</span>
         <RouterLink class="forum-post-card-title" :to="`/forum/${post.id}`">{{ post.title }}</RouterLink>
         <span v-if="post.company" class="forum-tag forum-tag-structured">{{ post.company }}</span>

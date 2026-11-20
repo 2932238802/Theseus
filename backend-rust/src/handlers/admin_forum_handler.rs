@@ -11,8 +11,8 @@ use crate::{
     common::{error::AppError, response::ok},
     middleware::auth::require_admin,
     models::forum::{
-        AdminActionListQuery, AdminForumPostListQuery, AdminMuteRequest, AdminPinRequest,
-        AdminReportDecisionRequest, AdminReportListQuery, AdminStatusRequest,
+        AdminActionListQuery, AdminForumPostListQuery, AdminInterviewTypeRequest, AdminMuteRequest,
+        AdminPinRequest, AdminReportDecisionRequest, AdminReportListQuery, AdminStatusRequest,
     },
     services::{
         audit_service::{self, AuditContext, AuditRecord},
@@ -119,6 +119,34 @@ pub async fn pin_post(
             ),
         )
         .after(json!({ "is_pinned": request.is_pinned })),
+    )
+    .await;
+    Ok(ok(data))
+}
+
+pub async fn update_interview_type(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(request): Json<AdminInterviewTypeRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let admin = require_admin(&state.pool, &headers, &state.config).await?;
+    let (data, previous) =
+        forum_service::admin_update_interview_type(&state.pool, id, &request.interview_type)
+            .await?;
+    let context = AuditContext::from_headers(&headers);
+    audit_service::record(
+        &state.pool,
+        &admin,
+        &context,
+        AuditRecord::new(
+            "forum.interview_type_update",
+            "forum_post",
+            Some(id),
+            format!("将面经帖子 #{id} 的面试类型改为 {}", data.interview_type),
+        )
+        .before(json!({ "interview_type": previous }))
+        .after(json!({ "interview_type": data.interview_type.clone() })),
     )
     .await;
     Ok(ok(data))

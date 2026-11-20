@@ -13,6 +13,7 @@ pub mod favorite_handler;
 pub mod forum_handler;
 pub mod health_handler;
 pub mod home_handler;
+pub mod interview_template_handler;
 pub mod invitation_handler;
 pub mod lsp_handler;
 pub mod metrics_handler;

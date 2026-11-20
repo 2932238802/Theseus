@@ -6,7 +6,15 @@ import ForumPostCard from '../components/ForumPostCard.vue'
 import NavBar from '../components/NavBar.vue'
 import { useAuthStore } from '../store/auth'
 import { useForumStore } from '../store/forum'
-import { FORUM_BOARDS, FORUM_TAGS, type ForumPostSummary, type ForumScope } from '../types/forum'
+import { shouldShowHrTemplateEntry } from '../utils/interviewTemplatesReader'
+import {
+  FORUM_BOARDS,
+  FORUM_INTERVIEW_TYPES,
+  FORUM_TAGS,
+  type ForumPostSummary,
+  type ForumScope,
+  type InterviewType,
+} from '../types/forum'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +27,9 @@ const board = computed(() => forumStore.query.board ?? 'general')
 const isInterview = computed(() => board.value === 'interview')
 const locked = computed(() => forumStore.error.includes('Plus'))
 const scope = computed<ForumScope>(() => forumStore.query.scope ?? 'all')
+const showHrTemplateEntry = computed(() =>
+  shouldShowHrTemplateEntry(board.value, forumStore.query.interview_type),
+)
 
 const totalStart = computed(() =>
   forumStore.total ? (forumStore.query.page - 1) * forumStore.query.size + 1 : 0,
@@ -30,6 +41,7 @@ const hasFilters = computed(
   () =>
     Boolean(
       forumStore.query.tag ||
+        forumStore.query.interview_type ||
         forumStore.query.company ||
         forumStore.query.role ||
         forumStore.query.q ||
@@ -57,6 +69,10 @@ const onCompanyChange = (event: Event): void => {
 
 const onRoleChange = (event: Event): void => {
   forumStore.setRole((event.target as HTMLSelectElement).value)
+}
+
+const selectInterviewType = (type: InterviewType | null): void => {
+  forumStore.setInterviewType(type)
 }
 
 const selectBoard = (next: 'general' | 'interview'): void => {
@@ -98,6 +114,7 @@ onMounted(() => {
     forumStore.query.board = 'interview'
   } else {
     forumStore.query.board = 'general'
+    forumStore.query.interview_type = undefined
   }
   void forumStore.loadPosts()
   void forumStore.loadFacets()
@@ -231,6 +248,23 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
           </button>
         </template>
         <template v-else>
+          <span class="forum-type-label">面试类型</span>
+          <button
+            type="button"
+            :class="['forum-filter-pill', { active: !forumStore.query.interview_type }]"
+            @click="selectInterviewType(null)"
+          >
+            全部
+          </button>
+          <button
+            v-for="type in FORUM_INTERVIEW_TYPES"
+            :key="type.code"
+            type="button"
+            :class="['forum-filter-pill', { active: forumStore.query.interview_type === type.code }]"
+            @click="selectInterviewType(type.code)"
+          >
+            {{ type.label }}
+          </button>
           <label v-if="forumStore.facets.companies.length" class="forum-select-filter">
             <span>公司</span>
             <select :value="forumStore.query.company ?? ''" @change="onCompanyChange">
@@ -261,6 +295,19 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
         <button v-if="hasFilters" type="button" class="clear-filter" @click="clearFilters">清空筛选</button>
       </div>
     </section>
+
+    <RouterLink
+      v-if="showHrTemplateEntry"
+      class="interview-hr-entry"
+      :to="{ name: 'interview-templates' }"
+    >
+      <span class="interview-hr-entry-mark" aria-hidden="true">HR</span>
+      <span class="interview-hr-entry-copy">
+        <strong>HR 面模板与套路</strong>
+        <span>自我介绍 离职原因 职业规划 薪资谈判 先看模板再写面经</span>
+      </span>
+      <span class="forum-secondary-button">查看模板</span>
+    </RouterLink>
 
     <section class="forum-feed" aria-live="polite">
       <section v-if="locked" class="forum-locked">

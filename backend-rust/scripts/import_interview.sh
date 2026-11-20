@@ -3,7 +3,9 @@
 # 批量导入 doc/interview 下的面经 Markdown 到论坛面经板块（forum_posts.board = 'interview'）。
 #
 # 每个文件导入为一个面经帖子，标题取一级标题，标签取 frontmatter tags 并自动加入公司。
-# 以 board = 'interview' 且标题相同作为去重键：默认跳过，--update 时覆盖正文与标签。
+# 面试类型取 frontmatter 的 type，支持 technical / hr / algorithm / manager 与常见中文写法；
+# 缺失或无法识别时按 round / 标题 / tags 是否含 HR、人力、行为面推断为 hr，否则 technical。
+# 以 board = 'interview' 且标题相同作为去重键：默认跳过，--update 时覆盖正文、标签与类型。
 #
 # 用法：
 #   ./backend-rust/scripts/import_interview.sh --dry-run
@@ -53,7 +55,7 @@ usage() {
 
 选项：
   --author <用户名>   指定面经作者，写库时必填
-  --update            标题已存在时更新正文与标签
+  --update            标题已存在时更新正文、标签与面试类型
   --dry-run           只解析并打印结果，不连接数据库
   --no-answers        只保留题目，去掉流程、复盘、待补充与答案
   --dir <路径>        面经目录，默认 doc/interview
@@ -63,6 +65,8 @@ usage() {
 说明：
   标题取文件中的一级标题，标题也是去重键
   标签取 frontmatter 的 tags，并自动加入公司
+  类型取 frontmatter 的 type（technical / hr / algorithm / manager，兼容中文写法）
+  缺失或无法识别时按 round / 标题 / tags 含 HR、人力、行为面推断为 hr，否则默认技术面
   导入的帖子直接发布在面经板块，需要 Plus 才能浏览
 EOF
 }
@@ -155,6 +159,42 @@ trim() {
     value=${value#\'}
     value=${value%\'}
     printf '%s' "$value"
+}
+
+normalize_interview_type() {
+    local value lower compact
+    value=$(trim "$1")
+    [[ -z "$value" ]] && return 1
+    lower=${value,,}
+    compact=${lower//[[:space:]]/}
+    case "$compact" in
+        technical|技术面|技术) printf 'technical' ;;
+        hr|hr面|人力|行为面) printf 'hr' ;;
+        algorithm|算法面|算法) printf 'algorithm' ;;
+        manager|主管面|主管) printf 'manager' ;;
+        *) return 1 ;;
+    esac
+}
+
+infer_interview_type() {
+    local round=$1 title=$2 tags=$3 lower
+    lower="${round} ${title} ${tags}"
+    lower=${lower,,}
+    if [[ "$lower" =~ (^|[^a-z])hr([^a-z]|$) ]] || [[ "$lower" == *人力* ]] || [[ "$lower" == *行为面* ]]; then
+        printf 'hr'
+    else
+        printf 'technical'
+    fi
+}
+
+interview_type_label() {
+    case "$1" in
+        technical) printf '技术面' ;;
+        hr) printf 'HR 面' ;;
+        algorithm) printf '算法面' ;;
+        manager) printf '主管面' ;;
+        *) printf '%s' "$1" ;;
+    esac
 }
 
 read_field() {
@@ -251,7 +291,7 @@ import_file() {
     date_from_name=${stem%%-round-*}
     round_num=${stem##*-round-}
 
-    local company role round date result
+    local company role round date result type_raw interview_type type_label
     company=$(trim "$(read_field "$file" company)")
     role=$(trim "$(read_field "$file" role)")
     round=$(trim "$(read_field "$file" round)")
@@ -335,6 +375,17 @@ import_file() {
         tags_display=$(IFS='、'; printf '%s' "${TAG_LIST[*]}")
     fi
 
+    type_raw=$(trim "$(read_field "$file" type)")
+    if [[ -n "$type_raw" ]]; then
+        if ! interview_type=$(normalize_interview_type "$type_raw"); then
+            warn "$rel 无法识别 type：$type_raw，按 round / 标题 / tags 推断"
+            interview_type=$(infer_interview_type "$round" "$title" "$tags_raw")
+        fi
+    else
+        interview_type=$(infer_interview_type "$round" "$title" "$tags_raw")
+    fi
+    type_label=$(interview_type_label "$interview_type")
+
     local action=新增
     local existing_id=""
 
@@ -369,6 +420,7 @@ SQL
     say "[$action] $rel"
     printf '       标题：%s\n' "$title"
     printf '       信息：%s / %s / %s / %s\n' "$company" "$role" "$round" "$date"
+    printf '       类型：%s\n' "$type_label"
     printf '       面试时间：%s\n' "${interview_date:-未填写}"
     printf '       结果：%s\n' "${result:-待补充}"
     printf '       标签：%s\n' "${tags_display:-无}"
@@ -388,7 +440,8 @@ SQL
             -v company="$company" \
             -v role="$role" \
             -v content="$content" \
-            -v tags_text="$tags_text" >/dev/null <<'SQL'
+            -v tags_text="$tags_text" \
+            -v interview_type="$interview_type" >/dev/null <<'SQL'
 UPDATE forum_posts
 SET author_id = :'author_id'::integer,
     title = :'title',
@@ -398,6 +451,7 @@ SET author_id = :'author_id'::integer,
     interview_date = NULLIF(:'interview_date', ''),
     company = NULLIF(:'company', ''),
     role = NULLIF(:'role', ''),
+    interview_type = :'interview_type',
     status = 'published',
     updated_at = CURRENT_TIMESTAMP
 WHERE id = :'post_id'::bigint;
@@ -416,10 +470,11 @@ SQL
             -v company="$company" \
             -v role="$role" \
             -v content="$content" \
-            -v tags_text="$tags_text" >/dev/null <<'SQL'
+            -v tags_text="$tags_text" \
+            -v interview_type="$interview_type" >/dev/null <<'SQL'
 INSERT INTO forum_posts (
     author_id, board, title, body_md, tags, interview_date, company, role,
-    status, is_anonymous
+    interview_type, status, is_anonymous
 )
 VALUES (
     :'author_id'::integer,
@@ -431,6 +486,7 @@ VALUES (
     NULLIF(:'interview_date', ''),
     NULLIF(:'company', ''),
     NULLIF(:'role', ''),
+    :'interview_type',
     'published',
     FALSE
 );
@@ -480,6 +536,8 @@ if ((!DRY_RUN)); then
         fatal_db "缺少 board 字段，请先执行迁移 0032"
     [[ "$(psql_db -At -c "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'forum_posts' AND column_name = 'interview_date')")" == "t" ]] ||
         fatal_db "缺少 interview_date 字段，请先执行迁移 0032"
+    [[ "$(psql_db -At -c "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'forum_posts' AND column_name = 'interview_type')")" == "t" ]] ||
+        fatal_db "缺少 interview_type 字段，请先执行迁移 0048"
 
     AUTHOR_ID=$(psql_db -At -v ON_ERROR_STOP=1 -v author="$AUTHOR" <<'SQL'
 SELECT id FROM users WHERE username = :'author' LIMIT 1;

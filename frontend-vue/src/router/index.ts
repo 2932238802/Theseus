@@ -9,6 +9,7 @@ const AdminAuditPage = () => import('../views/AdminAuditPage.vue')
 const AdminContestAppealsPage = () => import('../views/AdminContestAppealsPage.vue')
 const AdminEventsPage = () => import('../views/AdminEventsPage.vue')
 const AdminForumPage = () => import('../views/AdminForumPage.vue')
+const AdminInterviewTemplatesPage = () => import('../views/AdminInterviewTemplatesPage.vue')
 const AdminNotifyPage = () => import('../views/AdminNotifyPage.vue')
 const AdminPlusApplicationsPage = () => import('../views/AdminPlusApplicationsPage.vue')
 const AdminProblemsPage = () => import('../views/AdminProblemsPage.vue')
@@ -30,6 +31,7 @@ const ForumPage = () => import('../views/ForumPage.vue')
 const ForumPostPage = () => import('../views/ForumPostPage.vue')
 const ForgotPasswordPage = () => import('../views/ForgotPasswordPage.vue')
 const GradebookPage = () => import('../views/GradebookPage.vue')
+const InterviewTemplatesPage = () => import('../views/InterviewTemplatesPage.vue')
 const MyAssignmentsPage = () => import('../views/MyAssignmentsPage.vue')
 const NotFoundPage = () => import('../views/NotFoundPage.vue')
 const NotificationsPage = () => import('../views/NotificationsPage.vue')
@@ -94,6 +96,12 @@ const router = createRouter({
     },
     { path: '/forum/new', name: 'forum-compose', component: ForumComposePage, meta: { requiresAuth: true } },
     { path: '/forum/:id', name: 'forum-post', component: ForumPostPage },
+    {
+      path: '/interview/templates',
+      name: 'interview-templates',
+      component: InterviewTemplatesPage,
+      meta: { requiresAuth: true },
+    },
     { path: '/notifications', name: 'notifications', component: NotificationsPage, meta: { requiresAuth: true } },
     {
       path: '/classes',
@@ -190,6 +198,12 @@ const router = createRouter({
       path: '/admin/forum',
       name: 'admin-forum',
       component: AdminForumPage,
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: '/admin/interview-templates',
+      name: 'admin-interview-templates',
+      component: AdminInterviewTemplatesPage,
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     { path: '/admin/knowledge', redirect: '/admin/forum' },

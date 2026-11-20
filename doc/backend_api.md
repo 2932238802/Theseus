@@ -105,6 +105,14 @@ cargo run
 | GET | `/api/profile/privacy` | 用户 | 读取社交动态隐私设置 |
 | PUT | `/api/profile/privacy` | 用户 | 更新社交动态隐私设置 `{hide_activity_from_social}` |
 | GET | `/api/forum/feed-counts` | 用户 | 关注的人与同校的人数量，用于论坛动态范围标签 |
+| GET | `/api/forum/interview/templates` | Plus / 管理员 | HR 面模板列表，按 `sort_order,id`，不含正文 |
+| GET | `/api/forum/interview/templates/{id}` | Plus / 管理员 | HR 面模板详情，含 Markdown 正文 |
+| PUT | `/api/admin/forum/posts/{id}/interview-type` | 管理员 | 修改面经类型 `{interview_type}` 并写审计 |
+| GET | `/api/admin/interview/templates` | 管理员 | 模板列表，含正文 |
+| POST | `/api/admin/interview/templates` | 管理员 | 新建模板 `{title,content_md}` |
+| PUT | `/api/admin/interview/templates/{id}` | 管理员 | 更新模板 `{title,content_md}` |
+| DELETE | `/api/admin/interview/templates/{id}` | 管理员 | 删除模板 |
+| PUT | `/api/admin/interview/templates/order` | 管理员 | 按 `{ids}` 重排模板，必须覆盖全部 ID |
 | GET | `/api/profile/preferences` | 用户 | 当前用户的个性化偏好 |
 | PUT | `/api/profile/preferences` | 用户 | 批量写入个性化偏好 |
 | DELETE | `/api/profile/preferences` | 用户 | 清空当前用户全部偏好 |
@@ -507,12 +515,38 @@ Content-Type: application/json
 }
 ```
 
-- 板块创建后不可切换，`PUT /api/forum/posts/{id}` 只更新标题、正文、标签、面试时间、公司与岗位与关联题目
-- 列表与详情响应新增 `board`、`interview_date`、`company`、`role`、`view_count`、`accepted_comment_id`
+- 板块创建后可通过 `PUT /api/forum/posts/{id}` 的 `board` 切换；非 Plus 用户不能把自己发布的综合帖改为面经，改为综合板块时 `interview_type` 置空
+- 列表与详情响应新增 `board`、`interview_date`、`company`、`role`、`interview_type`、`view_count`、`accepted_comment_id`
 - 详情页每次成功打开后 `view_count` +1，列表与详情返回自增后的值
 - `POST /api/forum/posts/{id}/accepted-comment` 请求 `{"comment_id":123}` 设置最佳答案，`DELETE` 取消；仅帖子作者与管理员可调用，只能采纳本帖子下未隐藏的顶层评论；响应 `{accepted_comment_id,message}`，评论与回复带 `is_accepted`
 - `GET /api/forum/posts?problem_id=12&sort=hot` 返回关联该题的已发布帖子，用于题目页「题解与讨论」；`problem_id` 必须为正整数，未指定 `board` 时只返回综合板块内容
 - 旧 `/api/knowledge*`、`/api/admin/knowledge*` 接口已移除；历史面经由迁移 `0032` 复制到 `forum_posts`
+
+### 面经类型与 HR 面模板（2026-11-20）
+
+面经类型为单选枚举：`technical`（技术面）、`hr`（HR 面）、`algorithm`（算法面）、`manager`（主管面）；入库英文，展示中文。综合板块该字段恒为 `null`。模板接口读写独立表 `interview_templates`，不进入普通面经列表。
+
+**面经类型**
+
+- `GET /api/forum/posts?board=interview&interview_type=hr`：按类型筛选，只返回对应类型；`interview_type` 取上述四值。未知值返回 400「未知的面试类型」；合法值在 `board=general` 时被忽略，未知值仍返回 400。`total` 与筛选结果一致。
+- `POST /api/forum/posts` 新增 `interview_type`：面经必填，缺失返回 400「面经必须选择面试类型」；未知值返回 400「未知的面试类型」；综合板块传非空值返回 400「只有面经板块支持面试类型」。
+- `PUT /api/forum/posts/{id}` 同样接受 `interview_type`；面经缺类型或未知值返回 400，综合板块带类型返回 400。编辑既有面经时前端必须回传 `interview_type`；未回传返回 400，这是有意的破坏性变更，旧客户端或旧缓存前端需同步升级。
+- `GET /api/forum/posts/{id}` 返回 `interview_type`，综合帖子为 `null`。
+- `PUT /api/admin/forum/posts/{id}/interview-type`：管理员修改面经类型，请求 `{"interview_type":"manager"}`。返回 `{id,interview_type,message}`；非面经帖子返回 400「只有面经板块支持面试类型」，未知值返回 400「未知的面试类型」，帖子不存在返回 404。成功写审计 `forum.interview_type_update`，记录修改前后类型。
+
+**读者端模板（权限与面经板块一致）**
+
+- `GET /api/forum/interview/templates`：返回 `[{id,title,sort_order,updated_at}]`，按 `sort_order,id` 排序，不含正文。未登录返回 401；非 Plus 用户返回 403。
+- `GET /api/forum/interview/templates/{id}`：返回 `{id,title,content_md,sort_order,created_at,updated_at}`；不存在返回 404。权限同上。
+
+**管理端模板（`requiresAdmin`）**
+
+- `GET /api/admin/interview/templates`：返回全部模板，字段同读者详情，按 `sort_order,id` 排序。
+- `POST /api/admin/interview/templates`：请求 `{"title","content_md"}`，返回 201 与新记录；新模板追加到末尾。标题 1–120 字、正文 1–20000 字，空白或超限返回 400。
+- `PUT /api/admin/interview/templates/{id}`：请求 `{"title","content_md"}`，返回更新后记录；长度校验同上，不存在返回 404。
+- `DELETE /api/admin/interview/templates/{id}`：物理删除，返回 `{id,message}`；不存在返回 404。
+- `PUT /api/admin/interview/templates/order`：请求 `{"ids":[2,1]}`，必须覆盖全部模板 ID 且不重复，按数组顺序写 `sort_order`；缺项、重复或未知 ID 返回 400。
+- 管理端写操作写审计：`interview_template.create`、`interview_template.update`、`interview_template.delete`、`interview_template.reorder`；审计只记录标题、排序等元数据，不记录正文。
 
 ## 竞赛与限时赛事接口
 

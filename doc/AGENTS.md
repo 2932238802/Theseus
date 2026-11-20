@@ -2,12 +2,17 @@
 
 本目录保存需求、设计、接口与实施进度。代码行为变化后，必须同步相关文档，优先保证 `总体设计.md` 的进度描述与仓库实际实现一致。
 
+文档入口：`README.md`（索引）、`STATUS.md`（当前 CR 与门禁）、`archive/`（按 `YYYYMMDD` 归档的新需求与实施台账）。
+
 ## 文档地图
 
 | 文档 | 用途 | 当前状态 |
 |---|---|---|
 | `总体设计.md` | 产品定位、架构、权限、数据模型、接口、路线与总体进度 | 进度基线：2026-11-07，`98be1ad` + 防作弊 M2 + 教学数据导入导出 + 个人出题与导航调整 + 审计中心 + 竞赛收尾 + 容器化部署 + 提交记录 + 商店与 Plus 会员有效期、续费与到期提醒 + 面经板块、结构化筛选与最佳答案 + 题目题解与讨论区 + 题目笔记 + 语义补全 + 设置中心与偏好同步 + 成绩申诉与作业统计报表 + 第三方账号绑定与 GitHub 登录 + 单设备登录 + AI 助手 + 题库扩充至 1000 题 + AC 庆祝弹窗 + 一题多解 |
 | `backend_api.md` | 后端接口契约与错误码 | 随接口变更维护 |
+| `README.md` | 文档索引与阅读入口 | 已建立 |
+| `STATUS.md` | 当前 CR、门禁、进行中任务、阻塞与下一步 | 由 Doc Agent 维护 |
+| `archive/20261119/` | 面经板块改版需求卡（CR-001~003）、开发文档与实施台账 | G2 完成，待 G3 评审 |
 | `2610259_班级与作业设计方案.md` | 三角色、组织、作业、提交、批改详细设计 | 核心闭环已实现 |
 | `2610261_班级邀请与通知完善设计方案.md` | 组织邀请、邀请通知与通知中心 | 已实现 |
 | `2610271_作业策略的实现.md` | 迟交、重交次数、计分、可见性、补交/免修、解析、统计与审计 | 已实现 |
@@ -75,7 +80,7 @@
 - CI 镜像交付：main 检查通过后发布 GHCR 的 backend/frontend/lsp 完整 SHA 镜像；服务器配置 IMAGE_PREFIX 后 update.sh 默认拉取并核对 revision，手动部署、保留 --build 备用；首次远程 CI 与部署尚待验证（`2611031`）。
 - 后端构建缓存：Dockerfile 先用空入口编译依赖，再复制 `migrations` 与 `src` 编译本包，依赖层与源码层分开；registry/Git 随依赖层保存，`update.sh` 自动启用 BuildKit，默认单任务编译不变；首次启用仍需完整编译，后续源码或迁移修改只重编本包（`2611031`）。
 - 容器化部署：后端多阶段镜像内置 API 与两个 Worker，前端 Node 构建 + Nginx 反代 `/api` 与 `/uploads`；`deploy/compose.yaml` 编排 PostgreSQL、Redis、API、判题/防作弊 Worker 与前端；新增 `/healthz`、`/readyz` 健康检查；提供备份、恢复、管理员提升与 `update.sh` 增量更新脚本，以及 TLS 反代与运维手册（`2611031`）。
-- 冒烟脚本：`smoke_teaching.sh`、`smoke_submission.sh`、`smoke_forum.sh`、`smoke_problem_review.sh`、`smoke_auth_email.sh`、`smoke_contest_events.sh`、`smoke_notifications.sh`、`smoke_realtime.sh`、`smoke_anticheat.sh`、`smoke_import_export.sh`、`smoke_audit.sh`、`smoke_profile.sh`（含个性化偏好读写与校验）、`smoke_grade_appeals.sh`（成绩申诉与统计导出）。
+- 冒烟脚本：`smoke_teaching.sh`、`smoke_submission.sh`、`smoke_forum.sh`、`smoke_problem_review.sh`、`smoke_auth_email.sh`、`smoke_contest_events.sh`、`smoke_notifications.sh`、`smoke_realtime.sh`、`smoke_anticheat.sh`、`smoke_import_export.sh`、`smoke_audit.sh`、`smoke_profile.sh`（含个性化偏好读写与校验）、`smoke_grade_appeals.sh`（成绩申诉与统计导出）、`smoke_interview_templates.sh`（面经类型筛选、权限、发帖校验与 HR 面模板 CRUD/排序/审计）。
 - 一题多解：`0047` 新增 `problem_solutions`，同一用户每题最多 5 份独立解法，独立保存名称、语言、代码与最近提交状态；提交记录新增 `solution_id` 关联，删除解法时置空保留历史；新增 `/api/problems/{id}/solutions` 增删改查，首次进入懒创建空解法，并发用 slot + 唯一约束占位，删除事务保证至少 1 份；旧 `problem_drafts` 按更新时间迁移并保留旧接口兼容；题目页新增「我的解法」Tab 与编辑器工具栏切换器，支持新建、重命名、删除、切换与提交状态回填；登录后服务端保存，未登录、接口失败与竞赛模式退回本机多解法；登录后若服务端该题尚无代码，自动合并游客解法并清理本机副本（`2611071`）。
 - 题目页提交记录：新增「提交记录」Tab，按题分页查看本人提交，详情展示代码、编译输出与失败用例，可载入编辑器或与当前代码逐行对比；复用 `GET /api/submissions` 与 `GET /api/submissions/{id}`，新增前端行级 diff（`2610311`）。
 - 商店与 Plus 申请：学生与教师顶部新增「商店」下拉菜单（管理员不显示），`/shop` 展示「升级为 Plus Theseus」；新增 `plus_applications`、`plus_memberships` 与 `GET /api/shop/plus`、`POST /api/shop/plus/apply`、`GET /api/admin/plus-applications`、`POST /api/admin/plus-applications/{id}/resolve`；管理员审核时填写 1–3650 天，通过后写入或顺延会员有效期，到期自动失效并可重新申请；管理员审核后写站内信与审计日志，新增 `/admin/plus-applications` 页面；Plus 权益为面经板块权限与导航、论坛作者旁的 Plus 标识（`2610312`）。
@@ -99,6 +104,7 @@
 - 可观测性落地：Compose 新增可选 `observability` profile，编排 Prometheus、Alertmanager 与 Grafana，端口只绑定 `127.0.0.1`；Prometheus 抓取 `backend:3000/metrics` 并保留 15 天，加载可用性、5xx、P95、判题 Worker/积压/死信、连接池与匹配错误告警；Alertmanager 复用 `EMAIL_*` 发送告警邮件，也支持通用 webhook，未配置渠道时仅在 UI 查看；Grafana 预置 Prometheus 数据源与「Theseus 运行概览」仪表盘；`/metrics` 新增 `theseus_judge_queue_enabled`，用于区分队列关闭与 Redis 指标不可读；判题 Worker 确认任务后删除 Stream 条目，使队列长度只反映待处理量；`.env` 中的 `COMPOSE_PROFILES=observability` 使 `update.sh` 一并启用观测组件（`2611051`）。
 - 性能压测与索引收口：新增 `deploy/load/k6-theseus.js` 与运行说明，覆盖题库浏览、登录态阅读与可选真实提交，`setup()` 只登录一次以适配单设备登录，默认不打印任何凭据；新增 `deploy/scripts/pg_stats.sh` 启用、重置与查看 `pg_stat_statements`，Compose 为 postgres 预加载扩展；`0045` 新增个人提交、个人某题提交与通知列表的复合索引，删除被覆盖的旧索引；本地用 100,000 条提交与 50,000 条通知的事务内合成数据验证，个人某题提交约快 5.6 倍、通知列表约快 42 倍（`2611052`）。
 - 题库扩充至 1000 题：在原有 200 题基础上新增四批共 800 道函数式题目（1300-2099），每批 200 道（75 简单、85 中等、40 困难），合计 300 简单、340 中等、160 困难；由 `generate_bulk_problem_seed.py --batch 1|2|3|4` 从 24 个批量目录文件生成四个种子 SQL，生成前校验 ID 连续、批次内与跨批次标题不重复，并用参考解逐条计算隐藏用例；`clean_dev.sql` 同步清理固定 ID。
+- 面经板块改版：正文只收题目，发布页与详情页增加「不写答案 / 只收录题目」提示；新增 `rebuild_interview_posts.sh`，未传 `--yes` 只预览，确认后自动备份、只删除 `board='interview'`、调用 `import_interview.sh --no-answers` 重建，失败非零退出并打印 `restore.sh`；`0048` 为面经新增单选类型 `technical|hr|algorithm|manager`（不入库综合板块）、部分索引、列表筛选、发帖必填、详情标签、管理端改类型与审计；`0049` 新增 `interview_templates`，读者端 `/interview/templates` 提供扁平列表与 Markdown 正文，管理端 `/admin/interview-templates` 支持增删改查、拖拽排序与 Markdown 编辑器（工具栏、`Ctrl/Cmd+B/I/K`、预览清洗 XSS）；HR 模板入口只在面经列表/发布页选中「HR 面」时出现，模板页面不出现 VIP/Plus 升级字样（`archive/20261119/`）。
 
 **部分完成**
 

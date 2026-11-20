@@ -7,6 +7,7 @@ pub mod draft;
 pub mod favorite;
 pub mod forum;
 pub mod home;
+pub mod interview_template;
 pub mod note;
 pub mod notification;
 pub mod oauth;

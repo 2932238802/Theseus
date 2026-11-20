@@ -11,19 +11,20 @@ use crate::{
     models::forum::{
         AcceptedCommentResponse, AdminActionActor, AdminActionListQuery, AdminActionListResponse,
         AdminActionRow, AdminAuthor, AdminForumCommentRow, AdminForumPostDetail,
-        AdminForumPostListQuery, AdminForumPostListResponse, AdminForumPostRow, AdminMuteRequest,
-        AdminPinRequest, AdminReportDecisionRequest, AdminReportListQuery, AdminReportListResponse,
-        AdminReportRow, AdminReportTargetPreview, AdminStatusRequest, BOARD_GENERAL,
-        BOARD_INTERVIEW, CreateCommentRequest, CreatePostRequest, CreateReportRequest,
-        FavoriteResponse, ForumCommentCreated, ForumCommentListQuery, ForumCommentRow,
-        ForumCommentsResponse, ForumInterviewFacets, ForumMutationResponse, ForumPostCreated,
-        ForumPostDetail, ForumPostListQuery, ForumPostListResponse, ForumPostRow,
-        ForumRepliesResponse, ForumReplyListQuery, ForumReplyView, ForumReportResponse,
-        LikeResponse, MAX_COMMENT_BODY_CHARS, MAX_EMBEDDED_REPLIES, MAX_INTERVIEW_DATE_CHARS,
-        MAX_INTERVIEW_META_CHARS, MAX_INTERVIEW_TAG_CHARS, MAX_INTERVIEW_TAGS, MAX_POST_BODY_CHARS,
-        MAX_REASON_CHARS, MAX_REPORT_DETAIL_CHARS, MAX_SEARCH_CHARS, MAX_TITLE_CHARS, MuteResponse,
-        PinResponse, PublicAuthor, ReplyTo, ReportDecisionResponse, UpdateCommentRequest,
-        UpdatePostRequest, is_known_board, is_known_report_reason, is_known_tag,
+        AdminForumPostListQuery, AdminForumPostListResponse, AdminForumPostRow,
+        AdminInterviewTypeResponse, AdminMuteRequest, AdminPinRequest, AdminReportDecisionRequest,
+        AdminReportListQuery, AdminReportListResponse, AdminReportRow, AdminReportTargetPreview,
+        AdminStatusRequest, BOARD_GENERAL, BOARD_INTERVIEW, CreateCommentRequest,
+        CreatePostRequest, CreateReportRequest, FavoriteResponse, ForumCommentCreated,
+        ForumCommentListQuery, ForumCommentRow, ForumCommentsResponse, ForumInterviewFacets,
+        ForumMutationResponse, ForumPostCreated, ForumPostDetail, ForumPostListQuery,
+        ForumPostListResponse, ForumPostRow, ForumRepliesResponse, ForumReplyListQuery,
+        ForumReplyView, ForumReportResponse, LikeResponse, MAX_COMMENT_BODY_CHARS,
+        MAX_EMBEDDED_REPLIES, MAX_INTERVIEW_DATE_CHARS, MAX_INTERVIEW_META_CHARS,
+        MAX_INTERVIEW_TAG_CHARS, MAX_INTERVIEW_TAGS, MAX_POST_BODY_CHARS, MAX_REASON_CHARS,
+        MAX_REPORT_DETAIL_CHARS, MAX_SEARCH_CHARS, MAX_TITLE_CHARS, MuteResponse, PinResponse,
+        PublicAuthor, ReplyTo, ReportDecisionResponse, UpdateCommentRequest, UpdatePostRequest,
+        is_known_board, is_known_interview_type, is_known_report_reason, is_known_tag,
     },
     services::{notification_service, plus_service},
 };
@@ -185,6 +186,37 @@ fn normalize_board(value: Option<&str>) -> Result<&'static str, AppError> {
     } else {
         Ok(BOARD_GENERAL)
     }
+}
+
+/// 发帖/编辑时校验面试类型：面经必填且必须是固定枚举，综合板块不得携带。
+fn normalize_interview_type(value: Option<&str>, board: &str) -> Result<Option<String>, AppError> {
+    let value = value.map(str::trim).unwrap_or_default();
+    if board == BOARD_INTERVIEW {
+        if value.is_empty() {
+            return Err(AppError::BadRequest("面经必须选择面试类型".to_owned()));
+        }
+        if !is_known_interview_type(value) {
+            return Err(AppError::BadRequest("未知的面试类型".to_owned()));
+        }
+        Ok(Some(value.to_owned()))
+    } else {
+        if !value.is_empty() {
+            return Err(AppError::BadRequest("只有面经板块支持面试类型".to_owned()));
+        }
+        Ok(None)
+    }
+}
+
+/// 列表筛选参数：只校验枚举，是否生效由调用方按板块决定。
+fn normalize_interview_type_filter(value: Option<&str>) -> Result<Option<String>, AppError> {
+    let value = value.map(str::trim).unwrap_or_default();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if !is_known_interview_type(value) {
+        return Err(AppError::BadRequest("未知的面试类型".to_owned()));
+    }
+    Ok(Some(value.to_owned()))
 }
 
 fn normalize_interview_meta(value: Option<&str>, label: &str) -> Result<Option<String>, AppError> {
@@ -543,8 +575,8 @@ fn push_public_post_select(builder: &mut QueryBuilder<'_, Postgres>, viewer_id: 
     builder.push_bind(viewer_id);
     builder.push(
         " AND uf.following_id = fp.author_id) AS author_followed, fp.board, fp.title, \
-         fp.body_md, fp.tags, fp.interview_date, fp.company, fp.role, fp.view_count, \
-         fp.accepted_comment_id, fp.problem_id, p.title AS problem_title, \
+         fp.body_md, fp.tags, fp.interview_date, fp.company, fp.role, fp.interview_type, \
+         fp.view_count, fp.accepted_comment_id, fp.problem_id, p.title AS problem_title, \
          p.difficulty AS problem_difficulty, \
          fp.is_anonymous, fp.status, fp.hidden_reason, fp.is_pinned, fp.like_count, \
          fp.favorite_count, fp.comment_count, fp.created_at, fp.updated_at, fp.edited_at, \
@@ -602,6 +634,13 @@ pub async fn list_posts(
             ));
         }
     }
+    // 未知值始终 400；合法值只在面经板块生效，综合板块忽略。
+    let interview_type = normalize_interview_type_filter(query.interview_type.as_deref())?;
+    let interview_type = if board == BOARD_INTERVIEW {
+        interview_type
+    } else {
+        None
+    };
     let tag = query
         .tag
         .as_deref()
@@ -658,6 +697,11 @@ pub async fn list_posts(
     }
     if let Some(role) = &role {
         builder.push(" AND fp.role = ").push_bind(role.clone());
+    }
+    if let Some(interview_type) = &interview_type {
+        builder
+            .push(" AND fp.interview_type = ")
+            .push_bind(interview_type.clone());
     }
     if let Some(problem_id) = query.problem_id {
         builder.push(" AND fp.problem_id = ").push_bind(problem_id);
@@ -718,6 +762,11 @@ pub async fn list_posts(
         count_builder
             .push(" AND fp.role = ")
             .push_bind(role.clone());
+    }
+    if let Some(interview_type) = &interview_type {
+        count_builder
+            .push(" AND fp.interview_type = ")
+            .push_bind(interview_type.clone());
     }
     if let Some(problem_id) = query.problem_id {
         count_builder
@@ -860,6 +909,7 @@ pub async fn create_post(
     } else {
         (None, None, None)
     };
+    let interview_type = normalize_interview_type(request.interview_type.as_deref(), board)?;
     validate_problem_reference(pool, request.problem_id).await?;
     let username = username_of(pool, user.id).await?;
     let actor_display = if request.is_anonymous {
@@ -875,8 +925,8 @@ pub async fn create_post(
     let (post_id, status): (i64, String) = sqlx::query_as(
         "INSERT INTO forum_posts \
          (author_id, board, title, body_md, tags, interview_date, company, role, \
-          problem_id, is_anonymous) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, status",
+          interview_type, problem_id, is_anonymous) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, status",
     )
     .bind(user.id)
     .bind(board)
@@ -886,6 +936,7 @@ pub async fn create_post(
     .bind(&interview_date)
     .bind(&company)
     .bind(&role)
+    .bind(&interview_type)
     .bind(request.problem_id)
     .bind(request.is_anonymous)
     .fetch_one(&mut *tx)
@@ -931,9 +982,28 @@ pub async fn update_post(
             .fetch_optional(pool)
             .await
             .map_err(AppError::Database)?;
-    let (author_id, board) =
+    let (author_id, current_board) =
         owned.ok_or_else(|| AppError::NotFound("帖子不存在或已被删除".to_owned()))?;
-    let board = normalize_board(Some(&board))?;
+    // 编辑时允许切换板块；空白值视为未提供，避免误把面经改成综合。
+    let requested_board = request
+        .board
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let board = match requested_board {
+        Some(value) => normalize_board(Some(value))?,
+        None => normalize_board(Some(&current_board))?,
+    };
+    // 作者豁免只适用于编辑已有面经；把综合帖改成面经仍需 Plus 或管理员。
+    if board == BOARD_INTERVIEW
+        && current_board != BOARD_INTERVIEW
+        && !user.is_admin()
+        && !plus_service::is_plus(pool, user.id).await?
+    {
+        return Err(AppError::ForbiddenWith(
+            "需要开通 Plus Theseus 才能发布面经".to_owned(),
+        ));
+    }
     ensure_board_access(pool, Some(user), board, Some(author_id)).await?;
     let (title, body, tags) = normalized_post(
         &request.title,
@@ -951,6 +1021,8 @@ pub async fn update_post(
     } else {
         (None, None, None)
     };
+    // 改为综合板块时必须清空类型；改为面经时必须带合法类型。
+    let interview_type = normalize_interview_type(request.interview_type.as_deref(), board)?;
     validate_problem_reference(pool, request.problem_id).await?;
 
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
@@ -973,17 +1045,20 @@ pub async fn update_post(
         return Err(AppError::ForbiddenWith("帖子已被隐藏，无法编辑".to_owned()));
     }
     sqlx::query(
-        "UPDATE forum_posts SET title = $2, body_md = $3, tags = $4, interview_date = $5, \
-         company = $6, role = $7, problem_id = $8, edited_at = CURRENT_TIMESTAMP, \
+        "UPDATE forum_posts SET board = $2, title = $3, body_md = $4, tags = $5, \
+         interview_date = $6, company = $7, role = $8, interview_type = $9, \
+         problem_id = $10, edited_at = CURRENT_TIMESTAMP, \
          updated_at = CURRENT_TIMESTAMP WHERE id = $1",
     )
     .bind(post_id)
+    .bind(board)
     .bind(&title)
     .bind(&body)
     .bind(&tags)
     .bind(&interview_date)
     .bind(&company)
     .bind(&role)
+    .bind(&interview_type)
     .bind(request.problem_id)
     .execute(&mut *tx)
     .await
@@ -2120,11 +2195,12 @@ fn push_admin_post_select(builder: &mut QueryBuilder<'_, Postgres>) {
     builder.push(
         "SELECT fp.id, fp.author_id, u.username AS author_username, u.email AS author_email, \
          u.role AS author_role, fp.board, fp.title, fp.body_md, fp.tags, fp.interview_date, \
-         fp.company, fp.role, fp.view_count, fp.accepted_comment_id, fp.problem_id, \
-         p.title AS problem_title, p.difficulty AS problem_difficulty, fp.is_anonymous, \
-         fp.status, fp.hidden_reason, fp.hidden_by, fp.hidden_at, fp.is_pinned, fp.like_count, \
-         fp.favorite_count, fp.comment_count, fp.pending_report_count, fp.created_at, \
-         fp.updated_at, fp.edited_at, COUNT(*) OVER() AS total \
+         fp.company, fp.role, fp.interview_type, fp.view_count, fp.accepted_comment_id, \
+         fp.problem_id, p.title AS problem_title, p.difficulty AS problem_difficulty, \
+         fp.is_anonymous, fp.status, fp.hidden_reason, fp.hidden_by, fp.hidden_at, \
+         fp.is_pinned, fp.like_count, fp.favorite_count, fp.comment_count, \
+         fp.pending_report_count, fp.created_at, fp.updated_at, fp.edited_at, \
+         COUNT(*) OVER() AS total \
          FROM forum_posts fp \
          JOIN users u ON u.id = fp.author_id \
          LEFT JOIN problems p ON p.id = fp.problem_id AND p.review_status = 'approved'",
@@ -2415,6 +2491,50 @@ pub async fn admin_change_post_status(
         id: post_id,
         message: "帖子状态已更新".to_owned(),
     })
+}
+
+/// 管理员修改面经帖子的面试类型。只允许面经板块，返回旧值供审计使用。
+pub async fn admin_update_interview_type(
+    pool: &PgPool,
+    post_id: i64,
+    interview_type: &str,
+) -> Result<(AdminInterviewTypeResponse, Option<String>), AppError> {
+    if post_id <= 0 {
+        return Err(AppError::BadRequest("帖子 ID 无效".to_owned()));
+    }
+    let next = interview_type.trim();
+    if !is_known_interview_type(next) {
+        return Err(AppError::BadRequest("未知的面试类型".to_owned()));
+    }
+    let mut tx = pool.begin().await.map_err(AppError::Database)?;
+    let row: Option<(String, Option<String>)> =
+        sqlx::query_as("SELECT board, interview_type FROM forum_posts WHERE id = $1 FOR UPDATE")
+            .bind(post_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+    let (board, previous) = row.ok_or_else(|| AppError::NotFound("帖子不存在".to_owned()))?;
+    if board != BOARD_INTERVIEW {
+        return Err(AppError::BadRequest("只有面经板块支持面试类型".to_owned()));
+    }
+    sqlx::query(
+        "UPDATE forum_posts SET interview_type = $2, updated_at = CURRENT_TIMESTAMP \
+         WHERE id = $1",
+    )
+    .bind(post_id)
+    .bind(next)
+    .execute(&mut *tx)
+    .await
+    .map_err(AppError::Database)?;
+    tx.commit().await.map_err(AppError::Database)?;
+    Ok((
+        AdminInterviewTypeResponse {
+            id: post_id,
+            interview_type: next.to_owned(),
+            message: "面试类型已更新".to_owned(),
+        },
+        previous,
+    ))
 }
 
 pub async fn admin_change_comment_status(
@@ -3556,7 +3676,8 @@ mod tests {
 
     use super::{
         BOARD_GENERAL, BOARD_INTERVIEW, escape_like, make_excerpt, mute_ends_at, normalize_board,
-        normalize_interview_date, normalize_interview_meta, normalize_tags,
+        normalize_interview_date, normalize_interview_meta, normalize_interview_type,
+        normalize_interview_type_filter, normalize_tags,
     };
 
     #[test]
@@ -3653,6 +3774,43 @@ mod tests {
             Some("百度".to_owned())
         );
         assert!(normalize_interview_meta(Some(&"字".repeat(41)), "岗位").is_err());
+    }
+
+    #[test]
+    fn validates_interview_types() {
+        assert_eq!(
+            normalize_interview_type(Some(" hr "), BOARD_INTERVIEW).unwrap(),
+            Some("hr".to_owned())
+        );
+        for value in ["technical", "algorithm", "manager"] {
+            assert_eq!(
+                normalize_interview_type(Some(value), BOARD_INTERVIEW).unwrap(),
+                Some(value.to_owned())
+            );
+        }
+        assert!(normalize_interview_type(None, BOARD_INTERVIEW).is_err());
+        assert!(normalize_interview_type(Some("   "), BOARD_INTERVIEW).is_err());
+        assert!(normalize_interview_type(Some("coding"), BOARD_INTERVIEW).is_err());
+        assert!(normalize_interview_type(Some("HR"), BOARD_INTERVIEW).is_err());
+
+        assert_eq!(normalize_interview_type(None, BOARD_GENERAL).unwrap(), None);
+        assert_eq!(
+            normalize_interview_type(Some("  "), BOARD_GENERAL).unwrap(),
+            None
+        );
+        assert!(normalize_interview_type(Some("hr"), BOARD_GENERAL).is_err());
+    }
+
+    #[test]
+    fn validates_interview_type_filter() {
+        assert_eq!(normalize_interview_type_filter(None).unwrap(), None);
+        assert_eq!(normalize_interview_type_filter(Some(" ")).unwrap(), None);
+        assert_eq!(
+            normalize_interview_type_filter(Some("hr")).unwrap(),
+            Some("hr".to_owned())
+        );
+        assert!(normalize_interview_type_filter(Some("unknown")).is_err());
+        assert!(normalize_interview_type_filter(Some("HR")).is_err());
     }
 
     #[test]

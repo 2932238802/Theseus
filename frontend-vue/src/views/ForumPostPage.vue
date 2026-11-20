@@ -11,8 +11,8 @@ import { setCommentFavorite } from '../api/favorites'
 import { changeAdminCommentStatus, changeAdminPostStatus, createForumComment, pinAdminForumPost, acceptForumComment, clearAcceptedForumComment } from '../api/forum'
 import { useAuthStore } from '../store/auth'
 import { useForumStore } from '../store/forum'
-import { FORUM_TAG_LABELS } from '../types/forum'
-import type { ForumComment, ForumReply } from '../types/forum'
+import { FORUM_INTERVIEW_TYPE_LABELS, FORUM_TAG_LABELS } from '../types/forum'
+import type { ForumComment, ForumReply, InterviewType } from '../types/forum'
 import { formatForumDateTime, formatForumTime } from '../utils/forum'
 
 const route = useRoute()
@@ -344,6 +344,9 @@ const adminHideComment = async (id: number): Promise<void> => {
 const tagLabel = (tag: string): string =>
   FORUM_TAG_LABELS[tag as keyof typeof FORUM_TAG_LABELS] ?? tag
 
+const interviewTypeLabel = (type: InterviewType | null): string =>
+  type ? FORUM_INTERVIEW_TYPE_LABELS[type] : ''
+
 const replyDisplay = (reply: ForumReply, rootId: number): string =>
   reply.replyTo && reply.replyTo.commentId !== rootId
     ? `回复 ${reply.replyTo.displayName}：`
@@ -402,6 +405,10 @@ onMounted(() => {
           <div class="forum-post-card-topline">
             <span v-if="post.isPinned" class="forum-pin-badge">置顶</span>
             <span v-if="post.board === 'interview'" class="forum-board-badge">面经</span>
+            <span
+              v-if="post.board === 'interview' && post.interviewType"
+              class="forum-type-badge"
+            >{{ interviewTypeLabel(post.interviewType) }}</span>
             <span v-if="post.acceptedCommentId" class="forum-accepted-badge">已解决</span>
             <span v-if="post.company" class="forum-tag forum-tag-structured">{{ post.company }}</span>
             <span v-if="post.role" class="forum-tag forum-tag-structured">{{ post.role }}</span>
@@ -424,6 +431,10 @@ onMounted(() => {
         </header>
 
         <ProblemReferenceCard v-if="post.problem" :problem="post.problem" />
+
+        <p v-if="post.board === 'interview'" class="forum-answer-hint">
+          本面经只收录题目 答案由评论区补充
+        </p>
 
         <MarkdownBody class="forum-detail-body" :content="post.bodyMd" />
 

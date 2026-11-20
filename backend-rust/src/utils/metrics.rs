@@ -257,11 +257,11 @@ impl ContestMatchMetrics {
         );
         out.push_str("theseus_contest_match_rooms_total");
         push_value(out, self.rooms_total.load(Ordering::Relaxed) as f64);
-        for size in 2..self.rooms_by_size.len() {
+        for (size, count) in self.rooms_by_size.iter().enumerate().skip(2) {
             let label = size.to_string();
             out.push_str("theseus_contest_match_rooms_total");
             write_labels(out, &[("size", label.as_str())]);
-            push_value(out, self.rooms_by_size[size].load(Ordering::Relaxed) as f64);
+            push_value(out, count.load(Ordering::Relaxed) as f64);
         }
 
         append_header(

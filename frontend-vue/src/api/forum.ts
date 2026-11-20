@@ -40,11 +40,16 @@ import type {
   ForumCommentPayload,
   ForumInterviewFacets,
   ForumStatus,
+  InterviewType,
 } from '../types/forum'
 
 const status = (value: unknown): ForumStatus =>
   value === 'hidden' || value === 'deleted' ? value : 'published'
 const board = (value: unknown): ForumBoard => (value === 'interview' ? 'interview' : 'general')
+const interviewType = (value: unknown): InterviewType | null =>
+  value === 'technical' || value === 'hr' || value === 'algorithm' || value === 'manager'
+    ? value
+    : null
 const hiddenReason = (value: unknown): 'moderation' | 'report_threshold' | null =>
   value === 'moderation' || value === 'report_threshold' ? value : null
 
@@ -80,6 +85,7 @@ const mapPostSummary = (value: unknown): ForumPostSummary => {
     interviewDate: nullableText(item.interview_date),
     company: nullableText(item.company),
     role: nullableText(item.role),
+    interviewType: interviewType(item.interview_type),
     viewCount: number(item.view_count),
     acceptedCommentId: nullableNumber(item.accepted_comment_id),
     tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === 'string') : [],
@@ -168,6 +174,7 @@ const mapAdminPost = (value: unknown): AdminForumPostSummary => {
     interviewDate: nullableText(item.interview_date),
     company: nullableText(item.company),
     role: nullableText(item.role),
+    interviewType: interviewType(item.interview_type),
     viewCount: number(item.view_count),
     acceptedCommentId: nullableNumber(item.accepted_comment_id),
     tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === 'string') : [],
@@ -240,6 +247,7 @@ const mapReport = (value: unknown): AdminReport => {
 const listParams = (query: ForumPostListQuery): Record<string, string | number | boolean> => {
   const params: Record<string, string | number | boolean> = { page: query.page, size: query.size }
   if (query.board) params.board = query.board
+  if (query.interview_type) params.interview_type = query.interview_type
   if (query.tag) params.tag = query.tag
   if (query.company) params.company = query.company
   if (query.role) params.role = query.role

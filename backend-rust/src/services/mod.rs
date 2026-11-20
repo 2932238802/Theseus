@@ -15,6 +15,7 @@ pub mod forum_service;
 pub mod grade_appeal_service;
 pub mod grade_service;
 pub mod home_service;
+pub mod interview_template_service;
 pub mod invitation_service;
 pub mod note_service;
 pub mod notification_service;

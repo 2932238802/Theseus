@@ -8,10 +8,11 @@ import { createForumPost, fetchForumPost, updateForumPost } from '../api/forum'
 import { fetchProblem, fetchProblems } from '../api/problems'
 import { fetchMyPlusState } from '../api/shop'
 import { useAuthStore } from '../store/auth'
-import { FORUM_BOARDS, FORUM_TAGS } from '../types/forum'
-import type { ForumBoard } from '../types/forum'
+import { FORUM_BOARDS, FORUM_INTERVIEW_TYPES, FORUM_TAGS } from '../types/forum'
+import type { ForumBoard, ForumPostPayload, InterviewType } from '../types/forum'
 import type { Difficulty, Problem } from '../types/oj'
 import { DIFFICULTY_LABELS } from '../utils/constants'
+import { shouldShowHrTemplateEntry } from '../utils/interviewTemplatesReader'
 
 const DRAFT_PREFIX = 'theseus-forum-draft'
 
@@ -34,7 +35,11 @@ const board = ref<ForumBoard>('general')
 const interviewDate = ref('')
 const company = ref('')
 const role = ref('')
+const interviewType = ref<InterviewType | null>(null)
 const isInterview = computed(() => board.value === 'interview')
+const showHrTemplateEntry = computed(() =>
+  shouldShowHrTemplateEntry(board.value, interviewType.value),
+)
 const title = ref('')
 const bodyMd = ref('')
 const tags = ref<string[]>([])
@@ -67,6 +72,7 @@ const canSubmit = computed(
     bodyMd.value.trim().length <= 20_000 &&
     tags.value.length >= 1 &&
     tags.value.length <= maxTags.value &&
+    (!isInterview.value || interviewType.value !== null) &&
     (!isInterview.value || !interviewDate.value || /^\d{4}-\d{2}$/.test(interviewDate.value)),
 )
 
@@ -105,6 +111,7 @@ const selectBoard = (next: ForumBoard): void => {
     interviewDate.value = ''
     company.value = ''
     role.value = ''
+    interviewType.value = null
   }
 }
 
@@ -163,6 +170,7 @@ const saveDraft = (): void => {
       interviewDate: interviewDate.value,
       company: company.value,
       role: role.value,
+      interviewType: interviewType.value,
       title: title.value,
       bodyMd: bodyMd.value,
       tags: tags.value,
@@ -198,6 +206,7 @@ const restoreDraft = (): void => {
       interviewDate?: unknown
       company?: unknown
       role?: unknown
+      interviewType?: unknown
       title?: unknown
       bodyMd?: unknown
       tags?: unknown
@@ -208,6 +217,15 @@ const restoreDraft = (): void => {
     if (typeof draft.interviewDate === 'string') interviewDate.value = draft.interviewDate
     if (typeof draft.company === 'string') company.value = draft.company.slice(0, 40)
     if (typeof draft.role === 'string') role.value = draft.role.slice(0, 40)
+    if (
+      board.value === 'interview' &&
+      (draft.interviewType === 'technical' ||
+        draft.interviewType === 'hr' ||
+        draft.interviewType === 'algorithm' ||
+        draft.interviewType === 'manager')
+    ) {
+      interviewType.value = draft.interviewType
+    }
     if (typeof draft.title === 'string') title.value = draft.title
     if (typeof draft.bodyMd === 'string') bodyMd.value = draft.bodyMd
     if (Array.isArray(draft.tags)) {
@@ -274,6 +292,7 @@ const loadEditTarget = async (): Promise<void> => {
     interviewDate.value = post.interviewDate ?? ''
     company.value = post.company ?? ''
     role.value = post.role ?? ''
+    interviewType.value = post.interviewType
     tags.value = post.tags
     if (post.problem) {
       selectedProblem.value = {
@@ -307,13 +326,15 @@ const submit = async (): Promise<void> => {
   if (!canSubmit.value) {
     error.value =
       board.value === 'interview'
-        ? '请填写标题 正文 并选择 1–8 个标签'
+        ? !interviewType.value
+          ? '请先选择面试类型'
+          : '请填写标题 正文 并选择 1–8 个标签'
         : '请填写标题 正文 并选择 1–3 个标签'
     return
   }
   submitting.value = true
   try {
-    const payload = {
+    const payload: ForumPostPayload = {
       board: board.value,
       title: title.value.trim(),
       body_md: bodyMd.value.trim(),
@@ -322,6 +343,9 @@ const submit = async (): Promise<void> => {
       company: isInterview.value ? company.value.trim() || null : null,
       role: isInterview.value ? role.value.trim() || null : null,
       problem_id: selectedProblem.value?.id ?? null,
+    }
+    if (isInterview.value && interviewType.value) {
+      payload.interview_type = interviewType.value
     }
     if (isEdit.value && editId.value) {
       await updateForumPost(editId.value, payload)
@@ -341,7 +365,7 @@ const submit = async (): Promise<void> => {
   }
 }
 
-watch([board, interviewDate, company, role, title, bodyMd, tags, anonymous, selectedProblem], saveDraft, {
+watch([board, interviewDate, company, role, interviewType, title, bodyMd, tags, anonymous, selectedProblem], saveDraft, {
   deep: true,
 })
 
@@ -407,6 +431,32 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="!canInterview" class="run-note">面经仅对 Plus Theseus 开放</p>
       </fieldset>
+
+      <fieldset v-if="isInterview" class="forum-field forum-tag-picker">
+        <legend>面试类型 <small>必选</small></legend>
+        <div class="forum-tag-picker-options">
+          <button
+            v-for="type in FORUM_INTERVIEW_TYPES"
+            :key="type.code"
+            type="button"
+            :class="['forum-filter-pill', { active: interviewType === type.code }]"
+            @click="interviewType = type.code"
+          >
+            {{ type.label }}
+          </button>
+        </div>
+        <p v-if="!interviewType" class="run-note">发面经必须选择面试类型</p>
+      </fieldset>
+
+      <div v-if="showHrTemplateEntry" class="interview-hr-tip">
+        <span class="interview-hr-tip-copy">
+          <strong>HR 面模板与套路</strong>
+          <span>可以直接套用模板 再把你被问到的原题写进正文</span>
+        </span>
+        <RouterLink class="forum-secondary-button" :to="{ name: 'interview-templates' }">
+          打开模板
+        </RouterLink>
+      </div>
 
       <label class="forum-field">
         <span>标题 <small>{{ title.trim().length }} / 120</small></span>
@@ -510,6 +560,8 @@ onBeforeUnmount(() => {
         <input v-model="anonymous" type="checkbox" />
         匿名发布（前台显示“匿名同学” 管理员仍可看到真实作者）
       </label>
+
+      <p v-if="isInterview" class="forum-compose-notice">正文不要写答案 答案由评论区补充</p>
 
       <div class="forum-editor">
         <div class="forum-editor-tabs" role="tablist">

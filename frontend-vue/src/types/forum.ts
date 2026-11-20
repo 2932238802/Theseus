@@ -1,6 +1,7 @@
 export type ForumScope = 'all' | 'following' | 'school'
 export type ForumTagCode = 'general' | 'help' | 'solution' | 'discussion' | 'announcement'
 export type ForumBoard = 'general' | 'interview'
+export type InterviewType = 'technical' | 'hr' | 'algorithm' | 'manager'
 export type ForumSort = 'latest' | 'hot'
 export type ForumStatus = 'published' | 'hidden' | 'deleted'
 export type ReportTargetType = 'post' | 'comment'
@@ -11,6 +12,13 @@ export const FORUM_BOARDS = [
   { code: 'general', label: '综合', plusOnly: false },
   { code: 'interview', label: '面经', plusOnly: true },
 ] as const satisfies ReadonlyArray<{ code: ForumBoard; label: string; plusOnly: boolean }>
+
+export const FORUM_INTERVIEW_TYPES = [
+  { code: 'technical', label: '技术面' },
+  { code: 'hr', label: 'HR 面' },
+  { code: 'algorithm', label: '算法面' },
+  { code: 'manager', label: '主管面' },
+] as const satisfies ReadonlyArray<{ code: InterviewType; label: string }>
 
 export const FORUM_TAGS = [
   { code: 'general', label: '综合', adminOnly: false },
@@ -27,6 +35,13 @@ export const REPORT_REASONS = [
   { code: 'illegal', label: '违法违规' },
   { code: 'other', label: '其他' },
 ] as const satisfies ReadonlyArray<{ code: ReportReason; label: string }>
+
+export const FORUM_INTERVIEW_TYPE_LABELS: Record<InterviewType, string> = {
+  technical: '技术面',
+  hr: 'HR 面',
+  algorithm: '算法面',
+  manager: '主管面',
+}
 
 export const FORUM_TAG_LABELS: Record<ForumTagCode, string> = {
   general: '综合',
@@ -67,6 +82,7 @@ export interface ForumPostSummary {
   interviewDate: string | null
   company: string | null
   role: string | null
+  interviewType: InterviewType | null
   viewCount: number
   acceptedCommentId: number | null
   tags: string[]
@@ -145,6 +161,7 @@ export interface ForumPostListQuery {
   page: number
   size: number
   board?: ForumBoard
+  interview_type?: InterviewType
   tag?: string
   company?: string
   role?: string
@@ -163,6 +180,7 @@ export interface ForumPostPayload {
   interview_date?: string | null
   company?: string | null
   role?: string | null
+  interview_type?: InterviewType
   problem_id: number | null
 }
 
