@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Theseus 项目全景思维导图</title>
+<style>
+  :root {
+    --ink: #0f172a;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --paper: #f8fafc;
+    --panel: rgba(255, 255, 255, .88);
+    --accent: #2563eb;
+    --match: #f59e0b;
+    font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex;
+    flex-direction: column;
+    color: var(--ink);
+    background: var(--paper);
+    overflow: hidden;
+  }
+  header.bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px 24px;
+    padding: 14px 22px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(10px);
+    z-index: 2;
+  }
+  .brand h1 {
+    margin: 0;
+    font-size: 19px;
+    letter-spacing: .3px;
+  }
+  .brand p {
+    margin: 3px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .tools input {
+    width: 190px;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #fff;
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .tools input:focus {
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+  }
+  .tools button {
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #fff;
+    color: #334155;
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .tools button:hover {
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+  }
+  .tools button.primary {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+    color: var(--accent);
+  }
+  #matchInfo {
+    min-width: 74px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  main#stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    cursor: grab;
+    background-color: var(--paper);
+    background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+    background-size: 24px 24px;
+    touch-action: none;
+  }
+  main#stage.dragging { cursor: grabbing; }
+  svg#map { display: block; width: 100%; height: 100%; user-select: none; }
+  .link { fill: none; stroke-linecap: round; stroke-width: 1.5; }
+  .node rect {
+    transition: filter .15s, stroke-width .15s;
+  }
+  .node:hover rect { filter: drop-shadow(0 2px 5px rgba(15, 23, 42, .18)); }
+  .node { cursor: pointer; outline: none; }
+  .node:focus-visible rect { stroke: #2563eb; stroke-width: 2.5px; }
+  .node.is-match rect {
+    stroke: var(--match) !important;
+    stroke-width: 2.6px !important;
+    filter: drop-shadow(0 0 6px rgba(245, 158, 11, .55));
+  }
+  .node .label { pointer-events: none; }
+  .badge { pointer-events: none; }
+  footer.hint {
+    position: absolute;
+    left: 18px;
+    bottom: 14px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .85);
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.5;
+    pointer-events: none;
+  }
+  #error {
+    position: absolute;
+    inset: 0;
+    display: none;
+    place-items: center;
+    padding: 40px;
+    color: #b91c1c;
+    font-size: 14px;
+    text-align: center;
+  }
+  @media (max-width: 720px) {
+    header.bar { padding: 10px 14px; }
+    .brand h1 { font-size: 16px; }
+    .brand p { display: none; }
+    .tools { margin-left: 0; width: 100%; }
+    .tools input { flex: 1; width: auto; }
+    .tools button { padding: 0 9px; }
+  }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand">
+    <h1 id="title">Theseus 项目全景思维导图</h1>
+    <p id="subtitle"></p>
+  </div>
+  <div class="tools">
+    <input id="search" type="search" placeholder="搜索节点，回车定位…" autocomplete="off">
+    <span id="matchInfo"></span>
+    <button data-action="expand-2" title="展开到二级，隐藏更深的节点">展开二级</button>
+    <button data-action="expand-all">全部展开</button>
+    <button data-action="collapse-1">收起到一级</button>
+    <button data-action="fit" class="primary">适应窗口</button>
+    <button data-action="zoom-in" title="放大">＋</button>
+    <button data-action="zoom-out" title="缩小">－</button>
+  </div>
+</header>
+<main id="stage">
+  <svg id="map" role="img" aria-label="Theseus 项目全景思维导图">
+    <g id="viewport">
+      <g id="links"></g>
+      <g id="nodes"></g>
+    </g>
+  </svg>
+  <footer class="hint" id="hint"></footer>
+  <div id="error"></div>
+</main>
+<script src="mindmap-data.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  const NS = "http://www.w3.org/2000/svg";
+  const DATA = globalThis.THESEUS_MINDMAP;
+  const stage = document.getElementById("stage");
+  const svg = document.getElementById("map");
+  const viewport = document.getElementById("viewport");
+  const linksLayer = document.getElementById("links");
+  const nodesLayer = document.getElementById("nodes");
+  const searchInput = document.getElementById("search");
+  const matchInfo = document.getElementById("matchInfo");
+  const hint = document.getElementById("hint");
+  const errorBox = document.getElementById("error");
+
+  if (!DATA || !Array.isArray(DATA.branches)) {
+    errorBox.style.display = "grid";
+    errorBox.textContent = "未找到 mindmap-data.js 中的 THESEUS_MINDMAP 数据";
+    return;
+  }
+
+  document.getElementById("title").textContent = DATA.title;
+  document.getElementById("subtitle").textContent = DATA.subtitle || "";
+  document.title = DATA.title + " · 思维导图";
+  hint.textContent = (DATA.hint ? DATA.hint + " · " : "") + "数据源：doc/总体设计.md · doc/AGENTS.md · doc/STATUS.md";
+
+  const root = {
+    label: DATA.title,
+    color: "#0f172a",
+    children: DATA.branches,
+    isRoot: true
+  };
+
+  const state = {
+    collapsed: new Set(),
+    query: "",
+    matches: new Set(),
+    view: { x: 0, y: 0, k: 1 },
+    suppressClick: false,
+    nodeCount: 0
+  };
+
+  /* ---------- 建树 ---------- */
+  (function walk(node, path, depth, parent, color) {
+    node.id = path;
+    node.depth = depth;
+    node.parent = parent || null;
+    node.color = node.color || color || "#64748b";
+    state.nodeCount += 1;
+    (node.children || []).forEach(function (child, i) {
+      walk(child, path + "." + i, depth + 1, node, node.color);
+    });
+  })(root, "root", 0, null, "#0f172a");
+
+  function walkAll(fn) {
+    (function rec(node) {
+      fn(node);
+      (node.children || []).forEach(rec);
+    })(root);
+  }
+
+  function collapseDefault() {
+    state.collapsed.clear();
+    walkAll(function (node) {
+      if (node.children && node.children.length && node.depth >= 1) {
+        state.collapsed.add(node.id);
+      }
+    });
+  }
+  collapseDefault();
+
+  /* ---------- 文本测量与换行 ---------- */
+  const measureCanvas = document.createElement("canvas");
+  const measureCtx = measureCanvas.getContext("2d");
+  const FONT_STACK = 'system-ui, -apple-system, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
+
+  function fontOf(depth, bold) {
+    if (depth === 0) return "700 17px " + FONT_STACK;
+    if (depth === 1) return "600 14.5px " + FONT_STACK;
+    return (bold ? "600 " : "400 ") + "13px " + FONT_STACK;
+  }
+
+  function wrapText(text, maxWidth, font) {
+    measureCtx.font = font;
+    const lines = [];
+    let line = "";
+    for (const ch of Array.from(text)) {
+      if (ch === " " && !line) continue;
+      const test = line + ch;
+      if (line && measureCtx.measureText(test).width > maxWidth) {
+        lines.push(line);
+        line = ch === " " ? "" : ch;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+    if (!lines.length) return [""];
+    // 避免最后一行只剩 1–2 个字符，近似对半重排最后两行
+    if (lines.length > 1) {
+      const lastChars = Array.from(lines[lines.length - 1]);
+      if (lastChars.length <= 2) {
+        const merged = Array.from(lines[lines.length - 2]).concat(lastChars);
+        const half = Math.ceil(merged.length / 2);
+        const a = merged.slice(0, half).join("").trimEnd();
+        const b = merged.slice(half).join("").trimStart();
+        if (a && b &&
+            measureCtx.measureText(a).width <= maxWidth &&
+            measureCtx.measureText(b).width <= maxWidth) {
+          lines[lines.length - 2] = a;
+          lines[lines.length - 1] = b;
+        }
+      }
+    }
+    return lines;
+  }
+
+  const LEVEL = {
+    0: { wrap: 220, padX: 16, padY: 11, line: 22, minW: 150 },
+    1: { wrap: 178, padX: 14, padY: 9, line: 19, minW: 108 },
+    2: { wrap: 228, padX: 13, padY: 8, line: 17, minW: 96 },
+    3: { wrap: 236, padX: 13, padY: 8, line: 17, minW: 96 }
+  };
+
+  const BADGE_SPACE = 34;
+
+  function prepare(node) {
+    const depth = Math.min(node.depth, 3);
+    const level = LEVEL[depth];
+    const hasChildren = !!(node.children && node.children.length);
+    const collapsed = hasChildren && state.collapsed.has(node.id);
+    const reserve = hasChildren ? BADGE_SPACE : 0;
+    const lines = wrapText(node.label, level.wrap - reserve, fontOf(depth, depth === 1));
+    node.lines = lines;
+    node.depthKey = depth;
+    node.hasChildren = hasChildren;
+    node.collapsed = collapsed;
+    measureCtx.font = fontOf(depth, depth === 1);
+    const textWidth = Math.max.apply(null, lines.map(function (l) {
+      return measureCtx.measureText(l).width;
+    }));
+    node.w = Math.max(level.minW, Math.ceil(textWidth) + level.padX * 2 + reserve);
+    node.h = lines.length * level.line + level.padY * 2;
+  }
+
+  /* ---------- 布局 ---------- */
+  let layout = null;
+
+  function visibleChildren(node) {
+    return node.children && !state.collapsed.has(node.id) ? node.children : [];
+  }
+
+  function computeSpan(node) {
+    const kids = visibleChildren(node);
+    if (!kids.length) {
+      node.span = node.h + 9;
+      return node.span;
+    }
+    let sum = 0;
+    kids.forEach(function (kid) { sum += computeSpan(kid); });
+    node.kidsSpan = sum;
+    node.span = Math.max(node.h + 9, sum);
+    return node.span;
+  }
+
+  function place(node, top) {
+    const kids = visibleChildren(node);
+    node.cy = top + node.span / 2;
+    if (!kids.length) return;
+    let y = top + (node.span - node.kidsSpan) / 2;
+    kids.forEach(function (kid) {
+      place(kid, y);
+      y += kid.span;
+    });
+  }
+
+  function computeLayout() {
+    const visible = [];
+    (function collect(node) {
+      visible.push(node);
+      visibleChildren(node).forEach(collect);
+    })(root);
+
+    visible.forEach(prepare);
+    const maxDepth = visible.reduce(function (m, n) { return Math.max(m, n.depthKey); }, 0);
+    const colW = new Array(maxDepth + 1).fill(0);
+    visible.forEach(function (n) { colW[n.depthKey] = Math.max(colW[n.depthKey], n.w); });
+
+    const gap = 64;
+    const colX = new Array(maxDepth + 1).fill(0);
+    for (let d = 1; d <= maxDepth; d++) {
+      colX[d] = colX[d - 1] + colW[d - 1] + gap;
+    }
+
+    computeSpan(root);
+    place(root, 0);
+
+    visible.forEach(function (n) {
+      n.x = colX[n.depthKey];
+      n.w = colW[n.depthKey];
+    });
+
+    layout = {
+      visible: visible,
+      width: colX[maxDepth] + colW[maxDepth],
+      height: root.span
+    };
+  }
+
+  /* ---------- 渲染 ---------- */
+  function el(name, attrs) {
+    const node = document.createElementNS(NS, name);
+    if (attrs) {
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+    }
+    return node;
+  }
+
+  function tint(hex, alpha) {
+    const h = hex.replace("#", "");
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+  }
+
+  function render() {
+    computeLayout();
+    linksLayer.textContent = "";
+    nodesLayer.textContent = "";
+
+    const fragmentLinks = document.createDocumentFragment();
+    const fragmentNodes = document.createDocumentFragment();
+
+    layout.visible.forEach(function (node) {
+      const kids = visibleChildren(node);
+      kids.forEach(function (kid) {
+        const x1 = node.x + node.w;
+        const y1 = node.cy;
+        const x2 = kid.x;
+        const y2 = kid.cy;
+        const mid = x1 + (x2 - x1) * 0.5;
+        const p = el("path", {
+          d: "M" + x1 + "," + y1 + " C" + mid + "," + y1 + " " + mid + "," + y2 + " " + x2 + "," + y2,
+          class: "link",
+          stroke: kid.color,
+          "stroke-opacity": node.depth === 0 ? 0.5 : 0.34
+        });
+        fragmentLinks.appendChild(p);
+      });
+    });
+
+    layout.visible.forEach(function (node) {
+      const depth = node.depthKey;
+      const y = node.cy - node.h / 2;
+      const g = el("g", {
+        class: "node" + (state.matches.has(node.id) ? " is-match" : ""),
+        tabindex: "0",
+        role: "button",
+        "aria-label": node.label
+      });
+      if (node.hasChildren) {
+        g.setAttribute("aria-expanded", String(!node.collapsed));
+      }
+
+      let fill, stroke, textFill, strokeWidth, badgeFill, badgeText;
+      if (depth === 0) {
+        fill = "#0f172a";
+        stroke = "#0f172a";
+        textFill = "#ffffff";
+        strokeWidth = 1;
+        badgeFill = "rgba(255,255,255,.18)";
+        badgeText = "#ffffff";
+      } else if (depth === 1) {
+        fill = node.color;
+        stroke = node.color;
+        textFill = "#ffffff";
+        strokeWidth = 1;
+        badgeFill = "rgba(255,255,255,.22)";
+        badgeText = "#ffffff";
+      } else {
+        fill = tint(node.color, 0.07);
+        stroke = tint(node.color, 0.55);
+        textFill = "#1e293b";
+        strokeWidth = 1.2;
+        badgeFill = tint(node.color, 0.16);
+        badgeText = node.color;
+      }
+
+      const rect = el("rect", {
+        x: node.x,
+        y: y,
+        width: node.w,
+        height: node.h,
+        rx: depth === 0 ? 12 : 9,
+        fill: fill,
+        stroke: stroke,
+        "stroke-width": strokeWidth
+      });
+      g.appendChild(rect);
+
+      const title = el("title");
+      title.textContent = node.label + (node.hasChildren
+        ? "（点击" + (node.collapsed ? "展开" : "收起") + "）"
+        : "");
+      g.appendChild(title);
+
+      const font = fontOf(depth, depth === 1);
+      const lineHeight = LEVEL[depth].line;
+      const text = el("text", {
+        class: "label",
+        fill: textFill,
+        "font-family": FONT_STACK,
+        "font-size": depth === 0 ? "17" : depth === 1 ? "14.5" : "13",
+        "font-weight": depth === 0 ? "700" : depth === 1 ? "600" : "400",
+        "dominant-baseline": "middle"
+      });
+      const startY = node.cy - ((node.lines.length - 1) * lineHeight) / 2;
+      node.lines.forEach(function (line, i) {
+        const tspan = el("tspan", {
+          x: node.x + LEVEL[depth].padX,
+          y: startY + i * lineHeight
+        });
+        tspan.textContent = line;
+        text.appendChild(tspan);
+      });
+      g.appendChild(text);
+
+      if (node.hasChildren) {
+        const badgeW = node.collapsed ? 27 : 20;
+        const badgeX = node.x + node.w - badgeW - 8;
+        const badgeY = node.cy - 9;
+        const badge = el("rect", {
+          class: "badge",
+          x: badgeX,
+          y: badgeY,
+          width: badgeW,
+          height: 18,
+          rx: 9,
+          fill: badgeFill
+        });
+        g.appendChild(badge);
+        const badgeLabel = el("text", {
+          class: "badge",
+          x: badgeX + badgeW / 2,
+          y: node.cy + 0.5,
+          "text-anchor": "middle",
+          "dominant-baseline": "middle",
+          fill: badgeText,
+          "font-family": FONT_STACK,
+          "font-size": "11",
+          "font-weight": "700"
+        });
+        badgeLabel.textContent = node.collapsed ? "+" + node.children.length : "−";
+        g.appendChild(badgeLabel);
+      }
+
+      g.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (state.suppressClick) return;
+        toggle(node);
+      });
+      g.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggle(node);
+        }
+      });
+
+      fragmentNodes.appendChild(g);
+    });
+
+    linksLayer.appendChild(fragmentLinks);
+    nodesLayer.appendChild(fragmentNodes);
+    applyView();
+  }
+
+  function toggle(node) {
+    if (!node.hasChildren) return;
+    const k = state.view.k;
+    const anchorX = node.x * k + state.view.x;
+    const anchorY = node.cy * k + state.view.y;
+    if (state.collapsed.has(node.id)) {
+      state.collapsed.delete(node.id);
+    } else {
+      state.collapsed.add(node.id);
+    }
+    render();
+    state.view.x = anchorX - node.x * k;
+    state.view.y = anchorY - node.cy * k;
+    ensureVisible(node);
+    applyView();
+  }
+
+  function ensureVisible(node) {
+    const k = state.view.k;
+    const W = stage.clientWidth;
+    const H = stage.clientHeight;
+    const m = 56;
+    const x1 = node.x * k + state.view.x;
+    const x2 = (node.x + node.w) * k + state.view.x;
+    const y1 = (node.cy - node.span / 2) * k + state.view.y;
+    const y2 = (node.cy + node.span / 2) * k + state.view.y;
+    if (x1 < m) state.view.x += m - x1;
+    else if (x2 > W - m) state.view.x -= x2 - (W - m);
+    if (y1 < m) state.view.y += m - y1;
+    else if (y2 > H - m) state.view.y -= y2 - (H - m);
+  }
+
+  function applyView() {
+    viewport.setAttribute(
+      "transform",
+      "translate(" + state.view.x + " " + state.view.y + ") scale(" + state.view.k + ")"
+    );
+  }
+
+  function fit() {
+    if (!layout) return;
+    const pad = 46;
+    const W = Math.max(320, stage.clientWidth);
+    const H = Math.max(240, stage.clientHeight);
+    const availW = Math.max(160, W - pad * 2);
+    const availH = Math.max(120, H - pad * 2);
+    const kFit = Math.min(availW / Math.max(1, layout.width), availH / Math.max(1, layout.height), 1.25);
+    state.view.k = Math.max(0.62, Math.min(2.4, kFit));
+    const scaledW = layout.width * state.view.k;
+    state.view.x = Math.max(pad, (W - scaledW) / 2);
+    state.view.y = H / 2 - (layout.height * state.view.k) / 2;
+    applyView();
+  }
+
+  function zoomAt(factor, cx, cy) {
+    const next = Math.max(0.12, Math.min(2.8, state.view.k * factor));
+    factor = next / state.view.k;
+    state.view.x = cx - (cx - state.view.x) * factor;
+    state.view.y = cy - (cy - state.view.y) * factor;
+    state.view.k = next;
+    applyView();
+  }
+
+  /* ---------- 搜索 ---------- */
+  function runSearch(raw) {
+    const q = raw.trim().toLowerCase();
+    state.query = q;
+    state.matches.clear();
+    if (!q) {
+      matchInfo.textContent = "";
+      searchInput.style.borderColor = "";
+      render();
+      return;
+    }
+    walkAll(function (node) {
+      if (node.label.toLowerCase().indexOf(q) !== -1) {
+        state.matches.add(node.id);
+        let p = node.parent;
+        while (p) {
+          state.collapsed.delete(p.id);
+          p = p.parent;
+        }
+      }
+    });
+    matchInfo.textContent = state.matches.size ? state.matches.size + " 个匹配" : "无匹配";
+    searchInput.style.borderColor = state.matches.size ? "#f59e0b" : "#fca5a5";
+    render();
+    fitToMatches();
+  }
+
+  function fitToMatches() {
+    if (!state.matches.size || !layout) return;
+    const matched = layout.visible.filter(function (n) { return state.matches.has(n.id); });
+    if (!matched.length) return;
+    const minX = Math.min.apply(null, matched.map(function (n) { return n.x; }));
+    const maxX = Math.max.apply(null, matched.map(function (n) { return n.x + n.w; }));
+    const minY = Math.min.apply(null, matched.map(function (n) { return n.cy - n.h / 2; }));
+    const maxY = Math.max.apply(null, matched.map(function (n) { return n.cy + n.h / 2; }));
+    const pad = 120;
+    const availW = Math.max(240, stage.clientWidth);
+    const availH = Math.max(180, stage.clientHeight);
+    const k = Math.max(0.55, Math.min(availW / (maxX - minX + pad * 2), availH / (maxY - minY + pad * 2), 1.1));
+    state.view.k = k;
+    state.view.x = availW / 2 - ((minX + maxX) / 2) * k;
+    state.view.y = availH / 2 - ((minY + maxY) / 2) * k;
+    applyView();
+  }
+
+  /* ---------- 工具栏 ---------- */
+  document.querySelectorAll(".tools button").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const action = btn.dataset.action;
+      if (action === "expand-all") {
+        state.collapsed.clear();
+        render();
+        fit();
+      } else if (action === "collapse-1") {
+        collapseDefault();
+        render();
+        fit();
+      } else if (action === "expand-2") {
+        state.collapsed.clear();
+        walkAll(function (node) {
+          if (node.children && node.children.length && node.depth >= 2) {
+            state.collapsed.add(node.id);
+          }
+        });
+        render();
+        fit();
+      } else if (action === "fit") {
+        fit();
+      } else if (action === "zoom-in") {
+        zoomAt(1.2, stage.clientWidth / 2, stage.clientHeight / 2);
+      } else if (action === "zoom-out") {
+        zoomAt(1 / 1.2, stage.clientWidth / 2, stage.clientHeight / 2);
+      }
+    });
+  });
+
+  let searchTimer = null;
+  searchInput.addEventListener("input", function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { runSearch(searchInput.value); }, 160);
+  });
+  searchInput.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      searchInput.value = "";
+      runSearch("");
+      searchInput.blur();
+    }
+  });
+
+  /* ---------- 缩放与平移 ---------- */
+  svg.addEventListener("wheel", function (e) {
+    e.preventDefault();
+    const rect = svg.getBoundingClientRect();
+    const factor = Math.exp(-e.deltaY * 0.0014);
+    zoomAt(factor, e.clientX - rect.left, e.clientY - rect.top);
+  }, { passive: false });
+
+  let drag = null;
+  svg.addEventListener("pointerdown", function (e) {
+    if (e.button !== 0) return;
+    drag = { x: e.clientX, y: e.clientY, moved: 0 };
+    stage.classList.add("dragging");
+    try { svg.setPointerCapture(e.pointerId); } catch (_) { /* noop */ }
+  });
+  svg.addEventListener("pointermove", function (e) {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    drag.moved += Math.abs(dx) + Math.abs(dy);
+    state.view.x += dx;
+    state.view.y += dy;
+    applyView();
+  });
+  function endDrag() {
+    if (!drag) return;
+    if (drag.moved > 5) {
+      state.suppressClick = true;
+      setTimeout(function () { state.suppressClick = false; }, 30);
+    }
+    drag = null;
+    stage.classList.remove("dragging");
+  }
+  svg.addEventListener("pointerup", endDrag);
+  svg.addEventListener("pointercancel", endDrag);
+
+  let resizeTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () { if (layout) fit(); }, 160);
+  });
+
+  /* ---------- 启动 ---------- */
+  function boot() {
+    render();
+    fit();
+  }
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+</body>
+</html>

@@ -14,6 +14,7 @@
 | [interview/](./interview/) | 面经原始 Markdown，按公司/岗位/轮次存放 |
 | [mockups/](./mockups/) | 页面原型 HTML |
 | [reports/](./reports/) | 各角色报告 |
+| [map/](./map/) | 项目全景思维导图（离线交互 HTML + Mermaid 源图） |
 
 - 新增开发文档统一放到 `archive/YYYYMMDD/`，文件名沿用 `序号-主题-文档类型.md`。
 - 2026-11-21 起，根目录历史设计文档（`2610xxx` / `2611xxx`）已删除；需要追溯时从 git 历史（`fda4570` 及更早提交）查看。

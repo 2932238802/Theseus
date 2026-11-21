@@ -129,4 +129,4 @@ cd frontend-vue && npm run build
 
 ## 文档
 
-总体设计与进度见 [`doc/总体设计.md`](doc/总体设计.md)，接口契约见 [`doc/backend_api.md`](doc/backend_api.md)，文档索引见 [`doc/AGENTS.md`](doc/AGENTS.md)。
+总体设计与进度见 [`doc/总体设计.md`](doc/总体设计.md)，接口契约见 [`doc/backend_api.md`](doc/backend_api.md)，文档索引见 [`doc/README.md`](doc/README.md)，项目全景导图见 [`doc/map/`](doc/map/README.md)。
