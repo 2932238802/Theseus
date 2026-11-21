@@ -1,0 +1,483 @@
+{
+  "schema_version": 1,
+  "diagram_type": "tree",
+  "meta": {
+    "title": "Theseus 项目全景思维导图",
+    "locale": "zh-CN",
+    "output": "doc/map/theseus-mindmap.html",
+    "quality_profile": "showcase"
+  },
+  "layout": {
+    "direction": "down",
+    "gapX": 16,
+    "gapY": 24,
+    "nodeW": 120,
+    "nodeMaxW": 150
+  },
+  "nodes": [
+    {
+      "id": "root",
+      "label": "Theseus 校内 OJ 算法服务平台"
+    },
+    {
+      "id": "n1",
+      "label": "定位与角色",
+      "parent": "root"
+    },
+    {
+      "id": "n2",
+      "label": "校内单租户 OJ 平台",
+      "parent": "n1"
+    },
+    {
+      "id": "n3",
+      "label": "刷题 / 判题 / 作业 / 匹配",
+      "parent": "n1"
+    },
+    {
+      "id": "n4",
+      "label": "三角色互斥",
+      "parent": "n1"
+    },
+    {
+      "id": "n5",
+      "label": "模块化单体与最小权限",
+      "parent": "n1"
+    },
+    {
+      "id": "n6",
+      "label": "教学闭环可演示",
+      "parent": "n1"
+    },
+    {
+      "id": "n7",
+      "label": "非目标：SaaS / 支付 / App",
+      "parent": "n1"
+    },
+    {
+      "id": "n8",
+      "label": "总体架构",
+      "parent": "root"
+    },
+    {
+      "id": "n9",
+      "label": "Vue 3 前端",
+      "parent": "n8"
+    },
+    {
+      "id": "n10",
+      "label": "Nginx + REST / WSS",
+      "parent": "n8"
+    },
+    {
+      "id": "n11",
+      "label": "Rust + Axum 单体",
+      "parent": "n8"
+    },
+    {
+      "id": "n12",
+      "label": "judge / anticheat / lsp",
+      "parent": "n8"
+    },
+    {
+      "id": "n13",
+      "label": "PostgreSQL + Redis",
+      "parent": "n8"
+    },
+    {
+      "id": "n14",
+      "label": "Docker / gVisor 沙箱",
+      "parent": "n8"
+    },
+    {
+      "id": "n15",
+      "label": "身份与账号",
+      "parent": "root"
+    },
+    {
+      "id": "n16",
+      "label": "注册 / 登录 / JWT",
+      "parent": "n15"
+    },
+    {
+      "id": "n17",
+      "label": "邮箱验证与找回",
+      "parent": "n15"
+    },
+    {
+      "id": "n18",
+      "label": "单设备登录",
+      "parent": "n15"
+    },
+    {
+      "id": "n19",
+      "label": "GitHub OAuth",
+      "parent": "n15"
+    },
+    {
+      "id": "n20",
+      "label": "注销与匿名化",
+      "parent": "n15"
+    },
+    {
+      "id": "n21",
+      "label": "设置中心与偏好",
+      "parent": "n15"
+    },
+    {
+      "id": "n22",
+      "label": "题库 · 判题 · 练习",
+      "parent": "root"
+    },
+    {
+      "id": "n23",
+      "label": "题库 1000 题",
+      "parent": "n22"
+    },
+    {
+      "id": "n24",
+      "label": "标签 / 难度 / 搜索",
+      "parent": "n22"
+    },
+    {
+      "id": "n25",
+      "label": "个人出题与审核",
+      "parent": "n22"
+    },
+    {
+      "id": "n26",
+      "label": "隐藏用例与示例",
+      "parent": "n22"
+    },
+    {
+      "id": "n27",
+      "label": "Redis Streams 判题",
+      "parent": "n22"
+    },
+    {
+      "id": "n28",
+      "label": "一题多解 / 笔记",
+      "parent": "n22"
+    },
+    {
+      "id": "n29",
+      "label": "工作台 / 错题本",
+      "parent": "n22"
+    },
+    {
+      "id": "n30",
+      "label": "匹配 · 赛事 · 段位",
+      "parent": "root"
+    },
+    {
+      "id": "n31",
+      "label": "4 人实时匹配",
+      "parent": "n30"
+    },
+    {
+      "id": "n32",
+      "label": "3 / 5 分钟降级",
+      "parent": "n30"
+    },
+    {
+      "id": "n33",
+      "label": "段位分与结算",
+      "parent": "n30"
+    },
+    {
+      "id": "n34",
+      "label": "断线重连",
+      "parent": "n30"
+    },
+    {
+      "id": "n35",
+      "label": "限时赛事与排行榜",
+      "parent": "n30"
+    },
+    {
+      "id": "n36",
+      "label": "赛季软重置",
+      "parent": "n30"
+    },
+    {
+      "id": "n37",
+      "label": "组织 · 作业 · 批改",
+      "parent": "root"
+    },
+    {
+      "id": "n38",
+      "label": "组织 / 邀请 / CSV",
+      "parent": "n37"
+    },
+    {
+      "id": "n39",
+      "label": "作业生命周期",
+      "parent": "n37"
+    },
+    {
+      "id": "n40",
+      "label": "迟交 / 重交 / 计分",
+      "parent": "n37"
+    },
+    {
+      "id": "n41",
+      "label": "批改台与手动分",
+      "parent": "n37"
+    },
+    {
+      "id": "n42",
+      "label": "成绩发布 / 申诉",
+      "parent": "n37"
+    },
+    {
+      "id": "n43",
+      "label": "防作弊",
+      "parent": "root"
+    },
+    {
+      "id": "n44",
+      "label": "摄像头 / 屏幕授权",
+      "parent": "n43"
+    },
+    {
+      "id": "n45",
+      "label": "切屏 / 粘贴事件",
+      "parent": "n43"
+    },
+    {
+      "id": "n46",
+      "label": "相似度扫描与复核",
+      "parent": "n43"
+    },
+    {
+      "id": "n47",
+      "label": "信誉分与处罚",
+      "parent": "n43"
+    },
+    {
+      "id": "n48",
+      "label": "申诉与成绩恢复",
+      "parent": "n43"
+    },
+    {
+      "id": "n49",
+      "label": "审计留痕",
+      "parent": "n43"
+    },
+    {
+      "id": "n50",
+      "label": "论坛 · 面经",
+      "parent": "root"
+    },
+    {
+      "id": "n51",
+      "label": "论坛 / 校园墙",
+      "parent": "n50"
+    },
+    {
+      "id": "n52",
+      "label": "评论 / 点赞 / 收藏",
+      "parent": "n50"
+    },
+    {
+      "id": "n53",
+      "label": "面经板块与 Plus",
+      "parent": "n50"
+    },
+    {
+      "id": "n54",
+      "label": "公司 / 岗位筛选",
+      "parent": "n50"
+    },
+    {
+      "id": "n55",
+      "label": "最佳答案 / 模板",
+      "parent": "n50"
+    },
+    {
+      "id": "n56",
+      "label": "题解与讨论区",
+      "parent": "n50"
+    },
+    {
+      "id": "n57",
+      "label": "通知 · 商店 · 管理端",
+      "parent": "root"
+    },
+    {
+      "id": "n58",
+      "label": "站内信 / 通知中心",
+      "parent": "n57"
+    },
+    {
+      "id": "n59",
+      "label": "邮件与 WebSocket",
+      "parent": "n57"
+    },
+    {
+      "id": "n60",
+      "label": "Plus 申请 / 续费",
+      "parent": "n57"
+    },
+    {
+      "id": "n61",
+      "label": "有效期与提醒",
+      "parent": "n57"
+    },
+    {
+      "id": "n62",
+      "label": "管理端审核",
+      "parent": "n57"
+    },
+    {
+      "id": "n63",
+      "label": "审计日志",
+      "parent": "n57"
+    },
+    {
+      "id": "n64",
+      "label": "AI · LSP · 设置",
+      "parent": "root"
+    },
+    {
+      "id": "n65",
+      "label": "AI 助手（Plus）",
+      "parent": "n64"
+    },
+    {
+      "id": "n66",
+      "label": "OpenAI 兼容接口",
+      "parent": "n64"
+    },
+    {
+      "id": "n67",
+      "label": "clangd / pyright",
+      "parent": "n64"
+    },
+    {
+      "id": "n68",
+      "label": "设置跨设备同步",
+      "parent": "n64"
+    },
+    {
+      "id": "n69",
+      "label": "数据与接口",
+      "parent": "root"
+    },
+    {
+      "id": "n70",
+      "label": "users / oauth",
+      "parent": "n69"
+    },
+    {
+      "id": "n71",
+      "label": "problems / cases",
+      "parent": "n69"
+    },
+    {
+      "id": "n72",
+      "label": "classes / assignments",
+      "parent": "n69"
+    },
+    {
+      "id": "n73",
+      "label": "contests / seasons",
+      "parent": "n69"
+    },
+    {
+      "id": "n74",
+      "label": "forum_posts / templates",
+      "parent": "n69"
+    },
+    {
+      "id": "n75",
+      "label": "audit / plus",
+      "parent": "n69"
+    },
+    {
+      "id": "n76",
+      "label": "REST /api/*",
+      "parent": "n69"
+    },
+    {
+      "id": "n77",
+      "label": "WebSocket 事件",
+      "parent": "n69"
+    },
+    {
+      "id": "n78",
+      "label": "Streams / outbox",
+      "parent": "n69"
+    },
+    {
+      "id": "n79",
+      "label": "安全 · 运维 · 交付",
+      "parent": "root"
+    },
+    {
+      "id": "n80",
+      "label": "最小权限",
+      "parent": "n79"
+    },
+    {
+      "id": "n81",
+      "label": "限流 / 登录锁定",
+      "parent": "n79"
+    },
+    {
+      "id": "n82",
+      "label": "沙箱与 XSS 清洗",
+      "parent": "n79"
+    },
+    {
+      "id": "n83",
+      "label": "Prometheus / Grafana",
+      "parent": "n79"
+    },
+    {
+      "id": "n84",
+      "label": "Compose / update.sh",
+      "parent": "n79"
+    },
+    {
+      "id": "n85",
+      "label": "CI / GHCR 镜像",
+      "parent": "n79"
+    },
+    {
+      "id": "n86",
+      "label": "路线 · 文档",
+      "parent": "root"
+    },
+    {
+      "id": "n87",
+      "label": "P0–P2 已完成",
+      "parent": "n86"
+    },
+    {
+      "id": "n88",
+      "label": "P3 部分完成",
+      "parent": "n86"
+    },
+    {
+      "id": "n89",
+      "label": "P4 部分完成",
+      "parent": "n86"
+    },
+    {
+      "id": "n90",
+      "label": "P5 部分完成",
+      "parent": "n86"
+    },
+    {
+      "id": "n91",
+      "label": "阻塞：CI / 部署",
+      "parent": "n86"
+    },
+    {
+      "id": "n92",
+      "label": "文档与代码地图",
+      "parent": "n86"
+    }
+  ]
+}
