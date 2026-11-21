@@ -4,7 +4,7 @@
 
 ## 角色模型
 
-设计与 `doc/2610259_班级与作业设计方案.md` 一致：`student` / `teacher` / `admin` 三个**互斥**角色，每个账号只有一个角色，不继承、不兼任。
+设计与 `doc/总体设计.md` 一致：`student` / `teacher` / `admin` 三个**互斥**角色，每个账号只有一个角色，不继承、不兼任。
 
 | 角色 | 能做什么 | 不能做什么 |
 |---|---|---|
@@ -157,7 +157,7 @@ POST   /api/assignments/{id}/grades/publish
 
 组织作业的 `POST /api/submissions` 与 `GET /api/submissions/{id}` 复用现有提交接口，不需要新增路径。
 
-具体权限和错误码见 `doc/2610259_班级与作业设计方案.md` 第 6 节。
+具体权限和错误码见 `doc/总体设计.md` 第 6 节。
 
 响应统一为：
 

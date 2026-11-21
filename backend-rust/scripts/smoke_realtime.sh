@@ -2,7 +2,7 @@
 #
 # Theseus WebSocket 实时推送冒烟测试。
 #
-# 设计文档：doc/2610295_实时推送设计方案.md
+# 设计文档：doc/总体设计.md
 #
 # 覆盖：票据接口鉴权、票据换取、hello/ready 握手、站内信写入后推送
 #       notification.new、事件信封字段。

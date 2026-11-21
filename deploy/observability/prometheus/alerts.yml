@@ -1,5 +1,5 @@
 # Theseus 告警规则。
-# 指标定义见 doc/2611051_可观测性落地方案.md 与 backend-rust/src/handlers/metrics_handler.rs。
+# 指标定义见 README.md 的可观测性章节 与 backend-rust/src/handlers/metrics_handler.rs。
 # 告警经同网络内的 Alertmanager 分组，再投递到邮件或通用 webhook。
 
 groups:

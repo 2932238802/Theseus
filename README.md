@@ -112,11 +112,11 @@ git pull
 
 `deploy/.env` 不会被脚本覆盖。升级后若 `.env.example` 新增了配置项，先执行 `deploy/scripts/merge_env.sh --dry-run` 查看缺失项，确认后去掉 `--dry-run` 追加；已有值保持不变，占位符项会提示手工填写。改完 `.env` 后执行 `cd deploy && docker compose up -d` 使配置生效。
 
-健康检查：`GET /healthz`（存活）与 `GET /readyz`（PostgreSQL / Redis）。备份使用 `deploy/scripts/backup.sh`，恢复使用 `deploy/scripts/restore.sh`。完整步骤、gVisor 安装、HTTPS 反代与运维清单见 [`doc/2611031_服务器部署方案.md`](doc/2611031_服务器部署方案.md)。
+健康检查：`GET /healthz`（存活）与 `GET /readyz`（PostgreSQL / Redis）。备份使用 `deploy/scripts/backup.sh`，恢复使用 `deploy/scripts/restore.sh`。完整步骤、gVisor 安装、HTTPS 反代与运维清单见本文件「服务器部署」章节与 `deploy/` 脚本。
 
-可选启用可观测性：在 `deploy/.env` 中加入 `COMPOSE_PROFILES=observability` 并设置 `GRAFANA_ADMIN_PASSWORD`，`docker compose up -d` 会一并启动 Prometheus、Alertmanager 与 Grafana（端口只绑定 `127.0.0.1`，通过 SSH 隧道查看）。告警规则、邮件/Webhook 通知与预置仪表盘见 [`doc/2611051_可观测性落地方案.md`](doc/2611051_可观测性落地方案.md)。
+可选启用可观测性：在 `deploy/.env` 中加入 `COMPOSE_PROFILES=observability` 并设置 `GRAFANA_ADMIN_PASSWORD`，`docker compose up -d` 会一并启动 Prometheus、Alertmanager 与 Grafana（端口只绑定 `127.0.0.1`，通过 SSH 隧道查看）。告警规则、邮件/Webhook 通知与预置仪表盘见 `deploy/observability/`。
 
-性能基线与慢查询：`deploy/scripts/pg_stats.sh` 用于启用与查看 `pg_stat_statements` 的 Top SQL；`deploy/load/` 提供 k6 读路径压测脚本、专用账号约定与索引前后对比流程，见 [`deploy/load/README.md`](deploy/load/README.md) 与 [`doc/2611052_性能压测与索引收口.md`](doc/2611052_性能压测与索引收口.md)。
+性能基线与慢查询：`deploy/scripts/pg_stats.sh` 用于启用与查看 `pg_stat_statements` 的 Top SQL；`deploy/load/` 提供 k6 读路径压测脚本、专用账号约定与索引前后对比流程，见 [`deploy/load/README.md`](deploy/load/README.md)。
 
 ## 检查与测试
 

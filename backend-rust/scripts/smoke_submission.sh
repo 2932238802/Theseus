@@ -2,7 +2,7 @@
 #
 # Theseus 提交评测冒烟测试。
 #
-# 设计文档：doc/2610255_冒烟测试实现.md
+# 设计文档：doc/总体设计.md
 #
 # 只操作真实运行的 API + judge_worker + PostgreSQL + Redis + Docker 沙箱，
 # 不 mock 任何一层。覆盖：

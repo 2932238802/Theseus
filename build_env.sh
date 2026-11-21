@@ -359,7 +359,7 @@ setup_runtime() {
     local runtimes
     runtimes=$("${DOCKER[@]}" info --format '{{json .Runtimes}}' 2>/dev/null || true)
     if [[ "$runtimes" != *'"runsc"'* ]]; then
-        warn "Docker 尚未注册 runsc（gVisor）。生产判题需要先安装，见 doc/2610305_服务器部署方案.md"
+        warn "Docker 尚未注册 runsc（gVisor）。生产判题需要先安装，见 README.md 的「服务器部署」章节"
     else
         say "runsc 已注册"
     fi
@@ -389,7 +389,7 @@ setup_runtime() {
   3. 健康检查：docker compose exec -T backend curl -fsS http://127.0.0.1:3000/readyz
   4. 首次注册账号后提升管理员：cd deploy && ./scripts/promote-admin.sh <用户名>
 
-完整说明见 doc/2610305_服务器部署方案.md
+完整说明见 README.md 的「服务器部署」章节
 EOF
 }
 

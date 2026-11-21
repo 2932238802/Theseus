@@ -10,7 +10,7 @@
 
 同一账号同一时间只允许一台设备保持登录：每次密码登录或 GitHub 登录都会递增 `users.token_version`，此前签发的 JWT 立即失效，旧设备后续请求返回 401 与 `账号已在其他设备登录 如非本人操作请修改密码`。修改密码、重置密码、退出所有设备与封号同样会使旧 token 失效。
 
-> **角色模型：** 当前使用 `student` / `teacher` / `admin` 三个互斥角色，认证每次从 `users.role` 读取；管理员不能查看其他人的提交，教师只能访问自己的组织。详见 `doc/总体设计.md` 与 `doc/2610259_班级与作业设计方案.md`。
+> **角色模型：** 当前使用 `student` / `teacher` / `admin` 三个互斥角色，认证每次从 `users.role` 读取；管理员不能查看其他人的提交，教师只能访问自己的组织。详见 `doc/总体设计.md`。
 
 ## 运行环境
 
@@ -39,7 +39,7 @@ cargo run
 - HTTP 请求数、延迟直方图与在途请求按 `MatchedPath` 路由模板统计，不按真实路径
 - 抓取时现读数据库连接池（size / idle / max）、判题 Stream 长度与消费组 pending、死信 Stream 长度与 Worker 心跳存活
 - 队列依赖不可用时跳过对应样本，接口仍返回 200
-- 指标清单见 `2611012_架构与性能收口.md`
+- 指标清单见 `doc/总体设计.md` §8.4 可观测性
 
 ## 接口清单
 
@@ -225,7 +225,7 @@ cargo run
 
 `GET /api/admin/audit-logs/export` 使用相同筛选参数导出 CSV，列为时间、操作者、角色、动作、对象类型、对象ID、摘要、变更前、变更后、IP、User-Agent；每次导出本身也会写一条 `audit.export`。
 
-审计日志只追加，后端不提供修改或删除接口。成绩相关动作只记录操作者、作业与学生/题目 id，不写入分数或评语，避免管理员借审计接口读取教学数据。完整动作清单见 `doc/2610303_审计中心设计方案.md`。
+审计日志只追加，后端不提供修改或删除接口。成绩相关动作只记录操作者、作业与学生/题目 id，不写入分数或评语，避免管理员借审计接口读取教学数据。完整动作清单见 `doc/总体设计.md` §4.11 管理端。
 
 ## 认证、限流与跨域
 
@@ -275,7 +275,7 @@ v1 只支持 GitHub，且只允许绑定已有 Theseus 账号，不通过 GitHub
 
 ## 作业策略接口
 
-完整语义见 `doc/2610271_作业策略的实现.md`。
+完整语义见 `doc/总体设计.md` §4.6 组织、作业与批改。
 
 ### 创建/修改作业
 
@@ -344,7 +344,7 @@ PUT /api/assignments/{id}/overrides/{user_id}/problems/{problem_id}
 
 ## 教学数据导入与导出
 
-设计见 `doc/2610302_教学数据导入导出设计方案.md`。
+设计见 `doc/总体设计.md` §4.6 组织、作业与批改。
 
 ### 批量导入学生
 
@@ -433,7 +433,7 @@ Content-Type: application/json
 
 ## 个人中心接口
 
-完整设计见 `doc/2610272_个人界面的完善.md`。头像文件默认写入 `UPLOAD_DIR=./uploads`，通过 `/uploads` 静态访问；生产环境需设置持久化目录。
+完整设计见 `doc/总体设计.md` §4.1 身份与账号。头像文件默认写入 `UPLOAD_DIR=./uploads`，通过 `/uploads` 静态访问；生产环境需设置持久化目录。
 
 - `GET /api/auth/me` 增加 `avatar_url`、`pending_email`、`created_at`。
 - `PUT /api/profile/username` 请求 `{"username":"..."}`，唯一性冲突返回 409。
@@ -476,7 +476,7 @@ Content-Type: application/json
 
 ## 商店与 Plus Theseus 接口
 
-完整设计见 `doc/2610312_商店与Plus申请设计方案.md`。Plus 权益为面经板块权限与专属标识，有效期由管理员审核时填写。
+完整设计见 `doc/总体设计.md` §4.11 管理端。Plus 权益为面经板块权限与专属标识，有效期由管理员审核时填写。
 
 - `GET /api/shop/plus` 返回 `{is_plus, membership?, application?}`。`is_plus` 表示 `plus_memberships.expires_at` 是否晚于当前时间；`membership` 含 `started_at`、`expires_at`、`days_left`；`application` 是最近一条申请，含 `id`、`user_id`、`username`、`reason`、`kind`、`status`、`review_note`、`reviewed_by`、`reviewed_at`、`membership_expires_at`、`created_at`。
 - `POST /api/shop/plus/apply` 请求 `{"reason":"..."}`，说明去掉首尾空白后 1–500 字；管理员调用返回 403；已有待审核申请时返回 409；会员有效时提交的是续费申请（`kind:"renewal"`），否则为新开通（`kind:"new"`）。
@@ -486,7 +486,7 @@ Content-Type: application/json
 
 ## 面经板块（论坛）
 
-完整设计见 `doc/2610313_面经板块设计方案.md` 与 `doc/2610314_题目题解与讨论区设计方案.md`。面经是论坛的一个板块，复用论坛的列表、详情、评论、点赞、收藏、举报与审核接口，通过 `board` 区分：
+完整设计见 `doc/总体设计.md` §4.8 论坛 / 校园墙。面经是论坛的一个板块，复用论坛的列表、详情、评论、点赞、收藏、举报与审核接口，通过 `board` 区分：
 
 - 综合板块 `board=general`（默认），标签只接受 `general` / `help` / `solution` / `discussion` / `announcement`，最多 3 个
 - 面经板块 `board=interview`，标签为自由文本，1–8 个，每个 ≤20 字；新增 `interview_date`（`YYYY-MM`，可空）、`company`、`role`（各 ≤40 字，可空）与 `view_count`（阅读数）
@@ -550,7 +550,7 @@ Content-Type: application/json
 
 ## 竞赛与限时赛事接口
 
-完整设计见 `doc/2610281_实现多人竞赛匹配机制.md` 与 `doc/2610291_竞赛ui的完善.md`。
+完整设计见 `doc/总体设计.md` §4.5 在线匹配与段位。
 
 `POST /api/contests/match` 请求体为 `{camera_permission,screen_permission}`，取值 `granted|denied|unavailable`。两个字段都必须是 `granted`，否则返回 400；客户端应依次完成摄像头授权和屏幕共享后再调用。比赛创建时两个授权结果写入 `contest_participants` 并各记录一条 `contest_events`。
 
@@ -830,7 +830,7 @@ Content-Type: application/json
 
 ## 实时推送（WebSocket）
 
-完整设计见 `doc/2610295_实时推送设计方案.md`。WebSocket 只做传输增强，比赛详情、通知列表与未读数仍以 REST 接口为准。
+完整设计见 `doc/总体设计.md` §3.5 同步与异步边界与 §6.3 WebSocket。WebSocket 只做传输增强，比赛详情、通知列表与未读数仍以 REST 接口为准。
 
 ### 连接票据
 
@@ -866,7 +866,7 @@ Content-Type: application/json
 
 ## 语义补全（LSP）
 
-完整设计见 `doc/2610316_语义补全设计方案.md`。v1 只支持 C++ 与 Python。
+完整设计见 `doc/总体设计.md`。v1 只支持 C++ 与 Python。
 
 ### 连接票据
 
@@ -894,7 +894,7 @@ WebSocket 文本帧直接承载 LSP JSON-RPC 消息。连接建立后网关先�
 
 ## AI 助手
 
-完整设计见 `doc/2611017_AI助手设计方案.md`。入口位于题目页编辑器工具栏「语义补全」旁，开启后在编辑器右侧显示 AI 面板；仅 Plus 会员可用；管理员保留访问权限。比赛模式下前后端都禁用；作业可按份关闭，见「作业策略接口」。
+完整设计见 `doc/总体设计.md` §4.12 AI 能力。入口位于题目页编辑器工具栏「语义补全」旁，开启后在编辑器右侧显示 AI 面板；仅 Plus 会员可用；管理员保留访问权限。比赛模式下前后端都禁用；作业可按份关闭，见「作业策略接口」。
 
 `GET /api/ai/status` 需要登录，返回：
 
@@ -926,7 +926,7 @@ WebSocket 文本帧直接承载 LSP JSON-RPC 消息。连接建立后网关先�
 
 ## 一题多解接口
 
-设计见 `doc/2611071_一题多解设计方案.md`
+设计见 `doc/总体设计.md`
 
 ### 列出解法
 
@@ -1099,7 +1099,7 @@ Authorization: Bearer <token>
 
 ## 防作弊复核与申诉接口
 
-设计见 `doc/2610301_防作弊代码相似度设计方案.md`。扫描只覆盖带 `assignment_id` 的作业提交，按同作业、同题、同语言、最近 `ANTICHEAT_WINDOW_DAYS` 天比对，默认阈值 `0.60/0.80/0.92`。相似度不自动处分。
+设计见 `doc/总体设计.md` §4.7 防作弊系统。扫描只覆盖带 `assignment_id` 的作业提交，按同作业、同题、同语言、最近 `ANTICHEAT_WINDOW_DAYS` 天比对，默认阈值 `0.60/0.80/0.92`。相似度不自动处分。
 
 ### 教师报告队列
 

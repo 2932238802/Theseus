@@ -2,7 +2,7 @@ name: theseus
 
 # 单机部署：PostgreSQL + Redis + API + 判题 Worker + 防作弊 Worker + 前端 Nginx。
 # 使用前：cp .env.example .env 并至少修改 POSTGRES_PASSWORD 与 JWT_SECRET。
-# 详细步骤见 doc/2610305_服务器部署方案.md。
+# 详细步骤见 README.md 的「服务器部署」章节。
 
 x-logging: &default-logging
   driver: json-file

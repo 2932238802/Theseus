@@ -1,19 +1,19 @@
 # 项目状态面板
 
-> 维护者：Doc Agent ｜ 最近更新：2026-11-20 ｜ 状态：进行中
+> 维护者：Doc Agent ｜ 最近更新：2026-11-21 ｜ 状态：CR-004 已交付，待 CI 与部署验证
 > 本文件只记录当前状态，不承载需求细节；细节看对应文档。
 
 ## 当前
 
 | 项 | 内容 |
 | --- | --- |
-| 当前 CR | CR-004 依赖安全修复（热修）；CR-001~003 面经板块改版已交付 |
-| 当前门禁 | **CR-004 G2 完成（本地通过），待推送触发 CI** |
-| 进行中任务 | T-009 已完成本地验证；待提交推送 → CI → 服务器重跑 update.sh |
-| 阻塞 | 推送前等待用户授权；CI 镜像发布后才能部署 |
-| 下一步 | 提交推送 → CI 全绿 → 服务器 `git pull && ./update.sh` → `rebuild_interview_posts.sh --yes` |
-| 文档根目录 | `doc/` |
-| 运行基线 | `main` @ `3a5322a`（已推送）；服务器已 pull，停在镜像拉取阶段 |
+| 当前 CR | CR-004 依赖安全修复（热修，已提交 `fda4570`）；CR-001~003 面经板块改版已交付 |
+| 当前门禁 | **CR-004 已提交并推送 `main`；CI 结果待确认** |
+| 进行中任务 | 无代码任务；2026-11-21 完成本地基线体检 |
+| 阻塞 | 服务器部署依赖 CI 镜像发布；本地 `cargo audit` / `npm audit` 受网络限制未能复跑 |
+| 下一步 | 确认 CI 全绿 → 服务器 `git pull && ./update.sh` → `rebuild_interview_posts.sh --yes` |
+| 文档根目录 | `doc/`；开发文档统一归档到 `doc/archive/YYYYMMDD/` |
+| 运行基线 | `main` @ `fda4570`（与 `origin/main` 一致） |
 | 环境说明 | 当前为开发版，存量面经帖子为测试数据 |
 
 ## 角色记录
@@ -28,6 +28,8 @@
 - 2026-11-19：用户确认 clippy 基线问题单独建任务 T-008 先修，再继续 T-002。
 - 2026-11-19：T-001 返工 R1 完成并核对通过；0049 外键已为 `INTEGER`，全新库与幂等验证通过，T-001 标记 DONE。开始 T-008。
 - 2026-11-20：CI `cargo audit` 失败：lettre 0.11.23 的 6 个 RUSTSEC（修复版 >=0.11.24）+ libsqlite3-sys 0.30.1 的 RUSTSEC-2026-0459；`images` 任务未执行，GHCR 无 `3a5322a` 镜像，服务器 `./update.sh` 拉取失败。用户确认开始修复，创建 CR-004 / T-009。
+- 2026-11-21：按用户要求删除 `doc/` 根目录 47 个历史设计文档，开发文档统一归档到 `doc/archive/YYYYMMDD/`；同步清理根 README、`backend_api.md`、`总体设计.md`、脚本与代码注释中的引用，`doc/archive/` 与 `doc/reports/` 中的历史报告保留原文。
+- 2026-11-21：本地基线体检通过：`cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test --all-targets`（163 + 5 passed）、前端 `npm run build`、全部 shell 脚本 `bash -n`；`cargo audit` 因 RustSec Git 拉取超时、`npm audit` 因 npmmirror 未实现 audit 接口未能复跑。文档同步至 `fda4570`。
 - 2026-11-20：G4 P2-1 完成；`update.sh` 面经持续导入固定 `--no-answers`，`bash -n` 通过，dry-run 正文 150→76 字；报告 `doc/reports/dev-agent-2026-11-20-G4条件项-P2-1.md`。
 - 2026-11-20：G4 总审 **通过**（无 P0/P1；22/22 AC 独立复现；62 项冒烟、42 项 Playwright UAT 全绿）。用户决策 P2-1 加 `--no-answers`、P2-2 保留板块切换。功能提交 `6db10be` 已推送 `feat/interview-revamp`。报告 `doc/reports/meta-2026-11-20-面经板块改版.md`。
 - 2026-11-20：G3 复审 **通过**（无 P0/P1/P2；2 项 P3 非阻塞：冒烟 TMP_DIR 清理、模板顺序恢复标志）。报告 `doc/reports/review-agent-2026-11-20-G3返工复审.md`。进入 G4 总审。
@@ -56,6 +58,7 @@
 | T-006 读者端 HR 模板页与入口 | DONE |
 | T-007 全量回归与文档同步 | DONE |
 | T-008 修复 clippy 基线 | DONE |
+| T-009 依赖安全修复 | DONE（`fda4570`，已推送） |
 | G3 返工 R1–R3 | DONE |
 | G4 总审 | DONE（通过） |
 | P2-1 `update.sh --no-answers` | DONE |
